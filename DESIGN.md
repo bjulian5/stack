@@ -635,12 +635,48 @@ stack config --list                # List all config
 
 ### Hook Commands (Internal)
 
-These are called by git hooks, not directly by users:
+These are called by git hooks, not directly by users.
 
+#### `stack hook prepare-commit-msg <file> <source> <sha>`
+
+Called by git's `prepare-commit-msg` hook.
+
+**Arguments (passed by Git):**
+- `<file>`: Path to file containing commit message (e.g., `.git/COMMIT_EDITMSG`)
+- `<source>`: Source of commit message (e.g., `message`, `template`, `merge`, `squash`)
+- `<sha>`: Commit SHA when amending (optional)
+
+**Example invocations:**
 ```bash
-stack hook prepare-commit-msg <file> <source> <sha>
+# New commit
+stack hook prepare-commit-msg .git/COMMIT_EDITMSG message
+
+# Amending existing commit
+stack hook prepare-commit-msg .git/COMMIT_EDITMSG commit abc1234
+
+# Template-based commit
+stack hook prepare-commit-msg .git/COMMIT_EDITMSG template
+```
+
+#### `stack hook post-commit`
+
+Called by git's `post-commit` hook. Takes no arguments.
+
+**Example invocation:**
+```bash
 stack hook post-commit
-stack hook commit-msg <file>
+```
+
+#### `stack hook commit-msg <file>`
+
+Called by git's `commit-msg` hook.
+
+**Arguments (passed by Git):**
+- `<file>`: Path to file containing commit message (e.g., `.git/COMMIT_EDITMSG`)
+
+**Example invocation:**
+```bash
+stack hook commit-msg .git/COMMIT_EDITMSG
 ```
 
 ---
@@ -649,27 +685,35 @@ stack hook commit-msg <file>
 
 ### Hook Installation
 
-When running `stack new`, the tool installs three git hooks:
+When running `stack new`, the tool installs three git hooks as thin bash wrappers that delegate to the `stack` binary:
 
 **`.git/hooks/prepare-commit-msg`:**
 ```bash
 #!/bin/bash
+# Git calls this with: prepare-commit-msg <COMMIT_MSG_FILE> <source> [<sha>]
+# We pass all arguments to the stack binary
 exec stack hook prepare-commit-msg "$@"
 ```
 
 **`.git/hooks/post-commit`:**
 ```bash
 #!/bin/bash
+# Git calls this with no arguments after a commit is created
 exec stack hook post-commit "$@"
 ```
 
 **`.git/hooks/commit-msg`:**
 ```bash
 #!/bin/bash
+# Git calls this with: commit-msg <COMMIT_MSG_FILE>
+# We pass all arguments to the stack binary
 exec stack hook commit-msg "$@"
 ```
 
-All hooks are thin wrappers that call the Go binary with appropriate subcommands.
+**Why thin wrappers?**
+- All hook logic lives in the Go binary (easier to test and maintain)
+- Single binary distribution (no separate hook scripts to manage)
+- Cross-platform compatibility
 
 ---
 

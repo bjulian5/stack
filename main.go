@@ -1,7 +1,12 @@
 package main
 
-import "github.com/bjulian5/stack/cmd"
+import (
+	"context"
+
+	"github.com/bjulian5/stack/cmd"
+)
 
 func main() {
-	cmd.Execute()
+	ctx := context.Background()
+	cmd.Execute(ctx)
 }
