@@ -1,0 +1,47 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+stack
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+dist/
+build/
+
+# Test fixtures and temporary files
+test/fixtures/.git/
+*.tmp
+
+# Debug files
+debug
+__debug_bin
+
+# Environment files
+.env
+.env.local
+
+# Claude Code settings
+.claude/settings.local.json
