@@ -30,8 +30,14 @@ func Execute(ctx context.Context) {
 }
 
 func init() {
-	// Add subcommands
-	rootCmd.AddCommand(newCmd)
-	rootCmd.AddCommand(listCmd)
-	rootCmd.AddCommand(showCmd)
+	// Register all commands
+	commands := []Command{
+		&NewCommand{},
+		&ListCommand{},
+		&ShowCommand{},
+	}
+
+	for _, cmd := range commands {
+		cmd.Register(rootCmd)
+	}
 }

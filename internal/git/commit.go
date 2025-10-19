@@ -8,10 +8,10 @@ import (
 
 // Commit represents a git commit
 type Commit struct {
-	Hash    string
-	Title   string
-	Body    string
-	Message string
+	Hash     string
+	Title    string
+	Body     string
+	Message  string
 	Trailers map[string]string
 }
 
