@@ -1,4 +1,4 @@
-package cmd
+package new
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 	"github.com/bjulian5/stack/internal/stack"
 )
 
-// NewCommand creates a new stack
-type NewCommand struct {
+// Command creates a new stack
+type Command struct {
 	// Arguments
 	StackName string
 
@@ -26,7 +26,7 @@ type NewCommand struct {
 }
 
 // Register registers the command with cobra
-func (c *NewCommand) Register(parent *cobra.Command) {
+func (c *Command) Register(parent *cobra.Command) {
 	var err error
 	c.Git, err = git.NewClient()
 	if err != nil {
@@ -60,7 +60,7 @@ Example:
 }
 
 // Run executes the command
-func (c *NewCommand) Run(ctx context.Context) error {
+func (c *Command) Run(ctx context.Context) error {
 	// Check if stack already exists
 	if c.Stack.StackExists(c.StackName) {
 		return fmt.Errorf("stack '%s' already exists", c.StackName)

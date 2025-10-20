@@ -5,6 +5,10 @@ import (
 	"log"
 
 	"github.com/spf13/cobra"
+
+	"github.com/bjulian5/stack/cmd/list"
+	"github.com/bjulian5/stack/cmd/new"
+	"github.com/bjulian5/stack/cmd/show"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -32,9 +36,9 @@ func Execute(ctx context.Context) {
 func init() {
 	// Register all commands
 	commands := []Command{
-		&NewCommand{},
-		&ListCommand{},
-		&ShowCommand{},
+		&new.Command{},
+		&list.Command{},
+		&show.Command{},
 	}
 
 	for _, cmd := range commands {

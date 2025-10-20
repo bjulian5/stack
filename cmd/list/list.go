@@ -1,4 +1,4 @@
-package cmd
+package list
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"github.com/bjulian5/stack/internal/stack"
 )
 
-// ListCommand lists all stacks
-type ListCommand struct {
+// Command lists all stacks
+type Command struct {
 	// No flags or arguments currently
 
 	// Clients (can be mocked in tests)
@@ -20,7 +20,7 @@ type ListCommand struct {
 }
 
 // Register registers the command with cobra
-func (c *ListCommand) Register(parent *cobra.Command) {
+func (c *Command) Register(parent *cobra.Command) {
 	var err error
 	c.Git, err = git.NewClient()
 	if err != nil {
@@ -47,7 +47,7 @@ Example:
 }
 
 // Run executes the command
-func (c *ListCommand) Run(ctx context.Context) error {
+func (c *Command) Run(ctx context.Context) error {
 	// Get all stacks
 	stacks, err := c.Stack.ListStacks()
 	if err != nil {

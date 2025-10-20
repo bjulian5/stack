@@ -1,4 +1,4 @@
-package cmd
+package show
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	"github.com/bjulian5/stack/internal/stack"
 )
 
-// ShowCommand shows details of a stack
-type ShowCommand struct {
+// Command shows details of a stack
+type Command struct {
 	// Arguments
 	StackName string
 
@@ -22,7 +22,7 @@ type ShowCommand struct {
 }
 
 // Register registers the command with cobra
-func (c *ShowCommand) Register(parent *cobra.Command) {
+func (c *Command) Register(parent *cobra.Command) {
 	var err error
 	c.Git, err = git.NewClient()
 	if err != nil {
@@ -53,7 +53,7 @@ Example:
 }
 
 // Run executes the command
-func (c *ShowCommand) Run(ctx context.Context) error {
+func (c *Command) Run(ctx context.Context) error {
 	// Determine which stack to show
 	if c.StackName == "" {
 		// Get current stack
