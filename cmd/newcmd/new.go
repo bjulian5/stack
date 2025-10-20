@@ -3,11 +3,9 @@ package newcmd
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/hooks"
 	"github.com/bjulian5/stack/internal/stack"
@@ -33,7 +31,7 @@ func (c *Command) Register(parent *cobra.Command) {
 	if err != nil {
 		panic(err)
 	}
-	c.Stack = stack.NewClient(c.Git.GitRoot())
+	c.Stack = stack.NewClient(c.Git)
 
 	cmd := &cobra.Command{
 		Use:   "new <stack-name>",
@@ -62,55 +60,15 @@ Example:
 
 // Run executes the command
 func (c *Command) Run(ctx context.Context) error {
-	// Check if stack already exists
-	if c.Stack.StackExists(c.StackName) {
-		return fmt.Errorf("stack '%s' already exists", c.StackName)
-	}
-
-	// Get current branch as base if not specified
-	if c.BaseBranch == "" {
-		currentBranch, err := c.Git.GetCurrentBranch()
-		if err != nil {
-			return fmt.Errorf("failed to get current branch: %w", err)
-		}
-		c.BaseBranch = currentBranch
-	}
-
-	// Get username for branch naming
-	username, err := common.GetUsername()
+	// Create the stack
+	s, err := c.Stack.CreateStack(c.StackName, c.BaseBranch)
 	if err != nil {
-		return fmt.Errorf("failed to get username: %w", err)
+		return fmt.Errorf("failed to create stack: %w", err)
 	}
 
-	// Format branch name
-	branchName := git.FormatStackBranch(username, c.StackName)
-
-	// Check if branch already exists
-	if c.Git.BranchExists(branchName) {
-		return fmt.Errorf("branch '%s' already exists", branchName)
-	}
-
-	// Create stack branch
-	if err := c.Git.CreateAndCheckoutBranch(branchName); err != nil {
-		return fmt.Errorf("failed to create stack branch: %w", err)
-	}
-
-	// Create stack metadata
-	s := &stack.Stack{
-		Name:       c.StackName,
-		Branch:     branchName,
-		Base:       c.BaseBranch,
-		Created:    time.Now(),
-		LastSynced: time.Time{},
-	}
-
-	if err := c.Stack.SaveStack(s); err != nil {
-		return fmt.Errorf("failed to save stack: %w", err)
-	}
-
-	// Set as current stack
-	if err := c.Stack.SetCurrentStack(c.StackName); err != nil {
-		return fmt.Errorf("failed to set current stack: %w", err)
+	// Switch to the new stack
+	if err := c.Stack.SwitchStack(c.StackName); err != nil {
+		return fmt.Errorf("failed to switch to stack: %w", err)
 	}
 
 	// Install git hooks
@@ -118,9 +76,10 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to install git hooks: %w", err)
 	}
 
-	fmt.Printf("✓ Created stack '%s'\n", c.StackName)
-	fmt.Printf("✓ Branch: %s\n", branchName)
-	fmt.Printf("✓ Base: %s\n", c.BaseBranch)
+	// Display results
+	fmt.Printf("✓ Created stack '%s'\n", s.Name)
+	fmt.Printf("✓ Branch: %s\n", s.Branch)
+	fmt.Printf("✓ Base: %s\n", s.Base)
 	fmt.Printf("✓ Installed git hooks\n")
 	fmt.Printf("✓ Switched to stack branch\n")
 

@@ -22,7 +22,7 @@ func (c *Command) Register(parent *cobra.Command) {
 		// Hooks should fail silently if not in a git repo
 		return
 	}
-	c.Stack = stack.NewClient(c.Git.GitRoot())
+	c.Stack = stack.NewClient(c.Git)
 
 	cmd := &cobra.Command{
 		Use:    "hook",

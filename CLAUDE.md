@@ -54,7 +54,7 @@ go build && ./stack list
 **Stack Client** (`internal/stack/client.go`)
 - Manages stack metadata stored in `.git/stack/<stack-name>/`
 - Each stack has `config.json` (stack metadata) and `prs.json` (PR tracking)
-- Handles current stack state (`.git/stack/current`)
+- Provides `GetStackContext()` to determine current stack from branch name
 
 **Command Pattern** (`cmd/command.go`)
 - Each command implements the `Command` interface with a `Register()` method
@@ -69,8 +69,8 @@ go build && ./stack list
 
 **Metadata Storage**
 - `.git/stack/<stack-name>/config.json`: Stack configuration (name, branch, base, timestamps)
-- `.git/stack/<stack-name>/prs.json`: PR tracking (maps UUID to PR number, URL, state)
-- `.git/stack/current`: Current active stack name
+- `.git/stack/<stack-name>/prs.json`: PR tracking (maps UUID to PR number, URL, state, commit hash)
+- Current stack is determined by branch context (via `GetStackContext()`), not stored in a file
 
 **Commit Message Structure**
 ```
@@ -93,35 +93,52 @@ stack/
 │   ├── command.go                   # Command interface
 │   ├── list/list.go                 # stack list command
 │   ├── show/show.go                 # stack show command
-│   └── newcmd/new.go                # stack new command (newcmd to avoid "new" keyword)
+│   ├── newcmd/new.go                # stack new command (newcmd to avoid "new" keyword)
+│   └── hook/
+│       ├── hook.go                  # Parent hook command
+│       ├── prepare_commit_msg.go    # prepare-commit-msg hook implementation
+│       ├── commit_msg.go            # commit-msg hook implementation
+│       ├── post_commit.go           # post-commit hook implementation
+│       └── operations.go            # Common hook operations and workflows
 ├── internal/
 │   ├── git/
 │   │   ├── client.go                # Core git operations wrapper
 │   │   ├── branch.go                # Branch name parsing/formatting
 │   │   ├── commit.go                # Commit parsing
-│   │   └── operations.go            # Additional git operations
+│   │   ├── operations.go            # Additional git operations
+│   │   └── rebase.go                # Rebase operations for stack updates
 │   ├── stack/
 │   │   ├── client.go                # Stack metadata management
 │   │   ├── stack.go                 # Stack struct
-│   │   └── pr.go                    # PR struct and PRMap type
+│   │   ├── pr.go                    # PR struct and PRMap type
+│   │   ├── change.go                # Change domain model
+│   │   └── context.go               # StackContext for branch-based state
+│   ├── hooks/
+│   │   └── install.go               # Hook installation/uninstallation
 │   └── common/
-│       └── utils.go                 # Shared utilities (username detection, etc.)
+│       └── utils.go                 # Shared utilities (username detection, UUID generation, etc.)
 ```
 
 ## Implementation Status
 
-The codebase is currently in **Phase 1** of development (see DESIGN.md for full roadmap):
+The codebase has completed **Phase 1** (Foundation) and **Phase 2** (Git Hooks) of development (see DESIGN.md for full roadmap):
 
-**Completed:**
+**Phase 1 - Foundation (✅ Completed):**
 - ✅ `stack new <name>` - Create new stack
 - ✅ `stack list` - List all stacks
 - ✅ `stack show [name]` - Show stack details
 - ✅ Core git operations (branch management, commit parsing)
 - ✅ Stack metadata storage and retrieval
 
+**Phase 2 - Git Hooks (✅ Completed):**
+- ✅ `prepare-commit-msg` hook - Automatic UUID and trailer injection
+- ✅ `post-commit` hook - Stack updates after commits on UUID branches
+- ✅ `commit-msg` hook - Commit message validation
+- ✅ Hook installation/uninstallation
+- ✅ Amend and insert operations for stack editing
+
 **Not Yet Implemented:**
-- Git hooks (prepare-commit-msg, post-commit, commit-msg)
-- `stack edit` command for editing PRs in the middle of stack
+- `stack edit` command for creating UUID branches
 - `stack switch` command with fuzzy finder
 - `stack push` command to push PRs to GitHub
 - `stack refresh` command to handle merged PRs
@@ -191,3 +208,4 @@ if err != nil {
 - The `newcmd` package is named this way (not just `new`) because `new` is a Go keyword
 - Branch parsing functions handle both stack branches and UUID branches
 - Username detection happens in `internal/common/utils.go` (checks git config, gh config)
+- Remeber to use `fd` instead of `find` since `fd` is much faster and more ergonomic.

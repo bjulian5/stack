@@ -63,8 +63,7 @@ stack new auth-refactor
 2. Creates `.git/stack/auth-refactor/config.json` with stack metadata
 3. Creates `.git/stack/auth-refactor/prs.json` for PR tracking
 4. Installs git hooks (thin wrappers calling the binary)
-5. Sets as current stack (`.git/stack/current` → `auth-refactor`)
-6. Checks out the stack branch
+5. Checks out the stack branch (current stack is determined by branch context)
 
 **Output:**
 ```
@@ -194,9 +193,8 @@ stack switch feature-redesign
 ```
 
 **What happens:**
-1. Updates `.git/stack/current` to new stack name
-2. Checks out the stack branch
-3. Displays stack summary
+1. Checks out the stack branch (current stack determined by branch)
+2. Displays stack summary
 
 ---
 
@@ -887,12 +885,14 @@ IF NEW:
 
 ### Current Stack
 
-**Location:** `.git/stack/current`
+**Mechanism:** Branch-based context (no file storage)
 
-**Content:** Single line with current stack name
-```
-auth-refactor
-```
+**Implementation:** The current stack is determined by examining the current git branch:
+- If on a stack branch (`username/stack-<name>/TOP`), you're working on that stack
+- If on a UUID branch (`username/stack-<name>/<uuid>`), you're editing a change in that stack
+- `GetStackContext()` returns the stack name, loaded metadata, and editing context
+
+This approach is more git-native and eliminates the need for state files.
 
 ---
 
@@ -925,13 +925,16 @@ auth-refactor
 3. **Stack metadata** (`internal/stack/`)
    - ✅ `Stack` struct
    - ✅ `PR` struct and `PRMap` type
+   - ✅ `Change` struct - domain model for commits in stack context
+   - ✅ `StackContext` struct - branch-based context
    - ✅ `stack.Client` for metadata management
    - ✅ `LoadStack()` - load stack config from disk
    - ✅ `SaveStack()` - save stack config
    - ✅ `LoadPRs()` - load PR tracking
    - ✅ `SavePRs()` - save PR tracking
-   - ✅ `GetCurrentStack()` - read `.git/stack/current`
-   - ✅ `SetCurrentStack()` - write `.git/stack/current`
+   - ✅ `GetStackContext()` - derive stack context from current branch
+   - ✅ `SwitchStack()` - checkout stack branch
+   - ✅ `GetStackDetails()` - get comprehensive stack information
 
 4. **Basic commands** (each in its own package)
    - ✅ `cmd/command.go` - Command interface
@@ -952,48 +955,56 @@ auth-refactor
 
 ---
 
-### Phase 2: Hooks (Week 1-2)
+### Phase 2: Hooks ✅ COMPLETED
 
 **Goal:** Git hooks for automatic metadata management
 
-**Tasks:**
-1. Hook installation (`internal/hooks/`)
-   - `installHooks()` - create wrapper scripts in `.git/hooks/`
-   - `uninstallHooks()` - remove hooks
-   - `checkHooksInstalled()` - verify hooks are present
+**Status:** Completed with full hook implementation for stack operations
 
-2. Hook implementations
-   - `prepare-commit-msg` (`cmd/hook.go`)
-     - Detect stack branch
-     - Generate UUID
-     - Add trailers to commit message
-     - Handle amend case (preserve UUID)
+**What was implemented:**
 
-   - `post-commit` (`cmd/hook.go`)
-     - Detect UUID branch
-     - Determine amend vs new commit
-     - Update stack branch accordingly
-     - Rebase subsequent commits
-     - Handle errors gracefully
+1. **Hook installation** (`internal/hooks/install.go`)
+   - ✅ `InstallHooks()` - create wrapper scripts in `.git/hooks/`
+   - ✅ `UninstallHooks()` - remove hooks
+   - ✅ `CheckHooksInstalled()` - verify hooks are present
+   - Thin bash wrappers that delegate to `stack hook` commands
 
-   - `commit-msg` (`cmd/hook.go`)
-     - Validate PR metadata presence
-     - Validate format (non-empty title)
-     - Exit with error if invalid
+2. **Hook implementations** (`cmd/hook/`)
+   - ✅ `prepare-commit-msg.go` - Parent command structure
+     - Detects stack/UUID branches via `GetStackContext()`
+     - Generates UUID for new commits
+     - Adds PR-UUID and PR-Stack trailers
+     - Preserves UUIDs on amend operations
 
-3. Git operations for hooks
-   - `replaceCommit(uuid, newCommit)` - replace commit in stack
-   - `insertCommitAfter(uuid, newCommit)` - insert new PR
-   - `rebaseFrom(position)` - rebase from position to end
+   - ✅ `post-commit.go` - Stack update operations
+     - Detects UUID branch context
+     - Determines amend vs new commit by comparing UUIDs
+     - Updates stack branch using git rebase operations
+     - Rebases subsequent commits automatically
+     - Updates all UUID branch pointers
 
-4. Testing
-   - Create test git repo
-   - Test prepare-commit-msg on stack branch
-   - Test post-commit amend flow
-   - Test post-commit new commit (insertion) flow
-   - Test commit-msg validation
+   - ✅ `commit-msg.go` - Validation
+     - Validates PR-UUID and PR-Stack trailer presence
+     - Validates non-empty commit title
+     - Aborts commit if validation fails
 
-**Deliverable:** Hooks work, can add PRs with `git commit`, can edit and insert via UUID branches
+   - ✅ `operations.go` - Common workflows
+     - `GetStackContext()` - Extract context from branch
+     - `PostUpdateWorkflow()` - Update tracking and branches after stack changes
+     - `updateCommitTracking()` - Sync prs.json with current commits
+     - `updateAllUUIDBranches()` - Update all UUID branch refs to new locations
+
+3. **Git operations for hooks** (`internal/git/rebase.go`)
+   - ✅ `RebaseSubsequentCommits()` - Rebase commits after an update
+   - ✅ Uses `git rebase --onto` for precise stack modifications
+   - ✅ Handles commit replacement and insertion
+
+4. **Stack context system** (`internal/stack/context.go`)
+   - ✅ `StackContext` - Branch-based context instead of file-based
+   - ✅ `GetStackContext()` - Derive stack from current branch
+   - ✅ `InStack()` and `IsEditing()` - Context query methods
+
+**Deliverable:** ✅ Hooks work, can add PRs with `git commit`, can edit and insert via UUID branches
 
 ---
 
@@ -1185,41 +1196,45 @@ stack/
 │   │   └── show.go              # stack show command
 │   ├── newcmd/
 │   │   └── new.go               # stack new command (newcmd to avoid "new" keyword)
+│   ├── hook/                    # Git hook implementations (✅ completed)
+│   │   ├── hook.go              # Parent hook command
+│   │   ├── prepare_commit_msg.go # prepare-commit-msg hook
+│   │   ├── commit_msg.go        # commit-msg hook
+│   │   ├── post_commit.go       # post-commit hook
+│   │   └── operations.go        # Common hook operations
 │   ├── switch/
 │   │   └── switch.go            # stack switch (future)
 │   ├── edit/
 │   │   └── edit.go              # stack edit (future)
 │   ├── push/
 │   │   └── push.go              # stack push (future)
-│   ├── refresh/
-│   │   └── refresh.go           # stack refresh (future)
-│   └── hook/
-│       └── hook.go              # stack hook subcommands (future)
+│   └── refresh/
+│       └── refresh.go           # stack refresh (future)
 │
 ├── internal/                    # Internal packages
 │   ├── git/                     # Git operations
 │   │   ├── client.go            # Client struct with git operations (using exec.Command)
 │   │   ├── commit.go            # Commit struct and parsing
 │   │   ├── branch.go            # Branch name parsing/formatting
-│   │   └── operations.go        # Additional git operations
+│   │   ├── operations.go        # Additional git operations
+│   │   └── rebase.go            # Rebase operations for stack updates (✅ completed)
 │   │
 │   ├── stack/                   # Stack management
 │   │   ├── client.go            # Stack client for metadata management
 │   │   ├── stack.go             # Stack struct
-│   │   └── pr.go                # PR struct and PRMap type
+│   │   ├── pr.go                # PR struct and PRMap type
+│   │   ├── change.go            # Change domain model (✅ completed)
+│   │   └── context.go           # StackContext for branch-based state (✅ completed)
+│   │
+│   ├── hooks/                   # Git hooks (✅ completed)
+│   │   └── install.go           # Hook installation/uninstallation
 │   │
 │   ├── common/                  # Common utilities
-│   │   └── utils.go             # Shared utilities (username detection, etc.)
+│   │   └── utils.go             # Shared utilities (username detection, UUID generation, etc.)
 │   │
 │   ├── github/                  # GitHub integration (future)
 │   │   ├── client.go            # gh CLI wrapper
 │   │   └── pr.go                # PR operations (create, update, query)
-│   │
-│   ├── hooks/                   # Git hooks (future)
-│   │   ├── install.go           # Hook installation/uninstallation
-│   │   ├── prepare_commit_msg.go  # prepare-commit-msg logic
-│   │   ├── post_commit.go       # post-commit logic
-│   │   └── commit_msg.go        # commit-msg validation
 │   │
 │   ├── ui/                      # User interface (future)
 │   │   ├── table.go             # Table rendering

@@ -28,7 +28,7 @@ func (c *Command) Register(parent *cobra.Command) {
 	if err != nil {
 		panic(err)
 	}
-	c.Stack = stack.NewClient(c.Git.GitRoot())
+	c.Stack = stack.NewClient(c.Git)
 
 	cmd := &cobra.Command{
 		Use:   "show [stack-name]",
@@ -54,41 +54,36 @@ Example:
 
 // Run executes the command
 func (c *Command) Run(ctx context.Context) error {
-	// Determine which stack to show
-	if c.StackName == "" {
-		// Get current stack
-		currentStack, err := c.Stack.GetCurrentStack()
-		if err != nil {
-			return fmt.Errorf("no current stack set. Use: stack show <name>")
+	// Resolve stack name - use context if not specified
+	stackName := c.StackName
+	if stackName == "" {
+		stackCtx, err := c.Stack.GetStackContext()
+		if err != nil || !stackCtx.InStack() {
+			return fmt.Errorf("not on a stack branch. Use: stack show <name>")
 		}
-		c.StackName = currentStack
+		stackName = stackCtx.StackName
 	}
 
-	// Load stack
-	s, err := c.Stack.LoadStack(c.StackName)
+	// Get stack details
+	details, err := c.Stack.GetStackDetails(stackName)
 	if err != nil {
-		return fmt.Errorf("failed to load stack '%s': %w", c.StackName, err)
+		return err
 	}
 
-	// Get commits
-	commits, err := c.Git.GetCommits(s.Branch, s.Base)
-	if err != nil {
-		return fmt.Errorf("failed to get commits: %w", err)
+	if details.Stack == nil {
+		return fmt.Errorf("stack '%s' does not exist", stackName)
 	}
 
-	// Load PRs
-	prs, err := c.Stack.LoadPRs(c.StackName)
-	if err != nil {
-		return fmt.Errorf("failed to load PRs: %w", err)
-	}
+	s := details.Stack
+	changes := details.Changes
 
 	// Print stack header
 	fmt.Printf("Stack: %s (%s)\n", s.Name, s.Branch)
 	fmt.Printf("Base: %s\n", s.Base)
 	fmt.Println()
 
-	// If no commits, show message
-	if len(commits) == 0 {
+	// If no changes, show message
+	if len(changes) == 0 {
 		fmt.Println("No PRs in this stack yet.")
 		fmt.Println("Add commits to the stack branch to create PRs.")
 		return nil
@@ -98,44 +93,39 @@ func (c *Command) Run(ctx context.Context) error {
 	fmt.Printf(" #  Status    PR      Title%sCommit\n", strings.Repeat(" ", 30))
 	fmt.Println(strings.Repeat("━", 80))
 
-	// Print commits
-	for i, commit := range commits {
-		prNum := i + 1
-
+	// Print changes
+	for _, change := range changes {
 		// Get PR status
-		uuid := commit.Trailers["PR-UUID"]
 		status := "⚪ Local"
 		prLabel := "-"
 
-		if uuid != "" {
-			if pr, ok := prs[uuid]; ok {
-				prLabel = fmt.Sprintf("#%d", pr.PRNumber)
-				switch pr.State {
-				case "open":
-					status = "🟢 Open"
-				case "draft":
-					status = "🟡 Draft"
-				case "merged":
-					status = "🟣 Merged"
-				case "closed":
-					status = "⚫ Closed"
-				}
+		if change.PR != nil {
+			prLabel = fmt.Sprintf("#%d", change.PR.PRNumber)
+			switch change.PR.State {
+			case "open":
+				status = "🟢 Open"
+			case "draft":
+				status = "🟡 Draft"
+			case "merged":
+				status = "🟣 Merged"
+			case "closed":
+				status = "⚫ Closed"
 			}
 		}
 
 		// Truncate title if too long
-		title := commit.Title
+		title := change.Title
 		if len(title) > 30 {
 			title = title[:27] + "..."
 		}
 
 		// Short hash
-		shortHash := commit.Hash
+		shortHash := change.CommitHash
 		if len(shortHash) > 7 {
 			shortHash = shortHash[:7]
 		}
 
-		fmt.Printf(" %-2d %-9s %-7s %-33s %s\n", prNum, status, prLabel, title, shortHash)
+		fmt.Printf(" %-2d %-9s %-7s %-33s %s\n", change.Position, status, prLabel, title, shortHash)
 	}
 
 	// Print summary
@@ -145,24 +135,21 @@ func (c *Command) Run(ctx context.Context) error {
 	openCount := 0
 	draftCount := 0
 
-	for _, commit := range commits {
-		uuid := commit.Trailers["PR-UUID"]
-		if uuid == "" {
+	for _, change := range changes {
+		if change.PR == nil {
 			localCount++
-		} else if pr, ok := prs[uuid]; ok {
-			switch pr.State {
+		} else {
+			switch change.PR.State {
 			case "open":
 				openCount++
 			case "draft":
 				draftCount++
 			}
-		} else {
-			localCount++
 		}
 	}
 
-	fmt.Printf("%d PR", len(commits))
-	if len(commits) != 1 {
+	fmt.Printf("%d PR", len(changes))
+	if len(changes) != 1 {
 		fmt.Print("s")
 	}
 	fmt.Print(" total (")

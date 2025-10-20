@@ -3,7 +3,6 @@ package hook
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -43,21 +42,20 @@ func (c *PostCommitCommand) Run() error {
 		return nil
 	}
 
-	// Get current branch
+	// Get stack context
+	ctx, err := c.Stack.GetStackContext()
+	if err != nil || !ctx.IsEditing() {
+		// Not editing a UUID branch or error - exit silently
+		return nil
+	}
+
+	stackName := ctx.StackName
+	branchUUID := ctx.Change.UUID
+
+	// Get current branch name for passing to handle functions
 	currentBranch, err := c.Git.GetCurrentBranch()
 	if err != nil {
 		return nil // Exit silently
-	}
-
-	// Only handle UUID branches
-	if !git.IsUUIDBranch(currentBranch) {
-		return nil // Not a UUID branch - nothing to do
-	}
-
-	// Extract stack name and UUID from branch
-	stackName, branchUUID := git.ExtractUUIDFromBranch(currentBranch)
-	if stackName == "" || branchUUID == "" {
-		return nil // Can't parse branch - exit silently
 	}
 
 	// Get the HEAD commit that was just created
@@ -98,7 +96,17 @@ func (c *PostCommitCommand) Run() error {
 // handleAmend handles the case where the user amended an existing commit
 func (c *PostCommitCommand) handleAmend(stackBranch string, uuid string, newCommit git.Commit, uuidBranch string) error {
 	// Extract stack name from branch
-	stackName := strings.TrimSuffix(strings.TrimPrefix(stackBranch, fmt.Sprintf("%s/stack-", strings.Split(stackBranch, "/")[0])), "/TOP")
+	stackName := git.ExtractStackName(stackBranch)
+	if stackName == "" {
+		return fmt.Errorf("failed to extract stack name from branch: %s", stackBranch)
+	}
+
+	// Get stack context
+	ctx := &StackContext{
+		StackName:   stackName,
+		StackBranch: stackBranch,
+		UUIDBranch:  uuidBranch,
+	}
 
 	// Switch to stack branch
 	if err := c.Git.CheckoutBranch(stackBranch); err != nil {
@@ -150,45 +158,19 @@ func (c *PostCommitCommand) handleAmend(stackBranch string, uuid string, newComm
 
 	// If there are subsequent commits, rebase them onto the new commit
 	if subsequentCount > 0 {
-		// Use git rebase --onto to rebase subsequent commits
-		// This rebases commits from oldCommit (exclusive) to originalStackHead (inclusive) onto newCommitHash
-		if err := c.Git.RebaseOnto(newCommitHash, oldCommit.Hash, originalStackHead); err != nil {
-			return fmt.Errorf("rebase conflicts detected. Resolve conflicts and run: git rebase --continue\nError: %w", err)
-		}
-
-		// After rebase, git leaves us in detached HEAD state
-		// Capture the new HEAD (this is the tip of the rebased stack)
-		newStackHead, err := c.Git.GetCommitHash("HEAD")
+		rebasedCount, err := c.Git.RebaseSubsequentCommits(stackBranch, oldCommit.Hash, newCommitHash, originalStackHead)
 		if err != nil {
-			return fmt.Errorf("failed to get HEAD after rebase: %w", err)
-		}
-
-		// Update the stack branch reference to point to the new HEAD
-		if err := c.Git.UpdateRef(stackBranch, newStackHead); err != nil {
-			return fmt.Errorf("failed to update stack branch: %w", err)
-		}
-
-		// Checkout the stack branch (now it's at the right place)
-		if err := c.Git.CheckoutBranch(stackBranch); err != nil {
 			return err
 		}
+		subsequentCount = rebasedCount
 	}
 
-	// Update commit tracking in prs.json
-	if err := c.updateCommitTracking(stackName, stackBranch); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to update commit tracking: %v\n", err)
-	}
-
-	// Update ALL UUID branches for this stack (not just the current one!)
-	if err := c.updateAllUUIDBranches(stackName, stackBranch); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to update UUID branches: %v\n", err)
-	}
-
-	// Checkout the original UUID branch (which now points to the correct location)
-	if err := c.Git.CheckoutBranch(uuidBranch); err != nil {
+	// Perform post-update operations
+	if err := PostUpdateWorkflow(c.Git, c.Stack, ctx); err != nil {
 		return err
 	}
 
+	// Print success message
 	if subsequentCount > 0 {
 		fmt.Printf("✓ Updated commit and rebased %d subsequent commit(s)\n", subsequentCount)
 	} else {
@@ -201,7 +183,17 @@ func (c *PostCommitCommand) handleAmend(stackBranch string, uuid string, newComm
 // handleInsert handles the case where the user created a new commit
 func (c *PostCommitCommand) handleInsert(stackBranch string, branchUUID string, newCommit git.Commit, uuidBranch string) error {
 	// Extract stack name from branch
-	stackName := strings.TrimSuffix(strings.TrimPrefix(stackBranch, fmt.Sprintf("%s/stack-", strings.Split(stackBranch, "/")[0])), "/TOP")
+	stackName := git.ExtractStackName(stackBranch)
+	if stackName == "" {
+		return fmt.Errorf("failed to extract stack name from branch: %s", stackBranch)
+	}
+
+	// Get stack context
+	ctx := &StackContext{
+		StackName:   stackName,
+		StackBranch: stackBranch,
+		UUIDBranch:  uuidBranch,
+	}
 
 	// The new commit doesn't have a UUID yet (or has a different one)
 	// We need to add the UUID trailer if it's missing
@@ -248,6 +240,7 @@ func (c *PostCommitCommand) handleInsert(stackBranch string, branchUUID string, 
 	if err != nil {
 		return err
 	}
+	subsequentCount := len(commitsAfter)
 
 	// Reset to the insertion point
 	if err := c.Git.ResetHard(insertAfter.Hash); err != nil {
@@ -266,129 +259,24 @@ func (c *PostCommitCommand) handleInsert(stackBranch string, branchUUID string, 
 	}
 
 	// If there are commits after the insertion point, rebase them onto the new commit
-	if len(commitsAfter) > 0 {
-		// Use git rebase --onto to rebase subsequent commits
-		// This rebases commits from insertAfter (exclusive) to originalStackHead (inclusive) onto newCommitHead
-		if err := c.Git.RebaseOnto(newCommitHead, insertAfter.Hash, originalStackHead); err != nil {
-			return fmt.Errorf("rebase conflicts detected. Resolve conflicts and run: git rebase --continue")
-		}
-
-		// After rebase, git leaves us in detached HEAD state
-		// Capture the new HEAD (this is the tip of the rebased stack)
-		newStackHead, err := c.Git.GetCommitHash("HEAD")
+	if subsequentCount > 0 {
+		rebasedCount, err := c.Git.RebaseSubsequentCommits(stackBranch, insertAfter.Hash, newCommitHead, originalStackHead)
 		if err != nil {
-			return fmt.Errorf("failed to get HEAD after rebase: %w", err)
-		}
-
-		// Update the stack branch reference to point to the new HEAD
-		if err := c.Git.UpdateRef(stackBranch, newStackHead); err != nil {
-			return fmt.Errorf("failed to update stack branch: %w", err)
-		}
-
-		// Checkout the stack branch (now it's at the right place)
-		if err := c.Git.CheckoutBranch(stackBranch); err != nil {
 			return err
 		}
+		subsequentCount = rebasedCount
 	}
 
-	// Update commit tracking in prs.json
-	if err := c.updateCommitTracking(stackName, stackBranch); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to update commit tracking: %v\n", err)
-	}
-
-	// Update ALL UUID branches for this stack (not just the current one!)
-	if err := c.updateAllUUIDBranches(stackName, stackBranch); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to update UUID branches: %v\n", err)
-	}
-
-	// Checkout the original UUID branch (which now points to the correct location)
-	if err := c.Git.CheckoutBranch(uuidBranch); err != nil {
+	// Perform post-update operations
+	if err := PostUpdateWorkflow(c.Git, c.Stack, ctx); err != nil {
 		return err
 	}
 
-	if len(commitsAfter) > 0 {
-		fmt.Printf("✓ Inserted new commit and rebased %d subsequent commit(s)\n", len(commitsAfter))
+	// Print success message
+	if subsequentCount > 0 {
+		fmt.Printf("✓ Inserted new commit and rebased %d subsequent commit(s)\n", subsequentCount)
 	} else {
 		fmt.Printf("✓ Inserted new commit\n")
-	}
-
-	return nil
-}
-
-// updateCommitTracking updates the commit hash tracking in prs.json for all PRs in the stack
-func (c *PostCommitCommand) updateCommitTracking(stackName string, stackBranch string) error {
-	// Load PRs
-	prs, err := c.Stack.LoadPRs(stackName)
-	if err != nil {
-		return fmt.Errorf("failed to load PRs: %w", err)
-	}
-
-	// For each UUID in prs.json, find its current commit hash on the stack
-	for uuid, pr := range prs {
-		commit, err := c.Git.FindCommitByTrailer(stackBranch, "PR-UUID", uuid)
-		if err != nil {
-			// Commit might have been deleted or not yet created
-			continue
-		}
-
-		// Update the commit hash
-		pr.CommitHash = commit.Hash
-		prs[uuid] = pr
-	}
-
-	// Save updated PRs
-	if err := c.Stack.SavePRs(stackName, prs); err != nil {
-		return fmt.Errorf("failed to save PRs: %w", err)
-	}
-
-	return nil
-}
-
-// updateAllUUIDBranches finds and updates all UUID branches for this stack to point to their new commit locations
-func (c *PostCommitCommand) updateAllUUIDBranches(stackName string, stackBranch string) error {
-	// Get all local branches
-	branches, err := c.Git.GetLocalBranches()
-	if err != nil {
-		return fmt.Errorf("failed to get branches: %w", err)
-	}
-
-	// Get username for branch prefix matching
-	username, err := common.GetUsername()
-	if err != nil {
-		return fmt.Errorf("failed to get username: %w", err)
-	}
-
-	// Construct the prefix for UUID branches in this stack
-	prefix := fmt.Sprintf("%s/stack-%s/", username, stackName)
-
-	// Find and update all UUID branches for this stack
-	for _, branch := range branches {
-		if !strings.HasPrefix(branch, prefix) {
-			continue
-		}
-
-		// Check if it's a UUID branch (not the TOP branch)
-		if !git.IsUUIDBranch(branch) {
-			continue
-		}
-
-		// Extract UUID from branch name
-		_, uuid := git.ExtractUUIDFromBranch(branch)
-		if uuid == "" {
-			continue
-		}
-
-		// Find where this commit is now on the stack
-		commit, err := c.Git.FindCommitByTrailer(stackBranch, "PR-UUID", uuid)
-		if err != nil {
-			// Branch might be stale or commit was deleted
-			continue
-		}
-
-		// Update the UUID branch to point to the new commit location
-		if err := c.Git.UpdateRef(branch, commit.Hash); err != nil {
-			return fmt.Errorf("failed to update branch %s: %w", branch, err)
-		}
 	}
 
 	return nil

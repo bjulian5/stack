@@ -5,16 +5,40 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/bjulian5/stack/internal/common"
+	"github.com/bjulian5/stack/internal/git"
 )
+
+// GitOperations defines the git operations needed by Stack Client
+type GitOperations interface {
+	GetCurrentBranch() (string, error)
+	BranchExists(name string) bool
+	CreateAndCheckoutBranch(name string) error
+	CheckoutBranch(name string) error
+	GetCommits(branch, base string) ([]git.Commit, error)
+	GitRoot() string
+}
+
+// StackDetails contains comprehensive information about a stack
+type StackDetails struct {
+	Stack   *Stack
+	Changes []Change
+}
 
 // Client provides stack operations
 type Client struct {
+	git     GitOperations
 	gitRoot string
 }
 
 // NewClient creates a new stack client
-func NewClient(gitRoot string) *Client {
-	return &Client{gitRoot: gitRoot}
+func NewClient(gitOps GitOperations) *Client {
+	return &Client{
+		git:     gitOps,
+		gitRoot: gitOps.GitRoot(),
+	}
 }
 
 // GetStackDir returns the directory where stack metadata is stored
@@ -109,33 +133,212 @@ func (c *Client) ListStacks() ([]*Stack, error) {
 	return stacks, nil
 }
 
-// GetCurrentStack returns the name of the current stack
-func (c *Client) GetCurrentStack() (string, error) {
-	currentPath := filepath.Join(c.gitRoot, ".git", "stack", "current")
-	data, err := os.ReadFile(currentPath)
+// GetStackContext returns the stack context based on the current git branch.
+// This is the single source of truth for what stack you're working on.
+func (c *Client) GetStackContext() (*StackContext, error) {
+	// Get current branch
+	branch, err := c.git.GetCurrentBranch()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("no current stack set")
-		}
-		return "", fmt.Errorf("failed to read current stack: %w", err)
+		return nil, fmt.Errorf("failed to get current branch: %w", err)
 	}
 
-	return string(data), nil
+	ctx := &StackContext{}
+
+	// Check if on a stack branch (username/stack-name/TOP)
+	if git.IsStackBranch(branch) {
+		ctx.StackName = git.ExtractStackName(branch)
+
+		// Load stack metadata
+		if ctx.StackName != "" {
+			stack, err := c.LoadStack(ctx.StackName)
+			if err == nil {
+				ctx.Stack = stack
+			}
+		}
+
+		return ctx, nil
+	}
+
+	// Check if on a UUID branch (username/stack-name/uuid)
+	if git.IsUUIDBranch(branch) {
+		stackName, uuid := git.ExtractUUIDFromBranch(branch)
+		ctx.StackName = stackName
+
+		// Load stack metadata
+		if ctx.StackName != "" {
+			stack, err := c.LoadStack(ctx.StackName)
+			if err == nil {
+				ctx.Stack = stack
+			}
+
+			// Load the change being edited
+			if uuid != "" && stack != nil {
+				change, err := c.getChangeByUUID(stack, uuid)
+				if err == nil {
+					ctx.Change = change
+				}
+			}
+		}
+
+		return ctx, nil
+	}
+
+	// Not on a stack-related branch
+	return ctx, nil
 }
 
-// SetCurrentStack sets the current stack
-func (c *Client) SetCurrentStack(name string) error {
-	stacksRoot := c.GetStacksRootDir()
-	if err := os.MkdirAll(stacksRoot, 0755); err != nil {
-		return fmt.Errorf("failed to create stacks directory: %w", err)
+// getChangeByUUID finds the change with the given UUID in the stack
+func (c *Client) getChangeByUUID(stack *Stack, uuid string) (*Change, error) {
+	// Get all commits on the stack
+	gitCommits, err := c.git.GetCommits(stack.Branch, stack.Base)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commits: %w", err)
 	}
 
-	currentPath := filepath.Join(stacksRoot, "current")
-	if err := os.WriteFile(currentPath, []byte(name), 0644); err != nil {
-		return fmt.Errorf("failed to write current stack: %w", err)
+	// Load PR tracking data
+	prs, err := c.LoadPRs(stack.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load PRs: %w", err)
+	}
+
+	// Find the commit with matching UUID
+	for i, commit := range gitCommits {
+		if commit.Trailers["PR-UUID"] == uuid {
+			var pr *PR
+			if p, ok := prs[uuid]; ok {
+				pr = p
+			}
+
+			return &Change{
+				Position:    i + 1,
+				Title:       commit.Title,
+				Description: commit.Body,
+				CommitHash:  commit.Hash,
+				UUID:        uuid,
+				PR:          pr,
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("change with UUID %s not found", uuid)
+}
+
+// SwitchStack checks out the TOP branch of the specified stack.
+// This is a convenience wrapper around git checkout.
+func (c *Client) SwitchStack(name string) error {
+	// Load the stack to get its branch name
+	stack, err := c.LoadStack(name)
+	if err != nil {
+		return fmt.Errorf("failed to load stack: %w", err)
+	}
+
+	// Checkout the stack's branch
+	if err := c.git.CheckoutBranch(stack.Branch); err != nil {
+		return fmt.Errorf("failed to checkout stack branch: %w", err)
 	}
 
 	return nil
+}
+
+// CreateStack creates a new stack with the given name and base branch
+func (c *Client) CreateStack(name string, baseBranch string) (*Stack, error) {
+	// Check if stack already exists
+	if c.StackExists(name) {
+		return nil, fmt.Errorf("stack '%s' already exists", name)
+	}
+
+	// Get current branch as base if not specified
+	if baseBranch == "" {
+		currentBranch, err := c.git.GetCurrentBranch()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current branch: %w", err)
+		}
+		baseBranch = currentBranch
+	}
+
+	// Get username for branch naming
+	username, err := common.GetUsername()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get username: %w", err)
+	}
+
+	// Format branch name
+	branchName := git.FormatStackBranch(username, name)
+
+	// Check if branch already exists
+	if c.git.BranchExists(branchName) {
+		return nil, fmt.Errorf("branch '%s' already exists", branchName)
+	}
+
+	// Create stack branch
+	if err := c.git.CreateAndCheckoutBranch(branchName); err != nil {
+		return nil, fmt.Errorf("failed to create stack branch: %w", err)
+	}
+
+	// Create stack metadata
+	s := &Stack{
+		Name:    name,
+		Branch:  branchName,
+		Base:    baseBranch,
+		Created: time.Now(),
+	}
+
+	if err := c.SaveStack(s); err != nil {
+		return nil, fmt.Errorf("failed to save stack: %w", err)
+	}
+
+	return s, nil
+}
+
+// GetStackDetails returns comprehensive details about a stack including all changes
+func (c *Client) GetStackDetails(name string) (*StackDetails, error) {
+	if name == "" {
+		return nil, fmt.Errorf("stack name is required")
+	}
+
+	// Load stack metadata
+	s, err := c.LoadStack(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load stack '%s': %w", name, err)
+	}
+
+	// Get commits from git
+	gitCommits, err := c.git.GetCommits(s.Branch, s.Base)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commits: %w", err)
+	}
+
+	// Load PR tracking data
+	prs, err := c.LoadPRs(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load PRs: %w", err)
+	}
+
+	// Convert git commits to Changes
+	changes := make([]Change, len(gitCommits))
+	for i, commit := range gitCommits {
+		uuid := commit.Trailers["PR-UUID"]
+		var pr *PR
+		if uuid != "" {
+			if p, ok := prs[uuid]; ok {
+				pr = p
+			}
+		}
+
+		changes[i] = Change{
+			Position:    i + 1,
+			Title:       commit.Title,
+			Description: commit.Body,
+			CommitHash:  commit.Hash,
+			UUID:        uuid,
+			PR:          pr,
+		}
+	}
+
+	return &StackDetails{
+		Stack:   s,
+		Changes: changes,
+	}, nil
 }
 
 // DeleteStack deletes a stack and its metadata

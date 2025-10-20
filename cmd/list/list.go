@@ -15,18 +15,16 @@ type Command struct {
 	// No flags or arguments currently
 
 	// Clients (can be mocked in tests)
-	Git   *git.Client
 	Stack *stack.Client
 }
 
 // Register registers the command with cobra
 func (c *Command) Register(parent *cobra.Command) {
-	var err error
-	c.Git, err = git.NewClient()
+	gitClient, err := git.NewClient()
 	if err != nil {
 		panic(err)
 	}
-	c.Stack = stack.NewClient(c.Git.GitRoot())
+	c.Stack = stack.NewClient(gitClient)
 
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -60,17 +58,22 @@ func (c *Command) Run(ctx context.Context) error {
 		return nil
 	}
 
-	// Get current stack
-	currentStack, _ := c.Stack.GetCurrentStack()
+	// Get current stack from working context
+	var currentStack string
+	stackCtx, err := c.Stack.GetStackContext()
+	if err == nil && stackCtx.InStack() {
+		currentStack = stackCtx.StackName
+	}
 
 	fmt.Println("Available stacks:")
 	fmt.Println()
 
 	for _, s := range stacks {
-		// Get PR count
-		count, err := c.Git.GetCommitCount(s.Branch, s.Base)
-		if err != nil {
-			count = 0
+		// Get change count
+		count := 0
+		details, err := c.Stack.GetStackDetails(s.Name)
+		if err == nil {
+			count = len(details.Changes)
 		}
 
 		// Mark current stack

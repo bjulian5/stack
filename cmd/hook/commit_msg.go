@@ -40,16 +40,10 @@ func (c *CommitMsgCommand) Register(parent *cobra.Command) {
 
 // Run executes the commit-msg hook
 func (c *CommitMsgCommand) Run() error {
-	// Get current branch
-	branch, err := c.Git.GetCurrentBranch()
-	if err != nil {
-		// Not in a git repo - exit silently
-		return nil
-	}
-
-	// Check if on stack branch or UUID branch
-	if !git.IsStackBranch(branch) && !git.IsUUIDBranch(branch) {
-		// Not on a stack-related branch - exit silently
+	// Get stack context
+	ctx, err := c.Stack.GetStackContext()
+	if err != nil || !ctx.InStack() {
+		// Not in a stack or error - exit silently
 		return nil
 	}
 
