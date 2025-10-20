@@ -278,7 +278,7 @@ func (c *Client) getChangesForStack(s *Stack) ([]Change, error) {
 	}
 
 	// Load PR tracking data
-	prs, err := c.LoadPRs(s.Name)
+	prData, err := c.LoadPRs(s.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load PRs: %w", err)
 	}
@@ -289,7 +289,7 @@ func (c *Client) getChangesForStack(s *Stack) ([]Change, error) {
 		uuid := commit.Message.Trailers["PR-UUID"]
 		var pr *PR
 		if uuid != "" {
-			if p, ok := prs[uuid]; ok {
+			if p, ok := prData.PRs[uuid]; ok {
 				pr = p
 			}
 		}
@@ -342,13 +342,13 @@ func (c *Client) DeleteStack(name string) error {
 }
 
 // LoadPRs loads PR tracking data for a stack
-func (c *Client) LoadPRs(stackName string) (PRMap, error) {
+func (c *Client) LoadPRs(stackName string) (*PRData, error) {
 	stackDir := c.getStackDir(stackName)
 	prsPath := filepath.Join(stackDir, "prs.json")
 
-	// If file doesn't exist, return empty map
+	// If file doesn't exist, return empty PRData with current version
 	if _, err := os.Stat(prsPath); os.IsNotExist(err) {
-		return make(PRMap), nil
+		return &PRData{Version: 1, PRs: make(map[string]*PR)}, nil
 	}
 
 	data, err := os.ReadFile(prsPath)
@@ -356,17 +356,32 @@ func (c *Client) LoadPRs(stackName string) (PRMap, error) {
 		return nil, fmt.Errorf("failed to read PRs file: %w", err)
 	}
 
-	var prs PRMap
-	if err := json.Unmarshal(data, &prs); err != nil {
+	var prData PRData
+	if err := json.Unmarshal(data, &prData); err != nil {
 		return nil, fmt.Errorf("failed to parse PRs file: %w", err)
 	}
 
-	return prs, nil
+	// Set default version if not present (files created before versioning)
+	if prData.Version == 0 {
+		prData.Version = 1
+	}
+
+	// Ensure the map is initialized even if the JSON was empty
+	if prData.PRs == nil {
+		prData.PRs = make(map[string]*PR)
+	}
+
+	return &prData, nil
 }
 
 // SavePRs saves PR tracking data for a stack
-func (c *Client) SavePRs(stackName string, prs PRMap) error {
+func (c *Client) SavePRs(stackName string, prData *PRData) error {
 	stackDir := c.getStackDir(stackName)
+
+	// Ensure version is set before saving
+	if prData.Version == 0 {
+		prData.Version = 1
+	}
 
 	// Create stack directory if it doesn't exist
 	if err := os.MkdirAll(stackDir, 0755); err != nil {
@@ -374,7 +389,7 @@ func (c *Client) SavePRs(stackName string, prs PRMap) error {
 	}
 
 	prsPath := filepath.Join(stackDir, "prs.json")
-	data, err := json.MarshalIndent(prs, "", "  ")
+	data, err := json.MarshalIndent(prData, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal PRs: %w", err)
 	}
@@ -388,12 +403,12 @@ func (c *Client) SavePRs(stackName string, prs PRMap) error {
 
 // GetPR gets PR information for a UUID
 func (c *Client) GetPR(stackName string, uuid string) (*PR, error) {
-	prs, err := c.LoadPRs(stackName)
+	prData, err := c.LoadPRs(stackName)
 	if err != nil {
 		return nil, err
 	}
 
-	pr, ok := prs[uuid]
+	pr, ok := prData.PRs[uuid]
 	if !ok {
 		return nil, fmt.Errorf("PR not found for UUID %s", uuid)
 	}
@@ -403,26 +418,26 @@ func (c *Client) GetPR(stackName string, uuid string) (*PR, error) {
 
 // SetPR sets PR information for a UUID
 func (c *Client) SetPR(stackName string, uuid string, pr *PR) error {
-	prs, err := c.LoadPRs(stackName)
+	prData, err := c.LoadPRs(stackName)
 	if err != nil {
 		return err
 	}
 
-	prs[uuid] = pr
+	prData.PRs[uuid] = pr
 
-	return c.SavePRs(stackName, prs)
+	return c.SavePRs(stackName, prData)
 }
 
 // DeletePR deletes PR information for a UUID
 func (c *Client) DeletePR(stackName string, uuid string) error {
-	prs, err := c.LoadPRs(stackName)
+	prData, err := c.LoadPRs(stackName)
 	if err != nil {
 		return err
 	}
 
-	delete(prs, uuid)
+	delete(prData.PRs, uuid)
 
-	return c.SavePRs(stackName, prs)
+	return c.SavePRs(stackName, prData)
 }
 
 // IsStackBranch checks if a branch name matches the stack branch pattern

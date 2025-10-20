@@ -36,13 +36,13 @@ func PostUpdateWorkflow(g *git.Client, s *stack.Client, ctx *stack.StackContext,
 // updateCommitTracking updates the commit hash tracking in prs.json for all PRs in the stack
 func updateCommitTracking(g *git.Client, s *stack.Client, ctx *stack.StackContext) error {
 	// Load PRs
-	prs, err := s.LoadPRs(ctx.StackName)
+	prData, err := s.LoadPRs(ctx.StackName)
 	if err != nil {
 		return fmt.Errorf("failed to load PRs: %w", err)
 	}
 
 	// For each UUID in prs.json, find its current commit hash in the stack changes
-	for uuid, pr := range prs {
+	for uuid, pr := range prData.PRs {
 		change := ctx.FindChange(uuid)
 		if change == nil {
 			// Commit might have been deleted or not yet created
@@ -51,11 +51,11 @@ func updateCommitTracking(g *git.Client, s *stack.Client, ctx *stack.StackContex
 
 		// Update the commit hash
 		pr.CommitHash = change.CommitHash
-		prs[uuid] = pr
+		prData.PRs[uuid] = pr
 	}
 
 	// Save updated PRs
-	if err := s.SavePRs(ctx.StackName, prs); err != nil {
+	if err := s.SavePRs(ctx.StackName, prData); err != nil {
 		return fmt.Errorf("failed to save PRs: %w", err)
 	}
 

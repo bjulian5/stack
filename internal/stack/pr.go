@@ -15,5 +15,9 @@ type PR struct {
 	State      string    `json:"state"` // open, draft, closed, merged
 }
 
-// PRMap maps UUID to PR information
-type PRMap map[string]*PR
+// PRData is a wrapper for PR tracking data
+// This structure allows for easier evolution of the JSON format
+type PRData struct {
+	Version int            `json:"version"`           // Format version (currently 1)
+	PRs     map[string]*PR `json:"prs"`
+}

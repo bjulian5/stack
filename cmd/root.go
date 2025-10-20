@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/cmd/edit"
 	"github.com/bjulian5/stack/cmd/hook"
 	"github.com/bjulian5/stack/cmd/list"
 	"github.com/bjulian5/stack/cmd/newcmd"
@@ -40,6 +41,7 @@ func init() {
 		&newcmd.Command{},
 		&list.Command{},
 		&show.Command{},
+		&edit.Command{},
 		&hook.Command{},
 	}
 

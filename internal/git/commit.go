@@ -18,6 +18,17 @@ type Commit struct {
 	Message CommitMessage
 }
 
+// ShortHashLength is git's default abbreviated commit hash length
+const ShortHashLength = 7
+
+// ShortHash returns the abbreviated commit hash (first 7 characters)
+func (c *Commit) ShortHash() string {
+	if len(c.Hash) <= ShortHashLength {
+		return c.Hash
+	}
+	return c.Hash[:ShortHashLength]
+}
+
 // ParseCommitMessage parses a commit message string into its components
 func ParseCommitMessage(message string) CommitMessage {
 	lines := strings.Split(message, "\n")

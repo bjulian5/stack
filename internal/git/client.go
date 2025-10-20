@@ -55,6 +55,23 @@ func (c *Client) CreateAndCheckoutBranch(name string) error {
 	return nil
 }
 
+// CreateAndCheckoutBranchAt creates a new branch at a specific commit and checks it out.
+// This is equivalent to: git checkout -b <name> <commitHash>
+//
+// Preconditions:
+//   - The branch must not already exist (use BranchExists() to check first)
+//   - The commitHash must be a valid commit reference
+//
+// If the branch already exists, git will return an error and this function will fail.
+// Use CheckoutBranch() if you want to checkout an existing branch.
+func (c *Client) CreateAndCheckoutBranchAt(name string, commitHash string) error {
+	cmd := exec.Command("git", "checkout", "-b", name, commitHash)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to create and checkout branch %s at %s: %w", name, commitHash, err)
+	}
+	return nil
+}
+
 // BranchExists checks if a branch exists
 func (c *Client) BranchExists(name string) bool {
 	cmd := exec.Command("git", "rev-parse", "--verify", name)
@@ -220,4 +237,14 @@ func (c *Client) UpdateRef(branchName string, commitHash string) error {
 		return fmt.Errorf("failed to update ref %s to %s: %w", branchName, commitHash, err)
 	}
 	return nil
+}
+
+// HasUncommittedChanges checks if there are any uncommitted changes in the working directory
+func (c *Client) HasUncommittedChanges() (bool, error) {
+	cmd := exec.Command("git", "status", "--porcelain")
+	output, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("failed to check git status: %w", err)
+	}
+	return len(strings.TrimSpace(string(output))) > 0, nil
 }

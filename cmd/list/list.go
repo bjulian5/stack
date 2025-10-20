@@ -12,19 +12,19 @@ import (
 
 // Command lists all stacks
 type Command struct {
-	// No flags or arguments currently
-
 	// Clients (can be mocked in tests)
+	Git   *git.Client
 	Stack *stack.Client
 }
 
 // Register registers the command with cobra
 func (c *Command) Register(parent *cobra.Command) {
-	gitClient, err := git.NewClient()
+	var err error
+	c.Git, err = git.NewClient()
 	if err != nil {
 		panic(err)
 	}
-	c.Stack = stack.NewClient(gitClient)
+	c.Stack = stack.NewClient(c.Git)
 
 	cmd := &cobra.Command{
 		Use:   "list",

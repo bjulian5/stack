@@ -121,8 +121,8 @@ func (c *Command) Run(ctx context.Context) error {
 
 		// Short hash
 		shortHash := change.CommitHash
-		if len(shortHash) > 7 {
-			shortHash = shortHash[:7]
+		if len(shortHash) > git.ShortHashLength {
+			shortHash = shortHash[:git.ShortHashLength]
 		}
 
 		fmt.Printf(" %-2d %-9s %-7s %-33s %s\n", change.Position, status, prLabel, title, shortHash)
