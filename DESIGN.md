@@ -926,15 +926,16 @@ This approach is more git-native and eliminates the need for state files.
    - ✅ `Stack` struct
    - ✅ `PR` struct and `PRMap` type
    - ✅ `Change` struct - domain model for commits in stack context
-   - ✅ `StackContext` struct - branch-based context
+   - ✅ `StackContext` struct - branch-based context with methods: `IsStack()`, `IsEditing()`, `CurrentChange()`, `FindChange()`
    - ✅ `stack.Client` for metadata management
    - ✅ `LoadStack()` - load stack config from disk
    - ✅ `SaveStack()` - save stack config
    - ✅ `LoadPRs()` - load PR tracking
    - ✅ `SavePRs()` - save PR tracking
    - ✅ `GetStackContext()` - derive stack context from current branch
+   - ✅ `GetStackContextByName()` - load stack context for a specific stack (recommended)
    - ✅ `SwitchStack()` - checkout stack branch
-   - ✅ `GetStackDetails()` - get comprehensive stack information
+   - ✅ `GetStackDetails()` - get comprehensive stack information (deprecated, use `GetStackContextByName()`)
 
 4. **Basic commands** (each in its own package)
    - ✅ `cmd/command.go` - Command interface
@@ -952,6 +953,12 @@ This approach is more git-native and eliminates the need for state files.
 - Git operations encapsulated in `git.Client` for testability
 
 **Deliverable:** ✅ Can create stacks, list them, and view stack details
+
+**Post-Phase 1 Refactoring:**
+- ✅ Commit message parsing refactored into structured types (`git.Commit` with `Hash` and `Message`, `git.CommitMessage` with `Title`, `Body`, `Trailers`)
+- ✅ Branch helper functions moved from `internal/git/branch.go` to `internal/stack/context.go` for better organization
+- ✅ Git client API simplified by removing unused methods (e.g., `CreateBranch()`, `DeleteBranch()`, `GetLocalBranches()`, `FindCommitByTrailer()`)
+- ✅ `GetStackContextByName()` introduced as the recommended way to load stack details (replaces `GetStackDetails()`)
 
 ---
 
@@ -1214,9 +1221,7 @@ stack/
 ├── internal/                    # Internal packages
 │   ├── git/                     # Git operations
 │   │   ├── client.go            # Client struct with git operations (using exec.Command)
-│   │   ├── commit.go            # Commit struct and parsing
-│   │   ├── branch.go            # Branch name parsing/formatting
-│   │   ├── operations.go        # Additional git operations
+│   │   ├── commit.go            # Commit and CommitMessage types with parsing (✅ refactored)
 │   │   └── rebase.go            # Rebase operations for stack updates (✅ completed)
 │   │
 │   ├── stack/                   # Stack management
@@ -1224,7 +1229,7 @@ stack/
 │   │   ├── stack.go             # Stack struct
 │   │   ├── pr.go                # PR struct and PRMap type
 │   │   ├── change.go            # Change domain model (✅ completed)
-│   │   └── context.go           # StackContext for branch-based state (✅ completed)
+│   │   └── context.go           # StackContext for branch-based state and branch helpers (✅ completed)
 │   │
 │   ├── hooks/                   # Git hooks (✅ completed)
 │   │   └── install.go           # Hook installation/uninstallation

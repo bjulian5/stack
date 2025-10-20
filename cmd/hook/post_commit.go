@@ -45,12 +45,8 @@ func (c *PostCommitCommand) Run() error {
 	// Get stack context
 	ctx, err := c.Stack.GetStackContext()
 	if err != nil || !ctx.IsEditing() {
-		// Not editing a UUID branch or error - exit silently
 		return nil
 	}
-
-	stackName := ctx.StackName
-	branchUUID := ctx.Change.UUID
 
 	// Get current branch name for passing to handle functions
 	currentBranch, err := c.Git.GetCurrentBranch()
@@ -59,32 +55,23 @@ func (c *PostCommitCommand) Run() error {
 	}
 
 	// Get the HEAD commit that was just created
-	headCommit, err := c.Git.GetHEADCommit()
+	headCommit, err := c.Git.GetCommit("HEAD")
 	if err != nil {
 		return nil // Exit silently
 	}
 
 	// Check the commit's PR-UUID to determine if this is an amend or new commit
-	commitUUID := headCommit.Trailers["PR-UUID"]
-	isAmend := commitUUID == branchUUID
-
-	// Get stack configuration
-	stackConfig, err := c.Stack.LoadStack(stackName)
-	if err != nil {
-		// Stack not found - exit silently
-		return nil
-	}
-
-	stackBranch := stackConfig.Branch
+	commitUUID := headCommit.Message.Trailers["PR-UUID"]
+	isAmend := commitUUID == ctx.CurrentChange().UUID
 
 	// Perform the update
 	if isAmend {
-		if err := c.handleAmend(stackBranch, branchUUID, headCommit, currentBranch); err != nil {
+		if err := c.handleAmend(ctx, currentBranch, headCommit); err != nil {
 			fmt.Fprintf(os.Stderr, "Error updating stack: %v\n", err)
 			return nil // Don't fail the commit
 		}
 	} else {
-		if err := c.handleInsert(stackBranch, branchUUID, headCommit, currentBranch); err != nil {
+		if err := c.handleInsert(ctx, currentBranch, headCommit); err != nil {
 			fmt.Fprintf(os.Stderr, "Error inserting commit into stack: %v\n", err)
 			return nil // Don't fail the commit
 		}
@@ -94,19 +81,9 @@ func (c *PostCommitCommand) Run() error {
 }
 
 // handleAmend handles the case where the user amended an existing commit
-func (c *PostCommitCommand) handleAmend(stackBranch string, uuid string, newCommit git.Commit, uuidBranch string) error {
-	// Extract stack name from branch
-	stackName := git.ExtractStackName(stackBranch)
-	if stackName == "" {
-		return fmt.Errorf("failed to extract stack name from branch: %s", stackBranch)
-	}
-
-	// Get stack context
-	ctx := &StackContext{
-		StackName:   stackName,
-		StackBranch: stackBranch,
-		UUIDBranch:  uuidBranch,
-	}
+func (c *PostCommitCommand) handleAmend(ctx *stack.StackContext, currentBranch string, newCommit git.Commit) error {
+	stackBranch := ctx.Stack.Branch
+	uuid := ctx.CurrentChange().UUID
 
 	// Switch to stack branch
 	if err := c.Git.CheckoutBranch(stackBranch); err != nil {
@@ -114,9 +91,14 @@ func (c *PostCommitCommand) handleAmend(stackBranch string, uuid string, newComm
 	}
 
 	// Find the old commit with matching UUID in the stack
-	oldCommit, err := c.Git.FindCommitByTrailer(stackBranch, "PR-UUID", uuid)
+	oldChange := ctx.FindChange(uuid)
+	if oldChange == nil {
+		return fmt.Errorf("commit with UUID %s not found in stack", uuid)
+	}
+
+	oldCommit, err := c.Git.GetCommit(oldChange.CommitHash)
 	if err != nil {
-		return fmt.Errorf("commit with UUID %s not found in stack: %w", uuid, err)
+		return fmt.Errorf("failed to get old commit: %w", err)
 	}
 
 	// Save the current HEAD of the stack branch (before we modify it)
@@ -146,7 +128,7 @@ func (c *PostCommitCommand) handleAmend(stackBranch string, uuid string, newComm
 
 	// Create a new commit on the stack branch with the amended tree and message
 	// This preserves all changes: tree, message, and trailers
-	newCommitHash, err := c.Git.CommitTree(newTree, parentHash, newCommit.Message)
+	newCommitHash, err := c.Git.CommitTree(newTree, parentHash, newCommit.Message.String())
 	if err != nil {
 		return fmt.Errorf("failed to create commit with amended changes: %w", err)
 	}
@@ -166,7 +148,7 @@ func (c *PostCommitCommand) handleAmend(stackBranch string, uuid string, newComm
 	}
 
 	// Perform post-update operations
-	if err := PostUpdateWorkflow(c.Git, c.Stack, ctx); err != nil {
+	if err := PostUpdateWorkflow(c.Git, c.Stack, ctx, currentBranch); err != nil {
 		return err
 	}
 
@@ -181,37 +163,27 @@ func (c *PostCommitCommand) handleAmend(stackBranch string, uuid string, newComm
 }
 
 // handleInsert handles the case where the user created a new commit
-func (c *PostCommitCommand) handleInsert(stackBranch string, branchUUID string, newCommit git.Commit, uuidBranch string) error {
-	// Extract stack name from branch
-	stackName := git.ExtractStackName(stackBranch)
-	if stackName == "" {
-		return fmt.Errorf("failed to extract stack name from branch: %s", stackBranch)
-	}
-
-	// Get stack context
-	ctx := &StackContext{
-		StackName:   stackName,
-		StackBranch: stackBranch,
-		UUIDBranch:  uuidBranch,
-	}
+func (c *PostCommitCommand) handleInsert(ctx *stack.StackContext, currentBranch string, newCommit git.Commit) error {
+	stackBranch := ctx.Stack.Branch
+	branchUUID := ctx.CurrentChange().UUID
 
 	// The new commit doesn't have a UUID yet (or has a different one)
 	// We need to add the UUID trailer if it's missing
-	newCommitUUID := newCommit.Trailers["PR-UUID"]
+	newCommitUUID := newCommit.Message.Trailers["PR-UUID"]
 	if newCommitUUID == "" {
 		// Generate a new UUID for this commit
 		newCommitUUID = common.GenerateUUID()
 
 		// Switch to UUID branch and amend the commit to add the UUID
-		newMessage := git.AddTrailer(newCommit.Message, "PR-UUID", newCommitUUID)
-		newMessage = git.AddTrailer(newMessage, "PR-Stack", newCommit.Trailers["PR-Stack"])
+		newCommit.Message.AddTrailer("PR-UUID", newCommitUUID)
+		newCommit.Message.AddTrailer("PR-Stack", newCommit.Message.Trailers["PR-Stack"])
 
-		if err := c.Git.AmendCommitMessage(newMessage); err != nil {
+		if err := c.Git.AmendCommitMessage(newCommit.Message.String()); err != nil {
 			return fmt.Errorf("failed to add UUID to new commit: %w", err)
 		}
 
 		// Refresh the commit object
-		newCommit, err := c.Git.GetHEADCommit()
+		newCommit, err := c.Git.GetCommit("HEAD")
 		if err != nil {
 			return err
 		}
@@ -230,9 +202,14 @@ func (c *PostCommitCommand) handleInsert(stackBranch string, branchUUID string, 
 	}
 
 	// Find the commit with the branch UUID (the insertion point)
-	insertAfter, err := c.Git.FindCommitByTrailer(stackBranch, "PR-UUID", branchUUID)
+	insertAfterChange := ctx.FindChange(branchUUID)
+	if insertAfterChange == nil {
+		return fmt.Errorf("insertion point commit with UUID %s not found", branchUUID)
+	}
+
+	insertAfter, err := c.Git.GetCommit(insertAfterChange.CommitHash)
 	if err != nil {
-		return fmt.Errorf("insertion point commit with UUID %s not found: %w", branchUUID, err)
+		return fmt.Errorf("failed to get insertion point commit: %w", err)
 	}
 
 	// Get all commits after the insertion point
@@ -268,7 +245,7 @@ func (c *PostCommitCommand) handleInsert(stackBranch string, branchUUID string, 
 	}
 
 	// Perform post-update operations
-	if err := PostUpdateWorkflow(c.Git, c.Stack, ctx); err != nil {
+	if err := PostUpdateWorkflow(c.Git, c.Stack, ctx, currentBranch); err != nil {
 		return err
 	}
 

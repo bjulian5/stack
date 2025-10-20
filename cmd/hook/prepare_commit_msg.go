@@ -59,7 +59,7 @@ func (c *PrepareCommitMsgCommand) Register(parent *cobra.Command) {
 func (c *PrepareCommitMsgCommand) Run() error {
 	// Get stack context
 	ctx, err := c.Stack.GetStackContext()
-	if err != nil || !ctx.InStack() {
+	if err != nil || !ctx.IsStack() {
 		// Not in a stack or error - exit silently
 		return nil
 	}
@@ -67,13 +67,14 @@ func (c *PrepareCommitMsgCommand) Run() error {
 	// Read commit message file
 	content, err := os.ReadFile(c.MessageFile)
 	if err != nil {
-		return nil // Exit silently on error
+		return nil
 	}
 
-	message := string(content)
+	// Parse commit message
+	commitMsg := git.ParseCommitMessage(string(content))
 
 	// Check if message already has PR-UUID trailer (amend case)
-	if git.GetTrailer(message, "PR-UUID") != "" {
+	if commitMsg.Trailers["PR-UUID"] != "" {
 		// Already has metadata, don't modify
 		return nil
 	}
@@ -82,11 +83,11 @@ func (c *PrepareCommitMsgCommand) Run() error {
 	uuid := common.GenerateUUID()
 
 	// Add trailers to message
-	message = git.AddTrailer(message, "PR-UUID", uuid)
-	message = git.AddTrailer(message, "PR-Stack", ctx.StackName)
+	commitMsg.AddTrailer("PR-UUID", uuid)
+	commitMsg.AddTrailer("PR-Stack", ctx.StackName)
 
 	// Write back to file
-	if err := os.WriteFile(c.MessageFile, []byte(message), 0644); err != nil {
+	if err := os.WriteFile(c.MessageFile, []byte(commitMsg.String()), 0644); err != nil {
 		return nil // Exit silently
 	}
 

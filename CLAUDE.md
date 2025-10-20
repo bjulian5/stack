@@ -55,6 +55,18 @@ go build && ./stack list
 - Manages stack metadata stored in `.git/stack/<stack-name>/`
 - Each stack has `config.json` (stack metadata) and `prs.json` (PR tracking)
 - Provides `GetStackContext()` to determine current stack from branch name
+- `GetStackContextByName(name)` loads a specific stack's context (recommended over deprecated `GetStackDetails()`)
+
+**Stack Context** (`internal/stack/context.go`)
+- `StackContext` is the primary abstraction for working with stacks
+- Contains stack metadata, all changes, and editing state
+- Key methods:
+  - `IsStack()` - returns true if context represents a stack
+  - `IsEditing()` - returns true if editing a specific change (on UUID branch)
+  - `CurrentChange()` - returns the change being edited (or nil)
+  - `FindChange(uuid)` - finds a change by UUID in the stack
+  - `FormatUUIDBranch(username, uuid)` - formats a UUID branch name
+- Also provides branch helper functions: `IsUUIDBranch()`, `ExtractStackName()`, `ExtractUUIDFromBranch()`, `FormatStackBranch()`
 
 **Command Pattern** (`cmd/command.go`)
 - Each command implements the `Command` interface with a `Register()` method
@@ -64,7 +76,7 @@ go build && ./stack list
 **Branch Naming Conventions**
 - Stack branch: `username/stack-<name>/TOP` (e.g., `bjulian5/stack-auth-refactor/TOP`)
 - UUID branch: `username/stack-<name>/<uuid>` (e.g., `bjulian5/stack-auth-refactor/550e8400`)
-- Helper functions in `internal/git/branch.go` for parsing and formatting
+- Helper functions in `internal/stack/context.go` for parsing and formatting
 - The `/TOP` suffix represents the top of the stack (the working branch with all commits)
 
 **Metadata Storage**
@@ -82,6 +94,14 @@ refresh tokens and cookie handling.
 PR-UUID: 550e8400-e29b-41d4-a716
 PR-Stack: auth-refactor
 ```
+
+**Commit Data Structures**
+The codebase uses structured types for commit parsing:
+- `git.Commit` - represents a commit with `Hash` (string) and `Message` (`CommitMessage`)
+- `git.CommitMessage` - parsed message with `Title` (string), `Body` (string), and `Trailers` (map)
+- `ParseCommitMessage(message string)` - parses raw commit message into structured form
+- `CommitMessage.AddTrailer(key, value)` - adds a trailer
+- `CommitMessage.String()` - converts back to formatted commit message string
 
 ### Code Organization
 
@@ -103,16 +123,14 @@ stack/
 ├── internal/
 │   ├── git/
 │   │   ├── client.go                # Core git operations wrapper
-│   │   ├── branch.go                # Branch name parsing/formatting
-│   │   ├── commit.go                # Commit parsing
-│   │   ├── operations.go            # Additional git operations
+│   │   ├── commit.go                # Commit and CommitMessage types with parsing
 │   │   └── rebase.go                # Rebase operations for stack updates
 │   ├── stack/
 │   │   ├── client.go                # Stack metadata management
 │   │   ├── stack.go                 # Stack struct
 │   │   ├── pr.go                    # PR struct and PRMap type
 │   │   ├── change.go                # Change domain model
-│   │   └── context.go               # StackContext for branch-based state
+│   │   └── context.go               # StackContext for branch-based state and branch helpers
 │   ├── hooks/
 │   │   └── install.go               # Hook installation/uninstallation
 │   └── common/
@@ -185,9 +203,14 @@ This enables:
 ### Git Operations
 
 Always use `git.Client` methods instead of calling git directly:
-- `c.Git.GetCurrentBranch()` not `exec.Command("git", "branch"...)`
-- `c.Git.CreateBranch(name, hash)` not manual git commands
-- All git operations go through the client for consistency
+- `c.Git.GetCurrentBranch()` - get the current branch name
+- `c.Git.GetCommit(hash)` - get a commit with parsed message
+- `c.Git.GetCommits(branch, base)` - get all commits between base and branch
+- `c.Git.CheckoutBranch(name)` / `c.Git.CreateAndCheckoutBranch(name)` - branch operations
+- `c.Git.RebaseSubsequentCommits(...)` - rebase commits after a stack update
+- All git operations go through the client for consistency and testability
+
+Note: The git client API has been simplified - many unused methods were removed in favor of focused operations that support the core stack workflows.
 
 ### Error Handling
 

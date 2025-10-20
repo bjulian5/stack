@@ -3,63 +3,30 @@ package hook
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
 )
 
-// StackContext contains the context information for a stack operation
-type StackContext struct {
-	StackName   string
-	StackBranch string
-	UUIDBranch  string
-}
-
-// GetStackContext extracts stack context from the current state
-func GetStackContext(g *git.Client, s *stack.Client, currentBranch string, branchUUID string) (*StackContext, error) {
-	// Extract stack name and UUID from branch
-	stackName, uuid := git.ExtractUUIDFromBranch(currentBranch)
-	if stackName == "" || uuid == "" {
-		return nil, fmt.Errorf("failed to parse UUID branch: %s", currentBranch)
-	}
-
-	if uuid != branchUUID {
-		return nil, fmt.Errorf("branch UUID mismatch: expected %s, got %s", branchUUID, uuid)
-	}
-
-	// Get stack configuration
-	stackConfig, err := s.LoadStack(stackName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load stack: %w", err)
-	}
-
-	return &StackContext{
-		StackName:   stackName,
-		StackBranch: stackConfig.Branch,
-		UUIDBranch:  currentBranch,
-	}, nil
-}
-
 // PostUpdateWorkflow performs the common post-update operations after modifying a stack
 // This includes:
 // 1. Updating commit tracking in prs.json
 // 2. Updating all UUID branches to point to their new commit locations
 // 3. Checking out the original UUID branch
-func PostUpdateWorkflow(g *git.Client, s *stack.Client, ctx *StackContext) error {
+func PostUpdateWorkflow(g *git.Client, s *stack.Client, ctx *stack.StackContext, returnBranch string) error {
 	// Update commit tracking in prs.json
-	if err := updateCommitTracking(g, s, ctx.StackName, ctx.StackBranch); err != nil {
+	if err := updateCommitTracking(g, s, ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to update commit tracking: %v\n", err)
 	}
 
 	// Update ALL UUID branches for this stack
-	if err := updateAllUUIDBranches(g, ctx.StackName, ctx.StackBranch); err != nil {
+	if err := updateAllUUIDBranches(g, ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to update UUID branches: %v\n", err)
 	}
 
 	// Checkout the original UUID branch (which now points to the correct location)
-	if err := g.CheckoutBranch(ctx.UUIDBranch); err != nil {
+	if err := g.CheckoutBranch(returnBranch); err != nil {
 		return fmt.Errorf("failed to checkout UUID branch: %w", err)
 	}
 
@@ -67,28 +34,28 @@ func PostUpdateWorkflow(g *git.Client, s *stack.Client, ctx *StackContext) error
 }
 
 // updateCommitTracking updates the commit hash tracking in prs.json for all PRs in the stack
-func updateCommitTracking(g *git.Client, s *stack.Client, stackName string, stackBranch string) error {
+func updateCommitTracking(g *git.Client, s *stack.Client, ctx *stack.StackContext) error {
 	// Load PRs
-	prs, err := s.LoadPRs(stackName)
+	prs, err := s.LoadPRs(ctx.StackName)
 	if err != nil {
 		return fmt.Errorf("failed to load PRs: %w", err)
 	}
 
-	// For each UUID in prs.json, find its current commit hash on the stack
+	// For each UUID in prs.json, find its current commit hash in the stack changes
 	for uuid, pr := range prs {
-		commit, err := g.FindCommitByTrailer(stackBranch, "PR-UUID", uuid)
-		if err != nil {
+		change := ctx.FindChange(uuid)
+		if change == nil {
 			// Commit might have been deleted or not yet created
 			continue
 		}
 
 		// Update the commit hash
-		pr.CommitHash = commit.Hash
+		pr.CommitHash = change.CommitHash
 		prs[uuid] = pr
 	}
 
 	// Save updated PRs
-	if err := s.SavePRs(stackName, prs); err != nil {
+	if err := s.SavePRs(ctx.StackName, prs); err != nil {
 		return fmt.Errorf("failed to save PRs: %w", err)
 	}
 
@@ -96,49 +63,34 @@ func updateCommitTracking(g *git.Client, s *stack.Client, stackName string, stac
 }
 
 // updateAllUUIDBranches finds and updates all UUID branches for this stack to point to their new commit locations
-func updateAllUUIDBranches(g *git.Client, stackName string, stackBranch string) error {
-	// Get all local branches
-	branches, err := g.GetLocalBranches()
-	if err != nil {
-		return fmt.Errorf("failed to get branches: %w", err)
-	}
-
-	// Get username for branch prefix matching
+func updateAllUUIDBranches(g *git.Client, ctx *stack.StackContext) error {
+	// Get username for branch name construction
 	username, err := common.GetUsername()
 	if err != nil {
 		return fmt.Errorf("failed to get username: %w", err)
 	}
 
-	// Construct the prefix for UUID branches in this stack
-	prefix := fmt.Sprintf("%s/stack-%s/", username, stackName)
+	// Iterate through changes and update any corresponding UUID branches
+	for i := range ctx.Changes {
+		change := &ctx.Changes[i]
 
-	// Find and update all UUID branches for this stack
-	for _, branch := range branches {
-		if !strings.HasPrefix(branch, prefix) {
+		// Skip changes without a UUID (shouldn't happen in normal operation)
+		if change.UUID == "" {
 			continue
 		}
 
-		// Check if it's a UUID branch (not the TOP branch)
-		if !git.IsUUIDBranch(branch) {
-			continue
-		}
+		// Construct the expected branch name for this change
+		branchName := ctx.FormatUUIDBranch(username, change.UUID)
 
-		// Extract UUID from branch name
-		_, uuid := git.ExtractUUIDFromBranch(branch)
-		if uuid == "" {
-			continue
-		}
-
-		// Find where this commit is now on the stack
-		commit, err := g.FindCommitByTrailer(stackBranch, "PR-UUID", uuid)
-		if err != nil {
-			// Branch might be stale or commit was deleted
+		// Check if this UUID branch exists
+		if !g.BranchExists(branchName) {
+			// Branch doesn't exist yet (not checked out), skip it
 			continue
 		}
 
 		// Update the UUID branch to point to the new commit location
-		if err := g.UpdateRef(branch, commit.Hash); err != nil {
-			return fmt.Errorf("failed to update branch %s: %w", branch, err)
+		if err := g.UpdateRef(branchName, change.CommitHash); err != nil {
+			return fmt.Errorf("failed to update branch %s: %w", branchName, err)
 		}
 	}
 

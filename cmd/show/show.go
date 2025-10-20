@@ -58,24 +58,24 @@ func (c *Command) Run(ctx context.Context) error {
 	stackName := c.StackName
 	if stackName == "" {
 		stackCtx, err := c.Stack.GetStackContext()
-		if err != nil || !stackCtx.InStack() {
+		if err != nil || !stackCtx.IsStack() {
 			return fmt.Errorf("not on a stack branch. Use: stack show <name>")
 		}
 		stackName = stackCtx.StackName
 	}
 
-	// Get stack details
-	details, err := c.Stack.GetStackDetails(stackName)
+	// Get stack context
+	stackCtx, err := c.Stack.GetStackContextByName(stackName)
 	if err != nil {
 		return err
 	}
 
-	if details.Stack == nil {
+	if stackCtx.Stack == nil {
 		return fmt.Errorf("stack '%s' does not exist", stackName)
 	}
 
-	s := details.Stack
-	changes := details.Changes
+	s := stackCtx.Stack
+	changes := stackCtx.Changes
 
 	// Print stack header
 	fmt.Printf("Stack: %s (%s)\n", s.Name, s.Branch)

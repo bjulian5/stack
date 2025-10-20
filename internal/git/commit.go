@@ -5,31 +5,33 @@ import (
 	"strings"
 )
 
-// Commit represents a git commit
-type Commit struct {
-	Hash     string
+// CommitMessage represents a parsed git commit message with its components
+type CommitMessage struct {
 	Title    string
 	Body     string
-	Message  string
 	Trailers map[string]string
 }
 
-// ParseCommitMessage parses a commit message into title, body, and trailers
-func ParseCommitMessage(hash string, message string) Commit {
+// Commit represents a git commit with its hash and parsed message
+type Commit struct {
+	Hash    string
+	Message CommitMessage
+}
+
+// ParseCommitMessage parses a commit message string into its components
+func ParseCommitMessage(message string) CommitMessage {
 	lines := strings.Split(message, "\n")
 
-	commit := Commit{
-		Hash:     hash,
-		Message:  message,
+	commitMsg := CommitMessage{
 		Trailers: make(map[string]string),
 	}
 
 	if len(lines) == 0 {
-		return commit
+		return commitMsg
 	}
 
 	// First line is the title
-	commit.Title = strings.TrimSpace(lines[0])
+	commitMsg.Title = strings.TrimSpace(lines[0])
 
 	// Find where trailers start (last non-empty block with Key: Value format)
 	trailerStart := len(lines)
@@ -72,7 +74,7 @@ func ParseCommitMessage(hash string, message string) Commit {
 		if len(parts) == 2 {
 			key := strings.TrimSpace(parts[0])
 			value := strings.TrimSpace(parts[1])
-			commit.Trailers[key] = value
+			commitMsg.Trailers[key] = value
 		}
 	}
 
@@ -84,23 +86,38 @@ func ParseCommitMessage(hash string, message string) Commit {
 
 	// Trim leading and trailing empty lines from body
 	body := strings.Join(bodyLines, "\n")
-	commit.Body = strings.TrimSpace(body)
+	commitMsg.Body = strings.TrimSpace(body)
 
-	return commit
+	return commitMsg
 }
 
-// GetTrailer extracts a specific trailer from a commit message
-func GetTrailer(message string, key string) string {
-	commit := ParseCommitMessage("", message)
-	return commit.Trailers[key]
+// AddTrailer adds a trailer to the commit message
+func (c *CommitMessage) AddTrailer(key string, value string) {
+	c.Trailers[key] = value
 }
 
-// AddTrailer adds a trailer to a commit message
-func AddTrailer(message string, key string, value string) string {
-	// Ensure message ends with newline
-	if !strings.HasSuffix(message, "\n") {
-		message += "\n"
+// String converts the CommitMessage back to a formatted string
+func (c *CommitMessage) String() string {
+	var result strings.Builder
+
+	// Title (first line)
+	result.WriteString(c.Title)
+	result.WriteString("\n")
+
+	// Body (if present)
+	if c.Body != "" {
+		result.WriteString("\n")
+		result.WriteString(c.Body)
+		result.WriteString("\n")
 	}
 
-	return message + fmt.Sprintf("%s: %s\n", key, value)
+	// Trailers (if present)
+	if len(c.Trailers) > 0 {
+		result.WriteString("\n")
+		for key, value := range c.Trailers {
+			result.WriteString(fmt.Sprintf("%s: %s\n", key, value))
+		}
+	}
+
+	return result.String()
 }

@@ -27,11 +27,6 @@ func (c *Client) GitRoot() string {
 	return c.gitRoot
 }
 
-// IsGitRepo checks if the current directory is in a git repository
-func (c *Client) IsGitRepo() bool {
-	return c.gitRoot != ""
-}
-
 // GetCurrentBranch returns the name of the current git branch
 func (c *Client) GetCurrentBranch() (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
@@ -40,15 +35,6 @@ func (c *Client) GetCurrentBranch() (string, error) {
 		return "", fmt.Errorf("failed to get current branch: %w", err)
 	}
 	return strings.TrimSpace(string(output)), nil
-}
-
-// CreateBranch creates a new branch at the specified commit
-func (c *Client) CreateBranch(name string, commitHash string) error {
-	cmd := exec.Command("git", "branch", name, commitHash)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to create branch %s: %w", name, err)
-	}
-	return nil
 }
 
 // CheckoutBranch checks out the specified branch
@@ -83,23 +69,6 @@ func (c *Client) GetCommitHash(ref string) (string, error) {
 		return "", fmt.Errorf("failed to get commit hash for %s: %w", ref, err)
 	}
 	return strings.TrimSpace(string(output)), nil
-}
-
-// DeleteBranch deletes the specified branch
-func (c *Client) DeleteBranch(name string, force bool) error {
-	args := []string{"branch"}
-	if force {
-		args = append(args, "-D")
-	} else {
-		args = append(args, "-d")
-	}
-	args = append(args, name)
-
-	cmd := exec.Command("git", args...)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to delete branch %s: %w", name, err)
-	}
-	return nil
 }
 
 // GetCommits returns all commits on the given branch that are not on the base branch
@@ -143,58 +112,11 @@ func (c *Client) GetCommit(hash string) (Commit, error) {
 		return Commit{}, fmt.Errorf("failed to get commit %s: %w", actualHash, err)
 	}
 
-	message := string(output)
-	return ParseCommitMessage(actualHash, message), nil
-}
-
-// GetCommitCount returns the number of commits between base and branch
-func (c *Client) GetCommitCount(branch string, base string) (int, error) {
-	cmd := exec.Command("git", "rev-list", "--count", fmt.Sprintf("%s..%s", base, branch))
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, fmt.Errorf("failed to count commits: %w", err)
-	}
-
-	var count int
-	_, err = fmt.Sscanf(strings.TrimSpace(string(output)), "%d", &count)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse commit count: %w", err)
-	}
-
-	return count, nil
-}
-
-// GetLocalBranches returns all local branches
-func (c *Client) GetLocalBranches() ([]string, error) {
-	cmd := exec.Command("git", "branch", "--format=%(refname:short)")
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get branches: %w", err)
-	}
-
-	branches := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(branches) == 1 && branches[0] == "" {
-		return []string{}, nil
-	}
-
-	return branches, nil
-}
-
-// GetStackBranches returns all stack branches
-func (c *Client) GetStackBranches() ([]string, error) {
-	branches, err := c.GetLocalBranches()
-	if err != nil {
-		return nil, err
-	}
-
-	stackBranches := []string{}
-	for _, branch := range branches {
-		if IsStackBranch(branch) {
-			stackBranches = append(stackBranches, branch)
-		}
-	}
-
-	return stackBranches, nil
+	messageStr := string(output)
+	return Commit{
+		Hash:    actualHash,
+		Message: ParseCommitMessage(messageStr),
+	}, nil
 }
 
 // getGitRoot is a private helper to get the git root directory
@@ -205,40 +127,6 @@ func getGitRoot() (string, error) {
 		return "", fmt.Errorf("not in a git repository: %w", err)
 	}
 	return strings.TrimSpace(string(output)), nil
-}
-
-// FindCommitByTrailer finds a commit on the branch with a specific trailer value
-func (c *Client) FindCommitByTrailer(branch string, trailerKey string, trailerValue string) (Commit, error) {
-	// Get all commits on the branch
-	// Use rev-list to get commit hashes from base to branch
-	cmd := exec.Command("git", "log", "--format=%H", branch)
-	output, err := cmd.Output()
-	if err != nil {
-		return Commit{}, fmt.Errorf("failed to list commits: %w", err)
-	}
-
-	hashes := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, hash := range hashes {
-		if hash == "" {
-			continue
-		}
-
-		commit, err := c.GetCommit(hash)
-		if err != nil {
-			continue
-		}
-
-		if commit.Trailers[trailerKey] == trailerValue {
-			return commit, nil
-		}
-	}
-
-	return Commit{}, fmt.Errorf("commit with %s=%s not found", trailerKey, trailerValue)
-}
-
-// GetHEADCommit returns the current HEAD commit
-func (c *Client) GetHEADCommit() (Commit, error) {
-	return c.GetCommit("HEAD")
 }
 
 // CherryPick cherry-picks a commit
@@ -276,46 +164,6 @@ func (c *Client) RebaseOnto(newBase string, upstream string, branch string) erro
 		return fmt.Errorf("failed to rebase: %w\nOutput: %s", err, string(output))
 	}
 	return nil
-}
-
-// GetCommitPosition finds the position (1-indexed) of a commit in a branch
-func (c *Client) GetCommitPosition(branch string, commitHash string) (int, error) {
-	// Get all commits in reverse order (oldest first)
-	cmd := exec.Command("git", "rev-list", "--reverse", branch)
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, fmt.Errorf("failed to list commits: %w", err)
-	}
-
-	hashes := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for i, hash := range hashes {
-		if strings.HasPrefix(hash, commitHash[:7]) || hash == commitHash {
-			return i + 1, nil
-		}
-	}
-
-	return 0, fmt.Errorf("commit %s not found in branch %s", commitHash, branch)
-}
-
-// GetCommitAtPosition returns the commit at a specific position (1-indexed)
-func (c *Client) GetCommitAtPosition(branch string, position int) (Commit, error) {
-	if position < 1 {
-		return Commit{}, fmt.Errorf("position must be >= 1")
-	}
-
-	// Get all commits in reverse order (oldest first)
-	cmd := exec.Command("git", "rev-list", "--reverse", branch)
-	output, err := cmd.Output()
-	if err != nil {
-		return Commit{}, fmt.Errorf("failed to list commits: %w", err)
-	}
-
-	hashes := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if position > len(hashes) {
-		return Commit{}, fmt.Errorf("position %d exceeds commit count %d", position, len(hashes))
-	}
-
-	return c.GetCommit(hashes[position-1])
 }
 
 // GetParentCommit returns the parent commit hash
@@ -362,18 +210,6 @@ func (c *Client) IsRebaseInProgress() bool {
 	}
 
 	return false
-}
-
-// RebaseAutosquash performs a non-interactive rebase with autosquash enabled
-func (c *Client) RebaseAutosquash(upstream string) error {
-	cmd := exec.Command("git", "rebase", "-i", "--autosquash", upstream)
-	// Set GIT_SEQUENCE_EDITOR=true to make rebase non-interactive
-	cmd.Env = append(os.Environ(), "GIT_SEQUENCE_EDITOR=true")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("rebase failed: %w\nOutput: %s", err, string(output))
-	}
-	return nil
 }
 
 // UpdateRef updates a branch reference to point to a specific commit

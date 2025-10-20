@@ -61,7 +61,7 @@ func (c *Command) Run(ctx context.Context) error {
 	// Get current stack from working context
 	var currentStack string
 	stackCtx, err := c.Stack.GetStackContext()
-	if err == nil && stackCtx.InStack() {
+	if err == nil && stackCtx.IsStack() {
 		currentStack = stackCtx.StackName
 	}
 
@@ -71,9 +71,9 @@ func (c *Command) Run(ctx context.Context) error {
 	for _, s := range stacks {
 		// Get change count
 		count := 0
-		details, err := c.Stack.GetStackDetails(s.Name)
+		ctx, err := c.Stack.GetStackContextByName(s.Name)
 		if err == nil {
-			count = len(details.Changes)
+			count = len(ctx.Changes)
 		}
 
 		// Mark current stack

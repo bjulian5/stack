@@ -42,7 +42,7 @@ func (c *CommitMsgCommand) Register(parent *cobra.Command) {
 func (c *CommitMsgCommand) Run() error {
 	// Get stack context
 	ctx, err := c.Stack.GetStackContext()
-	if err != nil || !ctx.InStack() {
+	if err != nil || !ctx.IsStack() {
 		// Not in a stack or error - exit silently
 		return nil
 	}
@@ -57,7 +57,7 @@ func (c *CommitMsgCommand) Run() error {
 	message := string(content)
 
 	// Parse commit message
-	commit := git.ParseCommitMessage("", message)
+	commit := git.ParseCommitMessage(message)
 
 	// Validate: must have PR-UUID
 	if commit.Trailers["PR-UUID"] == "" {
