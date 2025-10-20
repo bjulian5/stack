@@ -42,7 +42,7 @@ go build && ./stack list
 2. **One commit = One PR**: Each commit on a stack branch represents exactly one pull request, inspired by Gerrit.
 3. **Git trailers for metadata**: PR metadata (UUID, stack name) is stored as git trailers in commit messages, ensuring metadata travels with commits during rebases.
 4. **Bottom-up merging**: PRs must merge from bottom to top for predictability.
-5. **UUID branches for editing**: Temporary branches (e.g., `username/stack-<name>-<uuid>`) are created when editing a specific PR in the middle of a stack.
+5. **UUID branches for editing**: Temporary branches (e.g., `username/stack-<name>/<uuid>`) are created when editing a specific PR in the middle of a stack.
 
 ### Key Components
 
@@ -62,9 +62,10 @@ go build && ./stack list
 - Each command struct holds its own clients (`Git` and `Stack`) for dependency injection
 
 **Branch Naming Conventions**
-- Stack branch: `username/stack-<name>` (e.g., `bjulian5/stack-auth-refactor`)
-- UUID branch: `username/stack-<name>-<uuid>` (e.g., `bjulian5/stack-auth-refactor-550e8400`)
+- Stack branch: `username/stack-<name>/TOP` (e.g., `bjulian5/stack-auth-refactor/TOP`)
+- UUID branch: `username/stack-<name>/<uuid>` (e.g., `bjulian5/stack-auth-refactor/550e8400`)
 - Helper functions in `internal/git/branch.go` for parsing and formatting
+- The `/TOP` suffix represents the top of the stack (the working branch with all commits)
 
 **Metadata Storage**
 - `.git/stack/<stack-name>/config.json`: Stack configuration (name, branch, base, timestamps)

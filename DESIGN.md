@@ -15,9 +15,9 @@
 
 ### Architecture
 
-- **Stack branch**: Single branch (e.g., `username/stack-auth-refactor`) containing all commits
+- **Stack branch**: Single branch (e.g., `username/stack-auth-refactor/TOP`) containing all commits
 - **Each commit = One PR**: Commit message becomes PR title/description
-- **UUID branches**: Temporary branches (e.g., `username/stack-auth-refactor-550e8400`) for editing specific PRs
+- **UUID branches**: Temporary branches (e.g., `username/stack-auth-refactor/550e8400`) for editing specific PRs
 - **Git hooks**: Automatic metadata management via prepare-commit-msg and post-commit hooks
 - **GitHub integration**: Uses `gh` CLI for PR operations
 
@@ -59,7 +59,7 @@ stack new auth-refactor
 ```
 
 **What happens:**
-1. Creates branch `username/stack-auth-refactor` from current HEAD
+1. Creates branch `username/stack-auth-refactor/TOP` from current HEAD
 2. Creates `.git/stack/auth-refactor/config.json` with stack metadata
 3. Creates `.git/stack/auth-refactor/prs.json` for PR tracking
 4. Installs git hooks (thin wrappers calling the binary)
@@ -69,7 +69,7 @@ stack new auth-refactor
 **Output:**
 ```
 ✓ Created stack 'auth-refactor'
-✓ Branch: username/stack-auth-refactor
+✓ Branch: username/stack-auth-refactor/TOP
 ✓ Base: main
 ✓ Installed git hooks
 ✓ Switched to stack branch
@@ -90,7 +90,7 @@ git commit
 ```
 
 **Hook behavior** (`prepare-commit-msg`):
-- Detects we're on a stack branch (matches `username/stack-*` pattern)
+- Detects we're on a stack branch (matches `username/stack-*/TOP` pattern)
 - Generates new UUID
 - Opens editor with template:
   ```
@@ -141,7 +141,7 @@ stack show
 
 **Output:**
 ```
-Stack: auth-refactor (username/stack-auth-refactor)
+Stack: auth-refactor (username/stack-auth-refactor/TOP)
 Base: origin/main
 
  #  Status    PR      Title                         Commit
@@ -231,13 +231,13 @@ stack edit abc1234     # Edit by commit hash
 #### What Happens
 
 1. Tool extracts PR-UUID from selected commit
-2. Creates branch `username/stack-auth-refactor-550e8400` at that commit
+2. Creates branch `username/stack-auth-refactor/550e8400` at that commit
 3. Checks out the UUID branch
 4. User can now make changes
 
 **Output:**
 ```
-✓ Created branch username/stack-auth-refactor-550e8400
+✓ Created branch username/stack-auth-refactor/550e8400
 ✓ Checked out PR #2: Add refresh token handling
 ✓ Make your changes and commit (amend to update, new commit to insert after)
 ```
@@ -251,14 +251,14 @@ stack edit abc1234     # Edit by commit hash
 **Scenario:** User wants to update PR #2
 
 ```bash
-# On username/stack-auth-refactor-550e8400
+# On username/stack-auth-refactor/550e8400
 vim src/tokens.go
 git add src/tokens.go
 git commit --amend
 ```
 
 **post-commit hook:**
-1. Detects UUID branch (matches `username/stack-*-<uuid>` pattern)
+1. Detects UUID branch (matches `username/stack-*/<uuid>` pattern)
 2. Extracts stack name and UUID
 3. Switches to stack branch
 4. Finds commit with matching PR-UUID
@@ -280,7 +280,7 @@ git commit --amend
 **Scenario:** User wants to add a new PR between #2 and #3
 
 ```bash
-# On username/stack-auth-refactor-550e8400
+# On username/stack-auth-refactor/550e8400
 vim src/middleware.go
 git add src/middleware.go
 git commit -m "Add auth middleware
@@ -327,7 +327,7 @@ stack push
 
 For each commit in the stack:
 1. Extracts PR-UUID from commit
-2. Creates branch `username/stack-<name>-<short-uuid>` (8 chars)
+2. Creates branch `username/stack-<name>/<short-uuid>` (8 chars)
 3. Cherry-picks all commits from base up to and including this one
 4. Force-pushes branch to origin
 5. Checks if PR exists (lookup UUID in `prs.json`)
@@ -340,22 +340,22 @@ For each commit in the stack:
 ```
 Pushing stack 'auth-refactor'...
 
-✓ 1/3 username/stack-auth-refactor-550e8400
+✓ 1/3 username/stack-auth-refactor/550e8400
       Updated PR #1234: Add JWT authentication
       https://github.com/user/repo/pull/1234
 
-✓ 2/3 username/stack-auth-refactor-661f9511
+✓ 2/3 username/stack-auth-refactor/661f9511
       Created PR #1235: Add refresh token handling
-      Base: username/stack-auth-refactor-550e8400
+      Base: username/stack-auth-refactor/550e8400
       https://github.com/user/repo/pull/1235
 
-✓ 3/3 username/stack-auth-refactor-772fa622
+✓ 3/3 username/stack-auth-refactor/772fa622
       Created PR #1236: Add cookie security
-      Base: username/stack-auth-refactor-661f9511
+      Base: username/stack-auth-refactor/661f9511
       https://github.com/user/repo/pull/1236
 
 Done! View all PRs:
-https://github.com/user/repo/pulls?q=is:pr+author:@me+head:username/stack-auth-refactor-
+https://github.com/user/repo/pulls?q=is:pr+author:@me+head:username/stack-auth-refactor/
 ```
 
 **Options:**
@@ -368,14 +368,14 @@ stack push --dry-run    # Show what would happen without doing it
 **Implementation via `gh` CLI:**
 ```bash
 # Create/update branch
-git push origin username/stack-auth-refactor-550e8400 --force
+git push origin username/stack-auth-refactor/550e8400 --force
 
 # Create new PR
 gh pr create \
   --title "Add JWT authentication" \
   --body "Implements secure JWT-based auth..." \
   --base main \
-  --head username/stack-auth-refactor-550e8400 \
+  --head username/stack-auth-refactor/550e8400 \
   --draft
 
 # Update existing PR
@@ -416,8 +416,8 @@ Rebasing remaining PRs on origin/main...
 ✓ Rebased 1 PR
 
 Cleaning up branches...
-✓ Deleted username/stack-auth-refactor-550e8400
-✓ Deleted username/stack-auth-refactor-661f9511
+✓ Deleted username/stack-auth-refactor/550e8400
+✓ Deleted username/stack-auth-refactor/661f9511
 
 Stack updated. 1 PR remaining.
 ```
@@ -722,7 +722,7 @@ exec stack hook commit-msg "$@"
 **Triggers:** Before commit message editor opens
 
 **Behavior:**
-1. Check if on a stack branch (matches `username/stack-*`)
+1. Check if on a stack branch (matches `username/stack-*/TOP`)
 2. If not, exit (do nothing)
 3. Generate new UUID
 4. Check if this is an amend (commit already has PR-UUID)
@@ -751,7 +751,7 @@ exec stack hook commit-msg "$@"
 **Triggers:** After commit is created
 
 **Behavior on UUID branch:**
-1. Detect UUID branch (matches `username/stack-<name>-<uuid>`)
+1. Detect UUID branch (matches `username/stack-<name>/<uuid>`)
 2. Get the commit that was just made
 3. Determine if this is an amend or new commit:
    - **Amend:** Commit has PR-UUID matching the branch UUID
@@ -775,7 +775,7 @@ exec stack hook commit-msg "$@"
 3. Parse branch: extract stack name and UUID
 4. Get HEAD commit
 5. Check if HEAD has PR-UUID matching branch UUID
-6. Switch to stack branch (username/stack-<name>)
+6. Switch to stack branch (username/stack-<name>/TOP)
 
 IF AMEND:
   7a. Find commit position with matching UUID
@@ -832,7 +832,7 @@ IF NEW:
 ```json
 {
   "name": "auth-refactor",
-  "branch": "username/stack-auth-refactor",
+  "branch": "username/stack-auth-refactor/TOP",
   "base": "main",
   "created": "2025-10-19T15:00:00Z",
   "last_synced": "2025-10-19T16:00:00Z"
@@ -858,7 +858,7 @@ IF NEW:
   "550e8400-e29b-41d4-a716": {
     "pr_number": 1234,
     "url": "https://github.com/user/repo/pull/1234",
-    "branch": "username/stack-auth-refactor-550e8400",
+    "branch": "username/stack-auth-refactor/550e8400",
     "created_at": "2025-10-19T15:00:00Z",
     "last_pushed": "2025-10-19T16:00:00Z",
     "state": "open"
@@ -866,7 +866,7 @@ IF NEW:
   "661f9511-e29b-41d4-a716": {
     "pr_number": 1235,
     "url": "https://github.com/user/repo/pull/1235",
-    "branch": "username/stack-auth-refactor-661f9511",
+    "branch": "username/stack-auth-refactor/661f9511",
     "created_at": "2025-10-19T15:05:00Z",
     "last_pushed": "2025-10-19T16:00:00Z",
     "state": "draft"
@@ -1050,7 +1050,7 @@ auth-refactor
    - Iterate commits in stack
    - For each commit:
      - Parse commit message → title, body, UUID
-     - Create branch `username/stack-<name>-<short-uuid>`
+     - Create branch `username/stack-<name>/<short-uuid>`
      - Cherry-pick commits from base up to this one
      - Push branch to origin (force)
      - Check if PR exists (lookup in prs.json)
@@ -1292,7 +1292,7 @@ require (
 
 ### 3. Why UUID branches for editing?
 
-**Decision:** Create temporary branches (e.g., `username/stack-<name>-<uuid>`) when editing a PR.
+**Decision:** Create temporary branches (e.g., `username/stack-<name>/<uuid>`) when editing a PR.
 
 **Rationale:**
 - Isolation: Changes don't affect the stack until committed
@@ -1427,7 +1427,7 @@ Used by auth endpoints.
 # Output: ✓ Inserted new PR after #1, rebased 2 subsequent PRs
 
 # Return to stack
-git checkout username/stack-auth-feature
+git checkout bjulian5/stack-auth-feature/TOP
 
 # Push
 stack push
@@ -1449,7 +1449,7 @@ stack refresh
 # Output:
 # ✓ PR #1234 merged to main
 # ✓ Rebasing remaining PRs on origin/main
-# ✓ Deleted branch username/stack-auth-feature-550e8400
+# ✓ Deleted branch bjulian5/stack-auth-feature/550e8400
 
 stack show
 # Now shows:

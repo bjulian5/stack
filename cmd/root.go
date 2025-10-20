@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/cmd/hook"
 	"github.com/bjulian5/stack/cmd/list"
 	"github.com/bjulian5/stack/cmd/newcmd"
 	"github.com/bjulian5/stack/cmd/show"
@@ -39,6 +40,7 @@ func init() {
 		&newcmd.Command{},
 		&list.Command{},
 		&show.Command{},
+		&hook.Command{},
 	}
 
 	for _, cmd := range commands {

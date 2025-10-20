@@ -9,6 +9,7 @@ import (
 
 	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/git"
+	"github.com/bjulian5/stack/internal/hooks"
 	"github.com/bjulian5/stack/internal/stack"
 )
 
@@ -40,7 +41,7 @@ func (c *Command) Register(parent *cobra.Command) {
 		Long: `Create a new stack for managing a set of stacked pull requests.
 
 This will:
-  1. Create a new branch (username/stack-<name>) from the current HEAD
+  1. Create a new branch (username/stack-<name>/TOP) from the current HEAD
   2. Store stack metadata in .git/stack/<name>/
   3. Set this as the current stack
   4. Checkout the stack branch
@@ -112,9 +113,15 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to set current stack: %w", err)
 	}
 
+	// Install git hooks
+	if err := hooks.InstallHooks(c.Git.GitRoot()); err != nil {
+		return fmt.Errorf("failed to install git hooks: %w", err)
+	}
+
 	fmt.Printf("✓ Created stack '%s'\n", c.StackName)
 	fmt.Printf("✓ Branch: %s\n", branchName)
 	fmt.Printf("✓ Base: %s\n", c.BaseBranch)
+	fmt.Printf("✓ Installed git hooks\n")
 	fmt.Printf("✓ Switched to stack branch\n")
 
 	return nil

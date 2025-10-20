@@ -2,7 +2,9 @@ package git
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -128,15 +130,21 @@ func (c *Client) GetCommits(branch string, base string) ([]Commit, error) {
 
 // GetCommit returns a commit by hash
 func (c *Client) GetCommit(hash string) (Commit, error) {
+	// Resolve the hash to an actual SHA (in case it's "HEAD" or another ref)
+	actualHash, err := c.GetCommitHash(hash)
+	if err != nil {
+		return Commit{}, fmt.Errorf("failed to resolve %s: %w", hash, err)
+	}
+
 	// Get commit message
-	cmd := exec.Command("git", "log", "--format=%B", "-n", "1", hash)
+	cmd := exec.Command("git", "log", "--format=%B", "-n", "1", actualHash)
 	output, err := cmd.Output()
 	if err != nil {
-		return Commit{}, fmt.Errorf("failed to get commit %s: %w", hash, err)
+		return Commit{}, fmt.Errorf("failed to get commit %s: %w", actualHash, err)
 	}
 
 	message := string(output)
-	return ParseCommitMessage(hash, message), nil
+	return ParseCommitMessage(actualHash, message), nil
 }
 
 // GetCommitCount returns the number of commits between base and branch
@@ -197,4 +205,183 @@ func getGitRoot() (string, error) {
 		return "", fmt.Errorf("not in a git repository: %w", err)
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+// FindCommitByTrailer finds a commit on the branch with a specific trailer value
+func (c *Client) FindCommitByTrailer(branch string, trailerKey string, trailerValue string) (Commit, error) {
+	// Get all commits on the branch
+	// Use rev-list to get commit hashes from base to branch
+	cmd := exec.Command("git", "log", "--format=%H", branch)
+	output, err := cmd.Output()
+	if err != nil {
+		return Commit{}, fmt.Errorf("failed to list commits: %w", err)
+	}
+
+	hashes := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, hash := range hashes {
+		if hash == "" {
+			continue
+		}
+
+		commit, err := c.GetCommit(hash)
+		if err != nil {
+			continue
+		}
+
+		if commit.Trailers[trailerKey] == trailerValue {
+			return commit, nil
+		}
+	}
+
+	return Commit{}, fmt.Errorf("commit with %s=%s not found", trailerKey, trailerValue)
+}
+
+// GetHEADCommit returns the current HEAD commit
+func (c *Client) GetHEADCommit() (Commit, error) {
+	return c.GetCommit("HEAD")
+}
+
+// CherryPick cherry-picks a commit
+func (c *Client) CherryPick(commitHash string) error {
+	cmd := exec.Command("git", "cherry-pick", commitHash)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to cherry-pick %s: %w", commitHash, err)
+	}
+	return nil
+}
+
+// ResetHard resets the current branch to a specific ref
+func (c *Client) ResetHard(ref string) error {
+	cmd := exec.Command("git", "reset", "--hard", ref)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to reset to %s: %w", ref, err)
+	}
+	return nil
+}
+
+// AmendCommitMessage amends the HEAD commit with a new message
+func (c *Client) AmendCommitMessage(message string) error {
+	cmd := exec.Command("git", "commit", "--amend", "-m", message)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to amend commit: %w", err)
+	}
+	return nil
+}
+
+// RebaseOnto performs a rebase with --onto
+func (c *Client) RebaseOnto(newBase string, upstream string, branch string) error {
+	cmd := exec.Command("git", "rebase", "--onto", newBase, upstream, branch)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to rebase: %w\nOutput: %s", err, string(output))
+	}
+	return nil
+}
+
+// GetCommitPosition finds the position (1-indexed) of a commit in a branch
+func (c *Client) GetCommitPosition(branch string, commitHash string) (int, error) {
+	// Get all commits in reverse order (oldest first)
+	cmd := exec.Command("git", "rev-list", "--reverse", branch)
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("failed to list commits: %w", err)
+	}
+
+	hashes := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for i, hash := range hashes {
+		if strings.HasPrefix(hash, commitHash[:7]) || hash == commitHash {
+			return i + 1, nil
+		}
+	}
+
+	return 0, fmt.Errorf("commit %s not found in branch %s", commitHash, branch)
+}
+
+// GetCommitAtPosition returns the commit at a specific position (1-indexed)
+func (c *Client) GetCommitAtPosition(branch string, position int) (Commit, error) {
+	if position < 1 {
+		return Commit{}, fmt.Errorf("position must be >= 1")
+	}
+
+	// Get all commits in reverse order (oldest first)
+	cmd := exec.Command("git", "rev-list", "--reverse", branch)
+	output, err := cmd.Output()
+	if err != nil {
+		return Commit{}, fmt.Errorf("failed to list commits: %w", err)
+	}
+
+	hashes := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if position > len(hashes) {
+		return Commit{}, fmt.Errorf("position %d exceeds commit count %d", position, len(hashes))
+	}
+
+	return c.GetCommit(hashes[position-1])
+}
+
+// GetParentCommit returns the parent commit hash
+func (c *Client) GetParentCommit(commitHash string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", commitHash+"^")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get parent of %s: %w", commitHash, err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// GetCommitTree returns the tree hash for a commit
+func (c *Client) GetCommitTree(commitHash string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", commitHash+"^{tree}")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get tree for %s: %w", commitHash, err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// CommitTree creates a commit from a tree with a specific message and parent
+func (c *Client) CommitTree(treeHash string, parentHash string, message string) (string, error) {
+	cmd := exec.Command("git", "commit-tree", treeHash, "-p", parentHash, "-m", message)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to commit tree: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// IsRebaseInProgress checks if a rebase is currently in progress
+func (c *Client) IsRebaseInProgress() bool {
+	rebaseMerge := filepath.Join(c.gitRoot, ".git", "rebase-merge")
+	rebaseApply := filepath.Join(c.gitRoot, ".git", "rebase-apply")
+
+	// Check if either rebase directory exists
+	if _, err := os.Stat(rebaseMerge); err == nil {
+		return true
+	}
+	if _, err := os.Stat(rebaseApply); err == nil {
+		return true
+	}
+
+	return false
+}
+
+// RebaseAutosquash performs a non-interactive rebase with autosquash enabled
+func (c *Client) RebaseAutosquash(upstream string) error {
+	cmd := exec.Command("git", "rebase", "-i", "--autosquash", upstream)
+	// Set GIT_SEQUENCE_EDITOR=true to make rebase non-interactive
+	cmd.Env = append(os.Environ(), "GIT_SEQUENCE_EDITOR=true")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("rebase failed: %w\nOutput: %s", err, string(output))
+	}
+	return nil
+}
+
+// UpdateRef updates a branch reference to point to a specific commit
+func (c *Client) UpdateRef(branchName string, commitHash string) error {
+	// Use git update-ref to update the branch without checking it out
+	cmd := exec.Command("git", "update-ref", "refs/heads/"+branchName, commitHash)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to update ref %s to %s: %w", branchName, commitHash, err)
+	}
+	return nil
 }
