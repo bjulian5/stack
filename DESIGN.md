@@ -898,45 +898,57 @@ auth-refactor
 
 ## Implementation Plan
 
-### Phase 1: Foundation (Week 1)
+### Phase 1: Foundation ✅ COMPLETED
 
 **Goal:** Basic CLI and git operations working
 
-**Tasks:**
-1. Go project setup
+**Status:** Completed with Command interface pattern and dependency injection
+
+**What was implemented:**
+
+1. **Go project setup**
    - Module: `github.com/username/stack`
    - CLI framework: `cobra`
-   - Dependencies:
-     - `github.com/go-git/go-git/v5` (git operations)
-     - `github.com/ktr0731/go-fuzzyfinder` (fuzzy finder)
-     - `github.com/charmbracelet/lipgloss` (terminal styling)
-     - `github.com/google/uuid` (UUID generation)
+   - Dependencies: cobra, go-git, go-fuzzyfinder, lipgloss, uuid
+   - Command interface pattern for extensible CLI structure
 
-2. Core git operations (`internal/git/`)
-   - `getCurrentBranch()` - get current branch name
-   - `getCommits(branch)` - get all commits on branch
-   - `parseCommitMessage(msg)` → title, body, trailers
-   - `extractTrailer(msg, key)` - get trailer value
-   - `createBranch(name, commit)` - create branch at commit
-   - `cherryPickCommits(commits)` - cherry-pick range
-   - `rebaseCommits(from, onto)` - rebase operation
+2. **Core git operations** (`internal/git/`)
+   - ✅ `git.Client` struct with dependency injection pattern
+   - ✅ `GetCurrentBranch()` - get current branch name
+   - ✅ `GetCommits()` - get all commits on branch
+   - ✅ `GetCommit()` - get individual commit with message
+   - ✅ `ParseCommitMessage()` - parse title, body, trailers
+   - ✅ `CreateBranch()` / `CheckoutBranch()` - branch operations
+   - ✅ `GetStackBranches()` - find all stack branches
+   - ✅ `IsStackBranch()` / `ParseStackBranch()` - branch name parsing
 
-3. Stack metadata (`internal/stack/`)
-   - `Stack` struct
-   - `PR` struct
-   - `loadStack(name)` - load stack config from disk
-   - `saveStack(stack)` - save stack config
-   - `loadPRs(stackName)` - load PR tracking
-   - `savePRs(stackName, prs)` - save PR tracking
-   - `getCurrentStack()` - read `.git/stack/current`
-   - `setCurrentStack(name)` - write `.git/stack/current`
+3. **Stack metadata** (`internal/stack/`)
+   - ✅ `Stack` struct
+   - ✅ `PR` struct and `PRMap` type
+   - ✅ `stack.Client` for metadata management
+   - ✅ `LoadStack()` - load stack config from disk
+   - ✅ `SaveStack()` - save stack config
+   - ✅ `LoadPRs()` - load PR tracking
+   - ✅ `SavePRs()` - save PR tracking
+   - ✅ `GetCurrentStack()` - read `.git/stack/current`
+   - ✅ `SetCurrentStack()` - write `.git/stack/current`
 
-4. Basic commands (`cmd/`)
-   - `stack new <name>` - create new stack
-   - `stack list` - list all stacks
-   - `stack show [name]` - show stack details
+4. **Basic commands** (each in its own package)
+   - ✅ `cmd/command.go` - Command interface
+   - ✅ `cmd/newcmd/` - `stack new <name>` to create new stack
+   - ✅ `cmd/list/` - `stack list` to list all stacks
+   - ✅ `cmd/show/` - `stack show [name]` to show stack details
 
-**Deliverable:** Can create stacks and view them
+5. **Common utilities** (`internal/common/`)
+   - ✅ `GetUsername()` - detect username from git/gh config
+
+**Key architectural decisions implemented:**
+- Commands implement `Command` interface with `Register(parent *cobra.Command)` method
+- Dependency injection: commands receive `*git.Client` and `*stack.Client` at registration
+- Package-per-command structure for better organization
+- Git operations encapsulated in `git.Client` for testability
+
+**Deliverable:** ✅ Can create stacks, list them, and view stack details
 
 ---
 
@@ -1155,68 +1167,78 @@ auth-refactor
 
 ```
 stack/
-├── main.go                      # Entry point
+├── main.go                      # Entry point, calls cmd.Execute()
 ├── go.mod
 ├── go.sum
 ├── README.md                    # Project overview, installation
 ├── DESIGN.md                    # This file
+├── CLAUDE.md                    # Development guidance for AI assistants
 ├── USAGE.md                     # User guide (created in Phase 6)
 ├── LICENSE
 │
 ├── cmd/                         # CLI commands
-│   ├── root.go                  # Root command setup
-│   ├── new.go                   # stack new
-│   ├── list.go                  # stack list
-│   ├── show.go                  # stack show
-│   ├── switch.go                # stack switch
-│   ├── edit.go                  # stack edit
-│   ├── push.go                  # stack push
-│   ├── refresh.go               # stack refresh
-│   ├── rebase.go                # stack rebase
-│   ├── status.go                # stack status
-│   ├── open.go                  # stack open
-│   ├── delete.go                # stack delete
-│   ├── config.go                # stack config
-│   └── hook.go                  # stack hook (subcommands)
+│   ├── root.go                  # Root command setup with cobra
+│   ├── command.go               # Command interface for registration pattern
+│   ├── list/
+│   │   └── list.go              # stack list command
+│   ├── show/
+│   │   └── show.go              # stack show command
+│   ├── newcmd/
+│   │   └── new.go               # stack new command (newcmd to avoid "new" keyword)
+│   ├── switch/
+│   │   └── switch.go            # stack switch (future)
+│   ├── edit/
+│   │   └── edit.go              # stack edit (future)
+│   ├── push/
+│   │   └── push.go              # stack push (future)
+│   ├── refresh/
+│   │   └── refresh.go           # stack refresh (future)
+│   └── hook/
+│       └── hook.go              # stack hook subcommands (future)
 │
 ├── internal/                    # Internal packages
 │   ├── git/                     # Git operations
-│   │   ├── operations.go        # Core git operations
-│   │   ├── commit.go            # Commit parsing and manipulation
-│   │   ├── branch.go            # Branch operations
-│   │   └── rebase.go            # Rebase operations
+│   │   ├── client.go            # Client struct with git operations (using exec.Command)
+│   │   ├── commit.go            # Commit struct and parsing
+│   │   ├── branch.go            # Branch name parsing/formatting
+│   │   └── operations.go        # Additional git operations
 │   │
 │   ├── stack/                   # Stack management
-│   │   ├── stack.go             # Stack struct and operations
-│   │   ├── pr.go                # PR struct and tracking
-│   │   └── metadata.go          # Load/save metadata (config.json, prs.json)
+│   │   ├── client.go            # Stack client for metadata management
+│   │   ├── stack.go             # Stack struct
+│   │   └── pr.go                # PR struct and PRMap type
 │   │
-│   ├── github/                  # GitHub integration
+│   ├── common/                  # Common utilities
+│   │   └── utils.go             # Shared utilities (username detection, etc.)
+│   │
+│   ├── github/                  # GitHub integration (future)
 │   │   ├── client.go            # gh CLI wrapper
-│   │   ├── pr.go                # PR operations (create, update, query)
-│   │   └── auth.go              # Authentication helpers
+│   │   └── pr.go                # PR operations (create, update, query)
 │   │
-│   ├── hooks/                   # Git hooks
+│   ├── hooks/                   # Git hooks (future)
 │   │   ├── install.go           # Hook installation/uninstallation
 │   │   ├── prepare_commit_msg.go  # prepare-commit-msg logic
 │   │   ├── post_commit.go       # post-commit logic
 │   │   └── commit_msg.go        # commit-msg validation
 │   │
-│   ├── ui/                      # User interface
+│   ├── ui/                      # User interface (future)
 │   │   ├── table.go             # Table rendering
 │   │   ├── prompt.go            # User prompts and input
-│   │   ├── fuzzy.go             # Fuzzy finder integration
-│   │   ├── progress.go          # Progress indicators
-│   │   └── format.go            # Text formatting and colors
+│   │   └── fuzzy.go             # Fuzzy finder integration
 │   │
-│   └── config/                  # Configuration
-│       ├── config.go            # Global config management
-│       └── defaults.go          # Default values
+│   └── config/                  # Configuration (future)
+│       └── config.go            # Global config management
 │
-└── test/                        # Integration tests
+└── test/                        # Integration tests (future)
     ├── fixtures/                # Test git repos
     └── integration_test.go      # End-to-end tests
 ```
+
+**Key architectural patterns implemented:**
+- **Command interface**: Each command implements `Command` interface with `Register(parent *cobra.Command)` method
+- **Dependency injection**: Commands receive `*git.Client` and `*stack.Client` instances at registration time
+- **Package-per-command**: Each command lives in its own package for better organization
+- **Git Client abstraction**: All git operations go through `git.Client` for consistency and testability
 
 ---
 
