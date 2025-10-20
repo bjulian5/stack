@@ -1,4 +1,4 @@
-package new
+package newcmd
 
 import (
 	"context"

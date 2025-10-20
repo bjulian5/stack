@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bjulian5/stack/cmd/list"
-	"github.com/bjulian5/stack/cmd/new"
+	"github.com/bjulian5/stack/cmd/newcmd"
 	"github.com/bjulian5/stack/cmd/show"
 )
 
@@ -36,7 +36,7 @@ func Execute(ctx context.Context) {
 func init() {
 	// Register all commands
 	commands := []Command{
-		&new.Command{},
+		&newcmd.Command{},
 		&list.Command{},
 		&show.Command{},
 	}
