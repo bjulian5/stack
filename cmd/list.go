@@ -13,10 +13,21 @@ import (
 // ListCommand lists all stacks
 type ListCommand struct {
 	// No flags or arguments currently
+
+	// Clients (can be mocked in tests)
+	Git   *git.Client
+	Stack *stack.Client
 }
 
 // Register registers the command with cobra
 func (c *ListCommand) Register(parent *cobra.Command) {
+	var err error
+	c.Git, err = git.NewClient()
+	if err != nil {
+		panic(err)
+	}
+	c.Stack = stack.NewClient(c.Git.GitRoot())
+
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all stacks",
@@ -37,13 +48,8 @@ Example:
 
 // Run executes the command
 func (c *ListCommand) Run(ctx context.Context) error {
-	// Check if we're in a git repository
-	if !git.IsGitRepo() {
-		return fmt.Errorf("not in a git repository")
-	}
-
 	// Get all stacks
-	stacks, err := stack.ListStacks()
+	stacks, err := c.Stack.ListStacks()
 	if err != nil {
 		return fmt.Errorf("failed to list stacks: %w", err)
 	}
@@ -55,14 +61,14 @@ func (c *ListCommand) Run(ctx context.Context) error {
 	}
 
 	// Get current stack
-	currentStack, _ := stack.GetCurrentStack()
+	currentStack, _ := c.Stack.GetCurrentStack()
 
 	fmt.Println("Available stacks:")
 	fmt.Println()
 
 	for _, s := range stacks {
 		// Get PR count
-		count, err := stack.GetStackPRCount(s)
+		count, err := c.Git.GetCommitCount(s.Branch, s.Base)
 		if err != nil {
 			count = 0
 		}

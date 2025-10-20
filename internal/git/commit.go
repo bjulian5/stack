@@ -2,7 +2,6 @@ package git
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 )
 
@@ -13,45 +12,6 @@ type Commit struct {
 	Body     string
 	Message  string
 	Trailers map[string]string
-}
-
-// GetCommits returns all commits on the given branch that are not on the base branch
-func GetCommits(branch string, base string) ([]Commit, error) {
-	// Get commit hashes
-	cmd := exec.Command("git", "rev-list", "--reverse", fmt.Sprintf("%s..%s", base, branch))
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get commits: %w", err)
-	}
-
-	hashes := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(hashes) == 1 && hashes[0] == "" {
-		return []Commit{}, nil
-	}
-
-	commits := make([]Commit, 0, len(hashes))
-	for _, hash := range hashes {
-		commit, err := GetCommit(hash)
-		if err != nil {
-			return nil, err
-		}
-		commits = append(commits, commit)
-	}
-
-	return commits, nil
-}
-
-// GetCommit returns a commit by hash
-func GetCommit(hash string) (Commit, error) {
-	// Get commit message
-	cmd := exec.Command("git", "log", "--format=%B", "-n", "1", hash)
-	output, err := cmd.Output()
-	if err != nil {
-		return Commit{}, fmt.Errorf("failed to get commit %s: %w", hash, err)
-	}
-
-	message := string(output)
-	return ParseCommitMessage(hash, message), nil
 }
 
 // ParseCommitMessage parses a commit message into title, body, and trailers
@@ -143,21 +103,4 @@ func AddTrailer(message string, key string, value string) string {
 	}
 
 	return message + fmt.Sprintf("%s: %s\n", key, value)
-}
-
-// GetCommitCount returns the number of commits between base and branch
-func GetCommitCount(branch string, base string) (int, error) {
-	cmd := exec.Command("git", "rev-list", "--count", fmt.Sprintf("%s..%s", base, branch))
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, fmt.Errorf("failed to count commits: %w", err)
-	}
-
-	var count int
-	_, err = fmt.Sscanf(strings.TrimSpace(string(output)), "%d", &count)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse commit count: %w", err)
-	}
-
-	return count, nil
 }

@@ -2,7 +2,6 @@ package git
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 )
 
@@ -82,37 +81,4 @@ func FormatStackBranch(username string, stackName string) string {
 // FormatUUIDBranch formats a UUID branch name
 func FormatUUIDBranch(username string, stackName string, uuid string) string {
 	return fmt.Sprintf("%s/stack-%s-%s", username, stackName, uuid)
-}
-
-// GetLocalBranches returns all local branches
-func GetLocalBranches() ([]string, error) {
-	cmd := exec.Command("git", "branch", "--format=%(refname:short)")
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get branches: %w", err)
-	}
-
-	branches := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(branches) == 1 && branches[0] == "" {
-		return []string{}, nil
-	}
-
-	return branches, nil
-}
-
-// GetStackBranches returns all stack branches
-func GetStackBranches() ([]string, error) {
-	branches, err := GetLocalBranches()
-	if err != nil {
-		return nil, err
-	}
-
-	stackBranches := []string{}
-	for _, branch := range branches {
-		if IsStackBranch(branch) {
-			stackBranches = append(stackBranches, branch)
-		}
-	}
-
-	return stackBranches, nil
 }

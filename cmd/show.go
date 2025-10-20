@@ -15,10 +15,21 @@ import (
 type ShowCommand struct {
 	// Arguments
 	StackName string
+
+	// Clients (can be mocked in tests)
+	Git   *git.Client
+	Stack *stack.Client
 }
 
 // Register registers the command with cobra
 func (c *ShowCommand) Register(parent *cobra.Command) {
+	var err error
+	c.Git, err = git.NewClient()
+	if err != nil {
+		panic(err)
+	}
+	c.Stack = stack.NewClient(c.Git.GitRoot())
+
 	cmd := &cobra.Command{
 		Use:   "show [stack-name]",
 		Short: "Show details of a stack",
@@ -43,15 +54,10 @@ Example:
 
 // Run executes the command
 func (c *ShowCommand) Run(ctx context.Context) error {
-	// Check if we're in a git repository
-	if !git.IsGitRepo() {
-		return fmt.Errorf("not in a git repository")
-	}
-
 	// Determine which stack to show
 	if c.StackName == "" {
 		// Get current stack
-		currentStack, err := stack.GetCurrentStack()
+		currentStack, err := c.Stack.GetCurrentStack()
 		if err != nil {
 			return fmt.Errorf("no current stack set. Use: stack show <name>")
 		}
@@ -59,19 +65,19 @@ func (c *ShowCommand) Run(ctx context.Context) error {
 	}
 
 	// Load stack
-	s, err := stack.LoadStack(c.StackName)
+	s, err := c.Stack.LoadStack(c.StackName)
 	if err != nil {
 		return fmt.Errorf("failed to load stack '%s': %w", c.StackName, err)
 	}
 
 	// Get commits
-	commits, err := git.GetCommits(s.Branch, s.Base)
+	commits, err := c.Git.GetCommits(s.Branch, s.Base)
 	if err != nil {
 		return fmt.Errorf("failed to get commits: %w", err)
 	}
 
 	// Load PRs
-	prs, err := stack.LoadPRs(c.StackName)
+	prs, err := c.Stack.LoadPRs(c.StackName)
 	if err != nil {
 		return fmt.Errorf("failed to load PRs: %w", err)
 	}

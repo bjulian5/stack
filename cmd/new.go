@@ -19,10 +19,21 @@ type NewCommand struct {
 
 	// Flags
 	BaseBranch string
+
+	// Clients (can be mocked in tests)
+	Git   *git.Client
+	Stack *stack.Client
 }
 
 // Register registers the command with cobra
 func (c *NewCommand) Register(parent *cobra.Command) {
+	var err error
+	c.Git, err = git.NewClient()
+	if err != nil {
+		panic(err)
+	}
+	c.Stack = stack.NewClient(c.Git.GitRoot())
+
 	cmd := &cobra.Command{
 		Use:   "new <stack-name>",
 		Short: "Create a new stack",
@@ -50,19 +61,14 @@ Example:
 
 // Run executes the command
 func (c *NewCommand) Run(ctx context.Context) error {
-	// Check if we're in a git repository
-	if !git.IsGitRepo() {
-		return fmt.Errorf("not in a git repository")
-	}
-
 	// Check if stack already exists
-	if stack.StackExists(c.StackName) {
+	if c.Stack.StackExists(c.StackName) {
 		return fmt.Errorf("stack '%s' already exists", c.StackName)
 	}
 
 	// Get current branch as base if not specified
 	if c.BaseBranch == "" {
-		currentBranch, err := git.GetCurrentBranch()
+		currentBranch, err := c.Git.GetCurrentBranch()
 		if err != nil {
 			return fmt.Errorf("failed to get current branch: %w", err)
 		}
@@ -79,12 +85,12 @@ func (c *NewCommand) Run(ctx context.Context) error {
 	branchName := git.FormatStackBranch(username, c.StackName)
 
 	// Check if branch already exists
-	if git.BranchExists(branchName) {
+	if c.Git.BranchExists(branchName) {
 		return fmt.Errorf("branch '%s' already exists", branchName)
 	}
 
 	// Create stack branch
-	if err := git.CreateAndCheckoutBranch(branchName); err != nil {
+	if err := c.Git.CreateAndCheckoutBranch(branchName); err != nil {
 		return fmt.Errorf("failed to create stack branch: %w", err)
 	}
 
@@ -97,12 +103,12 @@ func (c *NewCommand) Run(ctx context.Context) error {
 		LastSynced: time.Time{},
 	}
 
-	if err := stack.SaveStack(s); err != nil {
+	if err := c.Stack.SaveStack(s); err != nil {
 		return fmt.Errorf("failed to save stack: %w", err)
 	}
 
 	// Set as current stack
-	if err := stack.SetCurrentStack(c.StackName); err != nil {
+	if err := c.Stack.SetCurrentStack(c.StackName); err != nil {
 		return fmt.Errorf("failed to set current stack: %w", err)
 	}
 
