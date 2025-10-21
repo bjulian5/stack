@@ -152,7 +152,7 @@ func (c *Command) Run(ctx context.Context) error {
 		total := len(stackCtx.Changes)
 
 		// Get PR branch name
-		prBranch := stackCtx.GetPRBranch(username, change.UUID)
+		prBranch := stackCtx.FormatUUIDBranch(username, change.UUID)
 
 		// Determine base branch (previous PR's branch or stack base)
 		baseBranch := stackCtx.Stack.Base

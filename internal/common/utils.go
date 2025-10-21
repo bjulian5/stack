@@ -25,12 +25,3 @@ func GenerateUUID() string {
 	hexStr := strings.ReplaceAll(u.String(), "-", "")
 	return hexStr[:16]
 }
-
-// ShortUUID returns the first 8 characters of a UUID for display
-func ShortUUID(uuid string) string {
-	if len(uuid) < 8 {
-		return uuid
-	}
-	return uuid[:8]
-
-}
