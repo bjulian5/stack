@@ -11,6 +11,7 @@ import (
 	"github.com/bjulian5/stack/cmd/list"
 	"github.com/bjulian5/stack/cmd/newcmd"
 	"github.com/bjulian5/stack/cmd/show"
+	switchcmd "github.com/bjulian5/stack/cmd/switch"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -42,6 +43,7 @@ func init() {
 		&list.Command{},
 		&show.Command{},
 		&edit.Command{},
+		&switchcmd.Command{},
 		&hook.Command{},
 	}
 

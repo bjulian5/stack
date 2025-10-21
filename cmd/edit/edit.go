@@ -10,6 +10,7 @@ import (
 	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
+	"github.com/bjulian5/stack/internal/ui"
 )
 
 // Command edits a change in the stack
@@ -55,7 +56,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to check working directory: %w", err)
 	}
 	if hasUncommitted {
-		return fmt.Errorf("uncommitted changes detected. Commit or stash your changes before editing a different change")
+		return fmt.Errorf("uncommitted changes detected: commit or stash your changes before editing a different change")
 	}
 
 	// Get current stack context
@@ -66,12 +67,12 @@ func (c *Command) Run(ctx context.Context) error {
 
 	// Validate we're in a stack
 	if !stackCtx.IsStack() {
-		return fmt.Errorf("not on a stack branch. Switch to a stack first or use: stack switch")
+		return fmt.Errorf("not on a stack branch: switch to a stack first or use 'stack switch'")
 	}
 
 	// Validate stack has changes
 	if len(stackCtx.Changes) == 0 {
-		return fmt.Errorf("no changes in stack. Add commits to create PRs")
+		return fmt.Errorf("no changes in stack: add commits to create PRs")
 	}
 
 	// Use fuzzy finder to select a change
@@ -80,23 +81,15 @@ func (c *Command) Run(ctx context.Context) error {
 		func(i int) string {
 			change := stackCtx.Changes[i]
 
-			// Format status
-			status := "⚪"
+			status := "local"
+			if change.PR != nil {
+				status = change.PR.State
+			}
+			icon := ui.GetStatusIcon(status)
+
 			prLabel := "local"
 			if change.PR != nil {
 				prLabel = fmt.Sprintf("#%-4d", change.PR.PRNumber)
-				switch change.PR.State {
-				case "open":
-					status = "🟢"
-				case "draft":
-					status = "🟡"
-				case "merged":
-					status = "🟣"
-				case "closed":
-					status = "⚫"
-				default:
-					status = "⚪"
-				}
 			}
 
 			// Short hash
@@ -106,12 +99,9 @@ func (c *Command) Run(ctx context.Context) error {
 			}
 
 			// Truncate title to fit nicely
-			title := change.Title
-			if len(title) > 40 {
-				title = title[:37] + "..."
-			}
+			title := ui.Truncate(change.Title, 40)
 
-			return fmt.Sprintf("%2d %s %-6s │ %-40s │ %s", change.Position, status, prLabel, title, shortHash)
+			return fmt.Sprintf("%2d %s %-6s │ %-40s │ %s", change.Position, icon, prLabel, title, shortHash)
 		},
 		fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
 			if i == -1 {
@@ -145,7 +135,7 @@ func (c *Command) Run(ctx context.Context) error {
 
 	// Validate UUID exists
 	if selectedChange.UUID == "" {
-		return fmt.Errorf("cannot edit change #%d: commit missing PR-UUID trailer. The commit may have been created before git hooks were installed. Try amending it on the stack branch first", selectedChange.Position)
+		return fmt.Errorf("cannot edit change #%d: commit missing PR-UUID trailer (may have been created before git hooks were installed - try amending it on the stack branch first)", selectedChange.Position)
 	}
 
 	// Get username for branch naming
@@ -184,7 +174,7 @@ func (c *Command) Run(ctx context.Context) error {
 			if len(newShort) > git.ShortHashLength {
 				newShort = newShort[:git.ShortHashLength]
 			}
-			fmt.Printf("⚠️  Synced branch to current commit (was at %s, now at %s)\n", oldShort, newShort)
+			fmt.Println(ui.RenderWarningMessage(fmt.Sprintf("Synced branch to current commit (was at %s, now at %s)", oldShort, newShort)))
 		}
 	} else {
 		// Create and checkout new branch at the commit
@@ -193,10 +183,8 @@ func (c *Command) Run(ctx context.Context) error {
 		}
 	}
 
-	// Print success message
-	fmt.Printf("✓ Checked out change #%d: %s\n", selectedChange.Position, selectedChange.Title)
-	fmt.Printf("✓ Branch: %s\n", branchName)
-	fmt.Printf("✓ Make your changes and commit (amend to update, new commit to insert after)\n")
+	// Print success message using new UI
+	fmt.Println(ui.RenderEditSuccess(selectedChange.Position, selectedChange.Title, branchName))
 
 	// TODO: Add cleanup mechanism for stale UUID branches after changes are merged/deleted.
 	// Over time, users will accumulate many UUID branches that should be cleaned up.

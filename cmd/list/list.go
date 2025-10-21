@@ -3,11 +3,13 @@ package list
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
+	"github.com/bjulian5/stack/internal/ui"
 )
 
 // Command lists all stacks
@@ -52,12 +54,6 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to list stacks: %w", err)
 	}
 
-	if len(stacks) == 0 {
-		fmt.Println("No stacks found.")
-		fmt.Println("Create a new stack with: stack new <name>")
-		return nil
-	}
-
 	// Get current stack from working context
 	var currentStack string
 	stackCtx, err := c.Stack.GetStackContext()
@@ -65,35 +61,19 @@ func (c *Command) Run(ctx context.Context) error {
 		currentStack = stackCtx.StackName
 	}
 
-	fmt.Println("Available stacks:")
-	fmt.Println()
-
+	// Load changes for all stacks
+	stackChanges := make(map[string][]stack.Change)
 	for _, s := range stacks {
-		// Get change count
-		count := 0
 		ctx, err := c.Stack.GetStackContextByName(s.Name)
-		if err == nil {
-			count = len(ctx.Changes)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to load stack %s: %v\n", s.Name, err)
+			continue
 		}
-
-		// Mark current stack
-		marker := " "
-		if s.Name == currentStack {
-			marker = "*"
-		}
-
-		prText := "PR"
-		if count != 1 {
-			prText = "PRs"
-		}
-
-		fmt.Printf("%s %-20s (%d %s, base: %s)\n", marker, s.Name, count, prText, s.Base)
+		stackChanges[s.Name] = ctx.Changes
 	}
 
-	if currentStack != "" {
-		fmt.Println()
-		fmt.Println("* = current stack")
-	}
+	output := ui.RenderStackList(stacks, currentStack, stackChanges)
+	fmt.Println(output)
 
 	return nil
 }

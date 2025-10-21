@@ -18,6 +18,6 @@ type PR struct {
 // PRData is a wrapper for PR tracking data
 // This structure allows for easier evolution of the JSON format
 type PRData struct {
-	Version int            `json:"version"`           // Format version (currently 1)
+	Version int            `json:"version"` // Format version (currently 1)
 	PRs     map[string]*PR `json:"prs"`
 }
