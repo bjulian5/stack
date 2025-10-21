@@ -78,44 +78,13 @@ func (c *Command) Run(ctx context.Context) error {
 	idx, err := fuzzyfinder.Find(
 		stackCtx.Changes,
 		func(i int) string {
-			change := stackCtx.Changes[i]
-
-			status := "local"
-			if change.PR != nil {
-				status = change.PR.State
-			}
-			icon := ui.GetStatusIcon(status)
-
-			prLabel := "local"
-			if change.PR != nil {
-				prLabel = fmt.Sprintf("#%-4d", change.PR.PRNumber)
-			}
-
-			// Truncate title to fit nicely
-			title := ui.Truncate(change.Title, 40)
-
-			return fmt.Sprintf("%2d %s %-6s │ %-40s │ %s", change.Position, icon, prLabel, title, git.ShortHash(change.CommitHash))
+			return ui.FormatChangeFinderLine(stackCtx.Changes[i])
 		},
 		fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
 			if i == -1 {
 				return ""
 			}
-			change := stackCtx.Changes[i]
-
-			preview := fmt.Sprintf("Position: %d\n", change.Position)
-			preview += fmt.Sprintf("Title: %s\n", change.Title)
-			preview += fmt.Sprintf("Commit: %s\n", change.CommitHash)
-			if change.UUID != "" {
-				preview += fmt.Sprintf("UUID: %s\n", change.UUID)
-			}
-			if change.PR != nil {
-				preview += fmt.Sprintf("PR: #%d (%s)\n", change.PR.PRNumber, change.PR.State)
-				preview += fmt.Sprintf("URL: %s\n", change.PR.URL)
-			}
-			if change.Description != "" {
-				preview += fmt.Sprintf("\nDescription:\n%s\n", change.Description)
-			}
-			return preview
+			return ui.FormatChangePreview(stackCtx.Changes[i])
 		}),
 	)
 

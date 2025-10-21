@@ -263,3 +263,50 @@ func FormatStackPreview(stackName string, branch string, base string, changes []
 
 	return preview
 }
+
+// FormatChangeFinderLine formats a change for fuzzy finder display
+// Used by both 'stack edit' and 'stack pr open' commands
+func FormatChangeFinderLine(change stack.Change) string {
+	status := "local"
+	if change.PR != nil {
+		status = change.PR.State
+	}
+	icon := GetStatusIcon(status)
+
+	prLabel := "local"
+	if change.PR != nil {
+		prLabel = fmt.Sprintf("#%-4d", change.PR.PRNumber)
+	}
+
+	// Truncate title to fit nicely
+	title := Truncate(change.Title, 40)
+
+	// Import git package for ShortHash - need to handle this differently
+	// Since this is in the ui package, we can't import git
+	// Instead, we'll pass the short hash directly
+	shortHash := change.CommitHash
+	if len(shortHash) > 7 {
+		shortHash = shortHash[:7]
+	}
+
+	return fmt.Sprintf("%2d %s %-6s │ %-40s │ %s", change.Position, icon, prLabel, title, shortHash)
+}
+
+// FormatChangePreview formats a change for fuzzy finder preview window
+// Used by both 'stack edit' and 'stack pr open' commands
+func FormatChangePreview(change stack.Change) string {
+	preview := fmt.Sprintf("Position: %d\n", change.Position)
+	preview += fmt.Sprintf("Title: %s\n", change.Title)
+	preview += fmt.Sprintf("Commit: %s\n", change.CommitHash)
+	if change.UUID != "" {
+		preview += fmt.Sprintf("UUID: %s\n", change.UUID)
+	}
+	if change.PR != nil {
+		preview += fmt.Sprintf("PR: #%d (%s)\n", change.PR.PRNumber, change.PR.State)
+		preview += fmt.Sprintf("URL: %s\n", change.PR.URL)
+	}
+	if change.Description != "" {
+		preview += fmt.Sprintf("\nDescription:\n%s\n", change.Description)
+	}
+	return preview
+}

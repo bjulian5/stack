@@ -109,8 +109,8 @@ func RenderStackDetails(s *stack.Stack, changes []stack.Change) string {
 	table := NewTable([]Column{
 		{Header: "#", Width: 3, Align: AlignRight},
 		{Header: "Status", Width: 9, Align: AlignLeft},
-		{Header: "PR", Width: 7, Align: AlignLeft},
-		{Header: "Title", Width: 40, Align: AlignLeft},
+		{Header: "PR", MinWidth: 45, MaxWidth: 70, Align: AlignLeft},
+		{Header: "Title", MinWidth: 30, MaxWidth: 50, Align: AlignLeft},
 		{Header: "Commit", Width: 7, Align: AlignLeft},
 	})
 

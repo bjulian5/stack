@@ -72,11 +72,19 @@ func FormatStatusCompact(state string) string {
 	}
 }
 
-// FormatPRLabel formats a PR number with styling
+// FormatPRLabel formats a PR number with styling and full URL
 func FormatPRLabel(pr *stack.PR) string {
 	if pr == nil {
 		return Dim("-")
 	}
+
+	// Display the full URL instead of just the PR number
+	if pr.URL != "" {
+		style := GetStatusStyle(pr.State)
+		return style.Render(pr.URL)
+	}
+
+	// Fallback to PR number if URL is not available
 	label := fmt.Sprintf("#%d", pr.PRNumber)
 	style := GetStatusStyle(pr.State)
 	return style.Render(label)

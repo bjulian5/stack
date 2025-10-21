@@ -24,9 +24,11 @@ const (
 
 // Column defines a table column
 type Column struct {
-	Header string
-	Width  int
-	Align  ColumnAlign
+	Header   string
+	Width    int // If 0, column is flexible and auto-sizes
+	MinWidth int // Minimum width for flexible columns (ignored if Width > 0)
+	MaxWidth int // Maximum width for flexible columns (ignored if Width > 0)
+	Align    ColumnAlign
 }
 
 // Table represents a styled table
@@ -56,26 +58,69 @@ func (t *Table) AddRow(cells ...string) error {
 	return nil
 }
 
-// calculateColumnWidths calculates actual column widths based on content
+// calculateColumnWidths calculates actual column widths based on content and terminal size
 func (t *Table) calculateColumnWidths() []int {
 	widths := make([]int, len(t.Columns))
+	terminalWidth := GetTerminalWidth()
+
+	// Step 1: Calculate fixed column widths and identify flexible columns
+	var fixedWidth int
+	var flexibleColumns []int
 
 	for i, col := range t.Columns {
-		widths[i] = col.Width
+		if col.Width > 0 {
+			// Fixed width column
+			widths[i] = col.Width
+			fixedWidth += col.Width
+		} else {
+			// Flexible column - start with MinWidth
+			widths[i] = col.MinWidth
+			if widths[i] == 0 {
+				widths[i] = 10 // Minimum fallback
+			}
+			flexibleColumns = append(flexibleColumns, i)
+		}
 	}
 
-	for i, col := range t.Columns {
-		if col.Width == 0 {
-			if t.ShowHeader && len(col.Header) > widths[i] {
-				widths[i] = len(col.Header)
-			}
-			for _, row := range t.Rows {
-				if i < len(row) {
-					cellWidth := visibleWidth(row[i])
-					if cellWidth > widths[i] {
-						widths[i] = cellWidth
-					}
+	// Account for borders and padding: "│ col │ col │ col │"
+	// Each column has: " col " (2 spaces) + "│" separator
+	// Total overhead: (numColumns + 1) separators + (numColumns * 2) padding
+	overhead := (len(t.Columns) + 1) + (len(t.Columns) * 2)
+
+	// Step 2: Calculate available space for flexible columns
+	availableSpace := terminalWidth - fixedWidth - overhead
+	if availableSpace < 0 {
+		availableSpace = 0
+	}
+
+	// Step 3: Distribute space among flexible columns
+	if len(flexibleColumns) > 0 && availableSpace > 0 {
+		// Calculate current flexible width total
+		currentFlexWidth := 0
+		for _, idx := range flexibleColumns {
+			currentFlexWidth += widths[idx]
+		}
+
+		// Calculate how much extra space we have
+		extraSpace := availableSpace - currentFlexWidth
+		if extraSpace > 0 {
+			// Distribute extra space proportionally, respecting MaxWidth
+			spacePerColumn := extraSpace / len(flexibleColumns)
+
+			for _, idx := range flexibleColumns {
+				col := t.Columns[idx]
+				newWidth := widths[idx] + spacePerColumn
+
+				// Apply MaxWidth constraint
+				maxWidth := col.MaxWidth
+				if maxWidth == 0 {
+					maxWidth = 200 // Reasonable default maximum
 				}
+				if newWidth > maxWidth {
+					newWidth = maxWidth
+				}
+
+				widths[idx] = newWidth
 			}
 		}
 	}

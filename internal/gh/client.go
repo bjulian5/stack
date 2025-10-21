@@ -228,3 +228,9 @@ func normalizeState(state string, isDraft bool) string {
 
 	return state
 }
+
+// OpenPR opens a pull request in the browser using gh CLI
+func (c *Client) OpenPR(prNumber int) error {
+	_, err := c.execGH("pr", "view", fmt.Sprintf("%d", prNumber), "--web")
+	return err
+}
