@@ -53,9 +53,11 @@ go build && ./stack list
 
 **Stack Client** (`internal/stack/client.go`)
 - Manages stack metadata stored in `.git/stack/<stack-name>/`
-- Each stack has `config.json` (stack metadata) and `prs.json` (PR tracking)
+- Each stack has `config.json` (stack metadata) and `prs.json` (PR tracking with versioning)
 - Provides `GetStackContext()` to determine current stack from branch name
 - `GetStackContextByName(name)` loads a specific stack's context (recommended over deprecated `GetStackDetails()`)
+- PR data stored as `PRData` structure with version field for future schema evolution
+- Methods: `LoadPRs()`, `SavePRs()`, `GetPR()`, `SetPR()`, `DeletePR()` work with versioned PR data
 
 **Stack Context** (`internal/stack/context.go`)
 - `StackContext` is the primary abstraction for working with stacks
@@ -72,6 +74,14 @@ go build && ./stack list
 - Each command implements the `Command` interface with a `Register()` method
 - Commands are registered in `cmd/root.go` init()
 - Each command struct holds its own clients (`Git` and `Stack`) for dependency injection
+
+**UI System** (`internal/ui/`)
+- Centralized terminal styling and formatting using `lipgloss`
+- `format.go` - Reusable formatting utilities (truncate, pad, boxes, panels)
+- `styles.go` - Consistent color scheme and style definitions
+- `stack.go` - Stack-specific rendering (list view, details view, fuzzy finder formatting)
+- `messages.go` - Success, error, warning, and info message formatting
+- All commands use the UI system for consistent output
 
 **Branch Naming Conventions**
 - Stack branch: `username/stack-<name>/TOP` (e.g., `bjulian5/stack-auth-refactor/TOP`)
@@ -114,6 +124,8 @@ stack/
 │   ├── list/list.go                 # stack list command
 │   ├── show/show.go                 # stack show command
 │   ├── newcmd/new.go                # stack new command (newcmd to avoid "new" keyword)
+│   ├── edit/edit.go                 # stack edit command
+│   ├── switch/switch.go             # stack switch command (package: switchcmd)
 │   └── hook/
 │       ├── hook.go                  # Parent hook command
 │       ├── prepare_commit_msg.go    # prepare-commit-msg hook implementation
@@ -128,9 +140,14 @@ stack/
 │   ├── stack/
 │   │   ├── client.go                # Stack metadata management
 │   │   ├── stack.go                 # Stack struct
-│   │   ├── pr.go                    # PR struct and PRMap type
+│   │   ├── pr.go                    # PRData and PR structs with versioning
 │   │   ├── change.go                # Change domain model
 │   │   └── context.go               # StackContext for branch-based state and branch helpers
+│   ├── ui/
+│   │   ├── format.go                # Formatting utilities and helper functions
+│   │   ├── styles.go                # lipgloss style definitions
+│   │   ├── stack.go                 # Stack-specific rendering functions
+│   │   └── messages.go              # Message rendering functions
 │   ├── hooks/
 │   │   └── install.go               # Hook installation/uninstallation
 │   └── common/
@@ -139,7 +156,7 @@ stack/
 
 ## Implementation Status
 
-The codebase has completed **Phase 1** (Foundation) and **Phase 2** (Git Hooks) of development (see DESIGN.md for full roadmap):
+The codebase has completed **Phase 1** (Foundation), **Phase 2** (Git Hooks), and **Phase 3** (Editing & Navigation) of development (see DESIGN.md for full roadmap):
 
 **Phase 1 - Foundation (✅ Completed):**
 - ✅ `stack new <name>` - Create new stack
@@ -155,9 +172,13 @@ The codebase has completed **Phase 1** (Foundation) and **Phase 2** (Git Hooks) 
 - ✅ Hook installation/uninstallation
 - ✅ Amend and insert operations for stack editing
 
+**Phase 3 - Editing & Navigation (✅ Completed):**
+- ✅ `stack edit` - Interactive PR editing with fuzzy finder
+- ✅ `stack switch [name]` - Stack switching with fuzzy finder
+- ✅ UI system with lipgloss for styled terminal output
+- ✅ Uncommitted changes validation before operations
+
 **Not Yet Implemented:**
-- `stack edit` command for creating UUID branches
-- `stack switch` command with fuzzy finder
 - `stack push` command to push PRs to GitHub
 - `stack refresh` command to handle merged PRs
 - GitHub integration via `gh` CLI
@@ -204,9 +225,11 @@ This enables:
 
 Always use `git.Client` methods instead of calling git directly:
 - `c.Git.GetCurrentBranch()` - get the current branch name
-- `c.Git.GetCommit(hash)` - get a commit with parsed message
+- `c.Git.GetCommit(hash)` - get a commit with parsed message (includes `ShortHash()` method)
 - `c.Git.GetCommits(branch, base)` - get all commits between base and branch
 - `c.Git.CheckoutBranch(name)` / `c.Git.CreateAndCheckoutBranch(name)` - branch operations
+- `c.Git.CreateAndCheckoutBranchAt(name, commitHash)` - create branch at specific commit (used by `stack edit`)
+- `c.Git.HasUncommittedChanges()` - check for uncommitted changes before operations
 - `c.Git.RebaseSubsequentCommits(...)` - rebase commits after a stack update
 - All git operations go through the client for consistency and testability
 

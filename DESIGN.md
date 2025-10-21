@@ -853,30 +853,40 @@ IF NEW:
 **Schema:**
 ```json
 {
-  "550e8400-e29b-41d4-a716": {
-    "pr_number": 1234,
-    "url": "https://github.com/user/repo/pull/1234",
-    "branch": "username/stack-auth-refactor/550e8400",
-    "created_at": "2025-10-19T15:00:00Z",
-    "last_pushed": "2025-10-19T16:00:00Z",
-    "state": "open"
-  },
-  "661f9511-e29b-41d4-a716": {
-    "pr_number": 1235,
-    "url": "https://github.com/user/repo/pull/1235",
-    "branch": "username/stack-auth-refactor/661f9511",
-    "created_at": "2025-10-19T15:05:00Z",
-    "last_pushed": "2025-10-19T16:00:00Z",
-    "state": "draft"
+  "version": 1,
+  "prs": {
+    "550e8400-e29b-41d4-a716": {
+      "pr_number": 1234,
+      "url": "https://github.com/user/repo/pull/1234",
+      "branch": "username/stack-auth-refactor/550e8400",
+      "commit_hash": "abc1234567890abcdef1234567890abcdef12345",
+      "created_at": "2025-10-19T15:00:00Z",
+      "last_pushed": "2025-10-19T16:00:00Z",
+      "state": "open"
+    },
+    "661f9511-e29b-41d4-a716": {
+      "pr_number": 1235,
+      "url": "https://github.com/user/repo/pull/1235",
+      "branch": "username/stack-auth-refactor/661f9511",
+      "commit_hash": "def5678901234567890abcdef1234567890abcde",
+      "created_at": "2025-10-19T15:05:00Z",
+      "last_pushed": "2025-10-19T16:00:00Z",
+      "state": "draft"
+    }
   }
 }
 ```
 
-**Fields:**
+**Top-level structure (PRData):**
+- `version`: Schema version (currently 1) for future evolution
+- `prs`: Map of UUID to PR information
+
+**PR fields:**
 - Key: Full UUID (16 hex chars)
 - `pr_number`: GitHub PR number
 - `url`: Full PR URL
 - `branch`: Branch name for this PR
+- `commit_hash`: Current commit hash for this PR (tracked for updates)
 - `created_at`: When PR was first created
 - `last_pushed`: Last time this PR was pushed
 - `state`: PR state ("open", "draft", "closed", "merged")
@@ -1015,34 +1025,40 @@ This approach is more git-native and eliminates the need for state files.
 
 ---
 
-### Phase 3: Editing & Navigation (Week 2)
+### Phase 3: Editing & Navigation ✅ COMPLETED
 
 **Goal:** Interactive PR editing and stack switching
 
-**Tasks:**
-1. `stack edit` command (`cmd/edit.go`)
-   - Interactive PR selection (numbered list)
+**Status:** Completed with fuzzy finder integration and styled terminal output
+
+**What was implemented:**
+
+1. ✅ `stack edit` command (`cmd/edit/edit.go`)
+   - Interactive PR selection using fuzzy finder
    - Extract UUID from selected commit
-   - Create UUID branch at that commit
+   - Create UUID branch at that commit (with sync if already exists)
    - Checkout UUID branch
-   - Support direct ref: `stack edit 2`, `stack edit abc1234`
+   - Uncommitted changes validation before editing
+   - Preview window showing change details
 
-2. `stack switch` command (`cmd/switch.go`)
-   - Integrate fuzzy finder (`go-fuzzyfinder`)
-   - List all stacks with metadata
-   - Allow filtering by name
-   - Update current stack
-   - Checkout stack branch
-   - Support direct switch: `stack switch <name>`
+2. ✅ `stack switch` command (`cmd/switch/switch.go`)
+   - Integrated fuzzy finder (`go-fuzzyfinder`)
+   - Lists all stacks with change counts and status
+   - Supports filtering by name
+   - Updates current stack (via branch checkout)
+   - Displays full stack details after switching
+   - Supports direct switch: `stack switch <name>`
+   - Uncommitted changes validation before switching
 
-3. Better output (`internal/ui/`)
-   - Colored status indicators (🟢🟡🔵🟣⚪)
-   - Table formatting for `stack show`
-   - Box drawing for visual separation
-   - Progress indicators
-   - Terminal width detection
+3. ✅ UI system (`internal/ui/`)
+   - Colored status indicators (🟢🟡🟣⚪)
+   - Styled table formatting for `stack show` and `stack list`
+   - Message rendering (success, error, warning, info)
+   - Formatting utilities (truncate, pad, boxes)
+   - lipgloss-based styling for consistency
+   - All commands refactored to use UI system
 
-**Deliverable:** Can easily navigate between stacks and edit PRs
+**Deliverable:** ✅ Can easily navigate between stacks and edit PRs with polished UI
 
 ---
 
@@ -1198,21 +1214,21 @@ stack/
 │   ├── root.go                  # Root command setup with cobra
 │   ├── command.go               # Command interface for registration pattern
 │   ├── list/
-│   │   └── list.go              # stack list command
+│   │   └── list.go              # stack list command (✅ completed, uses UI system)
 │   ├── show/
-│   │   └── show.go              # stack show command
+│   │   └── show.go              # stack show command (✅ completed, uses UI system)
 │   ├── newcmd/
-│   │   └── new.go               # stack new command (newcmd to avoid "new" keyword)
+│   │   └── new.go               # stack new command (newcmd to avoid "new" keyword) (✅ completed)
+│   ├── edit/
+│   │   └── edit.go              # stack edit command (✅ completed)
+│   ├── switch/
+│   │   └── switch.go            # stack switch command (package: switchcmd) (✅ completed)
 │   ├── hook/                    # Git hook implementations (✅ completed)
 │   │   ├── hook.go              # Parent hook command
 │   │   ├── prepare_commit_msg.go # prepare-commit-msg hook
 │   │   ├── commit_msg.go        # commit-msg hook
 │   │   ├── post_commit.go       # post-commit hook
 │   │   └── operations.go        # Common hook operations
-│   ├── switch/
-│   │   └── switch.go            # stack switch (future)
-│   ├── edit/
-│   │   └── edit.go              # stack edit (future)
 │   ├── push/
 │   │   └── push.go              # stack push (future)
 │   └── refresh/
@@ -1227,9 +1243,15 @@ stack/
 │   ├── stack/                   # Stack management
 │   │   ├── client.go            # Stack client for metadata management
 │   │   ├── stack.go             # Stack struct
-│   │   ├── pr.go                # PR struct and PRMap type
+│   │   ├── pr.go                # PRData and PR structs with versioning (✅ completed)
 │   │   ├── change.go            # Change domain model (✅ completed)
 │   │   └── context.go           # StackContext for branch-based state and branch helpers (✅ completed)
+│   │
+│   ├── ui/                      # User interface (✅ completed)
+│   │   ├── format.go            # Formatting utilities (truncate, pad, boxes, etc.)
+│   │   ├── styles.go            # lipgloss style definitions
+│   │   ├── stack.go             # Stack-specific rendering functions
+│   │   └── messages.go          # Success, error, warning, info messages
 │   │
 │   ├── hooks/                   # Git hooks (✅ completed)
 │   │   └── install.go           # Hook installation/uninstallation
@@ -1240,11 +1262,6 @@ stack/
 │   ├── github/                  # GitHub integration (future)
 │   │   ├── client.go            # gh CLI wrapper
 │   │   └── pr.go                # PR operations (create, update, query)
-│   │
-│   ├── ui/                      # User interface (future)
-│   │   ├── table.go             # Table rendering
-│   │   ├── prompt.go            # User prompts and input
-│   │   └── fuzzy.go             # Fuzzy finder integration
 │   │
 │   └── config/                  # Configuration (future)
 │       └── config.go            # Global config management
