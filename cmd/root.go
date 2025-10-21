@@ -9,6 +9,7 @@ import (
 	"github.com/bjulian5/stack/cmd/bottom"
 	"github.com/bjulian5/stack/cmd/down"
 	"github.com/bjulian5/stack/cmd/edit"
+	"github.com/bjulian5/stack/cmd/fixup"
 	"github.com/bjulian5/stack/cmd/hook"
 	"github.com/bjulian5/stack/cmd/list"
 	"github.com/bjulian5/stack/cmd/newcmd"
@@ -49,6 +50,7 @@ func init() {
 		&list.Command{},
 		&show.Command{},
 		&edit.Command{},
+		&fixup.Command{},
 		&up.Command{},
 		&down.Command{},
 		&top.Command{},

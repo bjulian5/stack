@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ktr0731/go-fuzzyfinder"
 	"github.com/spf13/cobra"
 
 	"github.com/bjulian5/stack/internal/gh"
@@ -88,25 +87,14 @@ func (c *Command) Run(ctx context.Context) error {
 		selectedChange = &prsOnly[len(prsOnly)-1]
 	} else {
 		// Use fuzzy finder to select a PR
-		idx, err := fuzzyfinder.Find(
-			prsOnly,
-			func(i int) string {
-				return ui.FormatChangeFinderLine(prsOnly[i])
-			},
-			fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
-				if i == -1 {
-					return ""
-				}
-				return ui.FormatChangePreview(prsOnly[i])
-			}),
-		)
-
+		selectedChange, err = ui.SelectChange(prsOnly)
 		if err != nil {
+			return err
+		}
+		if selectedChange == nil {
 			// User cancelled
 			return nil
 		}
-
-		selectedChange = &prsOnly[idx]
 	}
 
 	// Open PR in browser using gh

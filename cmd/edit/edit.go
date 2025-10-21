@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ktr0731/go-fuzzyfinder"
 	"github.com/spf13/cobra"
 
 	"github.com/bjulian5/stack/internal/git"
@@ -75,25 +74,14 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Use fuzzy finder to select a change
-	idx, err := fuzzyfinder.Find(
-		stackCtx.Changes,
-		func(i int) string {
-			return ui.FormatChangeFinderLine(stackCtx.Changes[i])
-		},
-		fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
-			if i == -1 {
-				return ""
-			}
-			return ui.FormatChangePreview(stackCtx.Changes[i])
-		}),
-	)
-
+	selectedChange, err := ui.SelectChange(stackCtx.Changes)
 	if err != nil {
+		return err
+	}
+	if selectedChange == nil {
 		// User cancelled
 		return nil
 	}
-
-	selectedChange := stackCtx.Changes[idx]
 
 	// Validate UUID exists
 	if selectedChange.UUID == "" {
@@ -101,7 +89,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Checkout UUID branch for editing
-	branchName, err := stack.CheckoutChangeForEditing(c.Git, stackCtx, &selectedChange)
+	branchName, err := stack.CheckoutChangeForEditing(c.Git, stackCtx, selectedChange)
 	if err != nil {
 		return err
 	}

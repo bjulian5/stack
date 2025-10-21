@@ -249,6 +249,45 @@ func (c *Client) HasUncommittedChanges() (bool, error) {
 	return len(strings.TrimSpace(string(output))) > 0, nil
 }
 
+// HasStagedChanges checks if there are any staged changes ready to be committed
+func (c *Client) HasStagedChanges() (bool, error) {
+	// git diff --cached --quiet returns exit code 0 if no changes, 1 if changes exist
+	cmd := exec.Command("git", "diff", "--cached", "--quiet")
+	err := cmd.Run()
+	if err != nil {
+		// Exit code 1 means there are staged changes
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			return true, nil
+		}
+		return false, fmt.Errorf("failed to check staged changes: %w", err)
+	}
+	// Exit code 0 means no staged changes
+	return false, nil
+}
+
+// CommitFixup creates a fixup commit targeting the specified commit
+func (c *Client) CommitFixup(commitHash string) error {
+	cmd := exec.Command("git", "commit", "--fixup", commitHash)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to create fixup commit: %w\nOutput: %s", err, string(output))
+	}
+	return nil
+}
+
+// RebaseInteractiveAutosquash runs an interactive rebase with autosquash from the specified commit
+// It uses GIT_SEQUENCE_EDITOR=true to automatically apply the autosquash without user interaction
+func (c *Client) RebaseInteractiveAutosquash(fromCommit string) error {
+	cmd := exec.Command("git", "rebase", "-i", "--autosquash", fromCommit)
+	// Set GIT_SEQUENCE_EDITOR=true to automatically accept the rebase plan
+	cmd.Env = append(os.Environ(), "GIT_SEQUENCE_EDITOR=true")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("rebase has conflicts\n\nTo resolve:\n  1. Fix conflicts in the affected files\n  2. Stage resolved files: git add <files>\n  3. Continue rebase: git rebase --continue\n  4. Or abort: git rebase --abort\n\nError: %w\nOutput: %s", err, string(output))
+	}
+	return nil
+}
+
 // Push pushes a branch to the remote repository
 func (c *Client) Push(branch string, force bool) error {
 	args := []string{"push"}
