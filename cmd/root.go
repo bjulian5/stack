@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/cmd/down"
 	"github.com/bjulian5/stack/cmd/edit"
 	"github.com/bjulian5/stack/cmd/hook"
 	"github.com/bjulian5/stack/cmd/list"
@@ -13,6 +14,7 @@ import (
 	"github.com/bjulian5/stack/cmd/push"
 	"github.com/bjulian5/stack/cmd/show"
 	switchcmd "github.com/bjulian5/stack/cmd/switch"
+	"github.com/bjulian5/stack/cmd/up"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -44,6 +46,8 @@ func init() {
 		&list.Command{},
 		&show.Command{},
 		&edit.Command{},
+		&up.Command{},
+		&down.Command{},
 		&switchcmd.Command{},
 		&push.Command{},
 		&hook.Command{},

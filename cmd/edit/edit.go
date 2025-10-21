@@ -7,7 +7,6 @@ import (
 	"github.com/ktr0731/go-fuzzyfinder"
 	"github.com/spf13/cobra"
 
-	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
@@ -132,41 +131,10 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("cannot edit change #%d: commit missing PR-UUID trailer (may have been created before git hooks were installed - try amending it on the stack branch first)", selectedChange.Position)
 	}
 
-	// Get username for branch naming
-	username, err := common.GetUsername()
+	// Checkout UUID branch for editing
+	branchName, err := stack.CheckoutChangeForEditing(c.Git, stackCtx, &selectedChange)
 	if err != nil {
-		return fmt.Errorf("failed to get username: %w", err)
-	}
-
-	// Format UUID branch name
-	branchName := stackCtx.FormatUUIDBranch(username, selectedChange.UUID)
-
-	// Check if UUID branch already exists
-	if c.Git.BranchExists(branchName) {
-		// Get the commit hash the existing branch points to
-		existingHash, err := c.Git.GetCommitHash(branchName)
-		if err != nil {
-			return fmt.Errorf("failed to get branch commit: %w", err)
-		}
-
-		// Checkout the branch first
-		if err := c.Git.CheckoutBranch(branchName); err != nil {
-			return fmt.Errorf("failed to checkout branch: %w", err)
-		}
-
-		// If branch is at wrong commit, sync it to the current commit location
-		if existingHash != selectedChange.CommitHash {
-			if err := c.Git.ResetHard(selectedChange.CommitHash); err != nil {
-				return fmt.Errorf("failed to sync branch to current commit: %w", err)
-			}
-			fmt.Println(ui.RenderWarningMessage(fmt.Sprintf("Synced branch to current commit (was at %s, now at %s)",
-				git.ShortHash(existingHash), git.ShortHash(selectedChange.CommitHash))))
-		}
-	} else {
-		// Create and checkout new branch at the commit
-		if err := c.Git.CreateAndCheckoutBranchAt(branchName, selectedChange.CommitHash); err != nil {
-			return fmt.Errorf("failed to create branch: %w", err)
-		}
+		return err
 	}
 
 	// Print success message using new UI

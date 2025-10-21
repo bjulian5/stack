@@ -945,7 +945,6 @@ This approach is more git-native and eliminates the need for state files.
    - ✅ `GetStackContext()` - derive stack context from current branch
    - ✅ `GetStackContextByName()` - load stack context for a specific stack (recommended)
    - ✅ `SwitchStack()` - checkout stack branch
-   - ✅ `GetStackDetails()` - get comprehensive stack information (deprecated, use `GetStackContextByName()`)
 
 4. **Basic commands** (each in its own package)
    - ✅ `cmd/command.go` - Command interface
@@ -968,7 +967,8 @@ This approach is more git-native and eliminates the need for state files.
 - ✅ Commit message parsing refactored into structured types (`git.Commit` with `Hash` and `Message`, `git.CommitMessage` with `Title`, `Body`, `Trailers`)
 - ✅ Branch helper functions moved from `internal/git/branch.go` to `internal/stack/context.go` for better organization
 - ✅ Git client API simplified by removing unused methods (e.g., `CreateBranch()`, `DeleteBranch()`, `GetLocalBranches()`, `FindCommitByTrailer()`)
-- ✅ `GetStackContextByName()` introduced as the recommended way to load stack details (replaces `GetStackDetails()`)
+- ✅ `GetStackContextByName()` introduced as the recommended way to load stack details
+- ✅ Deprecated `GetStackDetails()`, `StackDetails` type, and unused PR methods (`GetPR()`, `DeletePR()`, `DeleteStack()`) removed
 
 ---
 

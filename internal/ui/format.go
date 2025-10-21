@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bjulian5/stack/internal/stack"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/bjulian5/stack/internal/stack"
 )
 
 // Truncate truncates text to maxLen with an ellipsis if needed

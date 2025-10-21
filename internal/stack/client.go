@@ -23,12 +23,6 @@ type GitOperations interface {
 	GitRoot() string
 }
 
-// StackDetails contains comprehensive information about a stack
-type StackDetails struct {
-	Stack   *Stack
-	Changes []Change
-}
-
 // Client provides stack operations
 type Client struct {
 	git     GitOperations
@@ -308,40 +302,6 @@ func (c *Client) getChangesForStack(s *Stack) ([]Change, error) {
 	return changes, nil
 }
 
-// GetStackDetails returns comprehensive details about a stack including all changes
-// Deprecated: Use GetStackContextByName instead
-func (c *Client) GetStackDetails(name string) (*StackDetails, error) {
-	if name == "" {
-		return nil, fmt.Errorf("stack name is required")
-	}
-
-	// Load stack metadata
-	s, err := c.LoadStack(name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load stack '%s': %w", name, err)
-	}
-
-	changes, err := c.getChangesForStack(s)
-	if err != nil {
-		return nil, err
-	}
-
-	return &StackDetails{
-		Stack:   s,
-		Changes: changes,
-	}, nil
-}
-
-// DeleteStack deletes a stack and its metadata
-func (c *Client) DeleteStack(name string) error {
-	stackDir := c.getStackDir(name)
-	if err := os.RemoveAll(stackDir); err != nil {
-		return fmt.Errorf("failed to delete stack directory: %w", err)
-	}
-
-	return nil
-}
-
 // LoadPRs loads PR tracking data for a stack
 func (c *Client) LoadPRs(stackName string) (*PRData, error) {
 	stackDir := c.getStackDir(stackName)
@@ -402,21 +362,6 @@ func (c *Client) SavePRs(stackName string, prData *PRData) error {
 	return nil
 }
 
-// GetPR gets PR information for a UUID
-func (c *Client) GetPR(stackName string, uuid string) (*PR, error) {
-	prData, err := c.LoadPRs(stackName)
-	if err != nil {
-		return nil, err
-	}
-
-	pr, ok := prData.PRs[uuid]
-	if !ok {
-		return nil, fmt.Errorf("PR not found for UUID %s", uuid)
-	}
-
-	return pr, nil
-}
-
 // SetPR sets PR information for a UUID
 func (c *Client) SetPR(stackName string, uuid string, pr *PR) error {
 	prData, err := c.LoadPRs(stackName)
@@ -425,18 +370,6 @@ func (c *Client) SetPR(stackName string, uuid string, pr *PR) error {
 	}
 
 	prData.PRs[uuid] = pr
-
-	return c.SavePRs(stackName, prData)
-}
-
-// DeletePR deletes PR information for a UUID
-func (c *Client) DeletePR(stackName string, uuid string) error {
-	prData, err := c.LoadPRs(stackName)
-	if err != nil {
-		return err
-	}
-
-	delete(prData.PRs, uuid)
 
 	return c.SavePRs(stackName, prData)
 }

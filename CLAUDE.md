@@ -55,9 +55,9 @@ go build && ./stack list
 - Manages stack metadata stored in `.git/stack/<stack-name>/`
 - Each stack has `config.json` (stack metadata) and `prs.json` (PR tracking with versioning)
 - Provides `GetStackContext()` to determine current stack from branch name
-- `GetStackContextByName(name)` loads a specific stack's context (recommended over deprecated `GetStackDetails()`)
+- `GetStackContextByName(name)` loads a specific stack's context by name
 - PR data stored as `PRData` structure with version field for future schema evolution
-- Methods: `LoadPRs()`, `SavePRs()`, `GetPR()`, `SetPR()`, `DeletePR()` work with versioned PR data
+- Methods: `LoadPRs()`, `SavePRs()`, `SetPR()` work with versioned PR data
 
 **Stack Context** (`internal/stack/context.go`)
 - `StackContext` is the primary abstraction for working with stacks
