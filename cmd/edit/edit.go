@@ -92,16 +92,10 @@ func (c *Command) Run(ctx context.Context) error {
 				prLabel = fmt.Sprintf("#%-4d", change.PR.PRNumber)
 			}
 
-			// Short hash
-			shortHash := change.CommitHash
-			if len(shortHash) > git.ShortHashLength {
-				shortHash = shortHash[:git.ShortHashLength]
-			}
-
 			// Truncate title to fit nicely
 			title := ui.Truncate(change.Title, 40)
 
-			return fmt.Sprintf("%2d %s %-6s │ %-40s │ %s", change.Position, icon, prLabel, title, shortHash)
+			return fmt.Sprintf("%2d %s %-6s │ %-40s │ %s", change.Position, icon, prLabel, title, git.ShortHash(change.CommitHash))
 		},
 		fuzzyfinder.WithPreviewWindow(func(i, w, h int) string {
 			if i == -1 {
@@ -165,16 +159,8 @@ func (c *Command) Run(ctx context.Context) error {
 			if err := c.Git.ResetHard(selectedChange.CommitHash); err != nil {
 				return fmt.Errorf("failed to sync branch to current commit: %w", err)
 			}
-			// Truncate hashes for display
-			oldShort := existingHash
-			if len(oldShort) > git.ShortHashLength {
-				oldShort = oldShort[:git.ShortHashLength]
-			}
-			newShort := selectedChange.CommitHash
-			if len(newShort) > git.ShortHashLength {
-				newShort = newShort[:git.ShortHashLength]
-			}
-			fmt.Println(ui.RenderWarningMessage(fmt.Sprintf("Synced branch to current commit (was at %s, now at %s)", oldShort, newShort)))
+			fmt.Println(ui.RenderWarningMessage(fmt.Sprintf("Synced branch to current commit (was at %s, now at %s)",
+				git.ShortHash(existingHash), git.ShortHash(selectedChange.CommitHash))))
 		}
 	} else {
 		// Create and checkout new branch at the commit

@@ -150,7 +150,7 @@ func (c *Client) GetStackContext() (*StackContext, error) {
 	var editingUUID string
 	if isStackBranch(branch) {
 		ctx.StackName = ExtractStackName(branch)
-	} else if IsUUIDBranch(branch) {
+	} else if isUUIDBranch(branch) {
 		ctx.StackName, editingUUID = ExtractUUIDFromBranch(branch)
 		ctx.currentUUID = editingUUID
 	} else {

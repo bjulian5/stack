@@ -64,8 +64,8 @@ func FormatStackBranch(username string, stackName string) string {
 	return fmt.Sprintf("%s/stack-%s/TOP", username, stackName)
 }
 
-// IsUUIDBranch checks if a branch name matches the UUID branch pattern
-func IsUUIDBranch(branch string) bool {
+// isUUIDBranch checks if a branch name matches the UUID branch pattern
+func isUUIDBranch(branch string) bool {
 	// UUID branches follow pattern: username/stack-<name>/<uuid>
 	// where <uuid> is 16 hex characters (NOT "TOP")
 	parts := strings.Split(branch, "/")

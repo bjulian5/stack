@@ -23,10 +23,15 @@ const ShortHashLength = 7
 
 // ShortHash returns the abbreviated commit hash (first 7 characters)
 func (c *Commit) ShortHash() string {
-	if len(c.Hash) <= ShortHashLength {
-		return c.Hash
+	return ShortHash(c.Hash)
+}
+
+// ShortHash returns the abbreviated form of a commit hash string (first 7 characters)
+func ShortHash(hash string) string {
+	if len(hash) <= ShortHashLength {
+		return hash
 	}
-	return c.Hash[:ShortHashLength]
+	return hash[:ShortHashLength]
 }
 
 // ParseCommitMessage parses a commit message string into its components
