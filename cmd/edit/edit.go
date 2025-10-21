@@ -68,13 +68,16 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("not on a stack branch: switch to a stack first or use 'stack switch'")
 	}
 
-	// Validate stack has changes
-	if len(stackCtx.Changes) == 0 {
-		return fmt.Errorf("no changes in stack: add commits to create PRs")
+	// Check sync status and warn if stale
+	ui.WarnIfStackStale(stackCtx.StackName, c.Stack)
+
+	// Validate stack has active changes
+	if len(stackCtx.ActiveChanges) == 0 {
+		return fmt.Errorf("no active changes to edit: all changes are merged")
 	}
 
 	// Use fuzzy finder to select a change
-	selectedChange, err := ui.SelectChange(stackCtx.Changes)
+	selectedChange, err := ui.SelectChange(stackCtx.ActiveChanges)
 	if err != nil {
 		return err
 	}

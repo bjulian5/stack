@@ -67,13 +67,16 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("not on a stack branch: switch to a stack first or use 'stack switch'")
 	}
 
-	// Validate stack has changes
-	if len(stackCtx.Changes) == 0 {
-		return fmt.Errorf("no changes in stack: add commits to create PRs")
+	// Check sync status and warn if stale
+	ui.WarnIfStackStale(stackCtx.StackName, c.Stack)
+
+	// Validate stack has active changes
+	if len(stackCtx.ActiveChanges) == 0 {
+		return fmt.Errorf("no active changes in stack: all changes are merged")
 	}
 
 	// Get the first change (position 1, index 0)
-	firstChange := &stackCtx.Changes[0]
+	firstChange := &stackCtx.ActiveChanges[0]
 
 	// Check if already at bottom
 	if stackCtx.IsEditing() {

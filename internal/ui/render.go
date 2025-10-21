@@ -114,7 +114,11 @@ func RenderStackDetails(s *stack.Stack, changes []stack.Change) string {
 		{Header: "Commit", Width: 7, Align: AlignLeft},
 	})
 
-	for _, change := range changes {
+	// Track if we've seen merged changes followed by active changes (for separator)
+	lastWasMerged := false
+	addedSeparator := false
+
+	for i, change := range changes {
 		pos := fmt.Sprintf("%d", change.Position)
 		status := FormatChangeStatus(change)
 		prLabel := FormatPRLabel(change.PR)
@@ -125,11 +129,22 @@ func RenderStackDetails(s *stack.Stack, changes []stack.Change) string {
 		}
 		shortHash = Dim(shortHash)
 
+		// Add visual separator between merged and active changes
+		if i > 0 && !addedSeparator && lastWasMerged && !change.IsMerged {
+			// Add a separator row
+			if err := table.AddRow(Dim("───"), Dim("─────────"), Dim("──────────"), Dim("──────────"), Dim("───────")); err != nil {
+				panic(fmt.Sprintf("BUG: failed to add separator row: %v", err))
+			}
+			addedSeparator = true
+		}
+
 		// AddRow should never fail here since we're passing exactly 5 cells to a 5-column table
 		// If it does fail, it's a programming bug that should be caught during development
 		if err := table.AddRow(pos, status, prLabel, title, shortHash); err != nil {
 			panic(fmt.Sprintf("BUG: failed to add table row: %v", err))
 		}
+
+		lastWasMerged = change.IsMerged
 	}
 
 	output.WriteString(table.Render())
@@ -178,7 +193,7 @@ func RenderStackDetails(s *stack.Stack, changes []stack.Change) string {
 
 	legendContent := FormatStatus("open") + " - PR is open and ready for review\n" +
 		FormatStatus("draft") + " - PR is in draft state\n" +
-		FormatStatus("merged") + " - PR has been merged\n" +
+		FormatStatus("merged") + " - PR has been merged (tracked in stack metadata)\n" +
 		FormatStatus("local") + " - Not yet pushed to GitHub"
 
 	legend := RenderPanel(legendContent)

@@ -13,6 +13,10 @@ import (
 	"github.com/bjulian5/stack/internal/git"
 )
 
+// DefaultSyncThreshold is the time threshold after which a stack is considered stale
+// and needs to be refreshed to check for merged PRs on GitHub
+const DefaultSyncThreshold = 5 * time.Minute
+
 // GitOperations defines the git operations needed by Stack Client
 type GitOperations interface {
 	GetCurrentBranch() (string, error)
@@ -20,6 +24,7 @@ type GitOperations interface {
 	CreateAndCheckoutBranch(name string) error
 	CheckoutBranch(name string) error
 	GetCommits(branch, base string) ([]git.Commit, error)
+	GetCommitHash(ref string) (string, error)
 	GitRoot() string
 }
 
@@ -86,6 +91,63 @@ func (c *Client) SaveStack(stack *Stack) error {
 	}
 
 	return nil
+}
+
+// SyncStatus indicates if a stack needs GitHub synchronization
+type SyncStatus struct {
+	NeedsSync bool   // True if stack needs refresh
+	Reason    string // Why sync is needed (internal use)
+	Warning   string // User-facing warning message
+}
+
+// CheckSyncStatus checks if a stack needs refresh without hitting GitHub.
+// Returns status indicating whether sync is needed and why.
+func (c *Client) CheckSyncStatus(stackName string) (*SyncStatus, error) {
+	stack, err := c.LoadStack(stackName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load stack: %w", err)
+	}
+
+	status := &SyncStatus{}
+
+	// Never synced - definitely needs sync
+	if stack.LastSynced.IsZero() {
+		status.NeedsSync = true
+		status.Reason = "never_synced"
+		status.Warning = "Stack has never been synced with GitHub. Run 'stack refresh' to check for merged PRs."
+		return status, nil
+	}
+
+	// Check if TOP branch changed since last sync
+	// This indicates new commits were added
+	currentHash, err := c.git.GetCommitHash(stack.Branch)
+	if err != nil {
+		// If we can't get the hash, be conservative and say sync needed
+		status.NeedsSync = true
+		status.Reason = "hash_check_failed"
+		status.Warning = "Could not verify stack sync status. Run 'stack refresh' to ensure consistency."
+		return status, nil
+	}
+
+	if currentHash != stack.SyncHash {
+		status.NeedsSync = true
+		status.Reason = "commits_changed"
+		status.Warning = "Stack has new commits since last sync. Run 'stack refresh' to ensure consistency with GitHub."
+		return status, nil
+	}
+
+	// Check time threshold
+	// Even if nothing changed locally, GitHub might have merged PRs
+	if time.Since(stack.LastSynced) > DefaultSyncThreshold {
+		status.NeedsSync = true
+		status.Reason = "stale"
+		status.Warning = "Stack sync is stale. Run 'stack refresh' to check for merged PRs."
+		return status, nil
+	}
+
+	// All checks passed - in sync
+	status.NeedsSync = false
+	return status, nil
 }
 
 // StackExists checks if a stack exists
@@ -156,15 +218,17 @@ func (c *Client) GetStackContext() (*StackContext, error) {
 	if ctx.StackName != "" {
 		stack, err := c.LoadStack(ctx.StackName)
 		if err != nil {
-			return ctx, nil // Return partial context
+			return ctx, fmt.Errorf("failed to load stack '%s': %w", ctx.StackName, err)
 		}
 		ctx.Stack = stack
 
-		// Load all changes
-		changes, err := c.getChangesForStack(stack)
-		if err == nil {
-			ctx.Changes = changes
+		// Load all changes (merged + active)
+		allChanges, activeChanges, err := c.getChangesForStack(stack)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load changes for stack '%s': %w", ctx.StackName, err)
 		}
+		ctx.AllChanges = allChanges
+		ctx.ActiveChanges = activeChanges
 	}
 
 	return ctx, nil
@@ -183,17 +247,18 @@ func (c *Client) GetStackContextByName(name string) (*StackContext, error) {
 		return nil, fmt.Errorf("failed to load stack '%s': %w", name, err)
 	}
 
-	// Load all changes
-	changes, err := c.getChangesForStack(stack)
+	// Load all changes (merged + active)
+	allChanges, activeChanges, err := c.getChangesForStack(stack)
 	if err != nil {
 		return nil, err
 	}
 
 	return &StackContext{
-		StackName:   name,
-		Stack:       stack,
-		Changes:     changes,
-		currentUUID: "", // Not editing (loaded by name)
+		StackName:     name,
+		Stack:         stack,
+		AllChanges:    allChanges,
+		ActiveChanges: activeChanges,
+		currentUUID:   "", // Not editing (loaded by name)
 	}, nil
 }
 
@@ -265,22 +330,47 @@ func (c *Client) CreateStack(name string, baseBranch string) (*Stack, error) {
 }
 
 // getChangesForStack loads all changes for a stack (shared logic)
-func (c *Client) getChangesForStack(s *Stack) ([]Change, error) {
-	// Get commits from git
-	gitCommits, err := c.git.GetCommits(s.Branch, s.Base)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get commits: %w", err)
-	}
-
+// getChangesForStack returns both AllChanges and ActiveChanges for a stack.
+// AllChanges includes merged + active changes. ActiveChanges includes only unmerged changes.
+func (c *Client) getChangesForStack(s *Stack) (allChanges []Change, activeChanges []Change, err error) {
 	// Load PR tracking data
 	prData, err := c.LoadPRs(s.Name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load PRs: %w", err)
+		return nil, nil, fmt.Errorf("failed to load PRs: %w", err)
 	}
 
-	// Convert git commits to Changes
-	changes := make([]Change, len(gitCommits))
-	for i, commit := range gitCommits {
+	// Get merged changes from stack metadata (not from a git branch)
+	mergedChanges := s.MergedChanges
+	if mergedChanges == nil {
+		mergedChanges = []Change{}
+	}
+
+	// Load active changes from TOP branch
+	activeCommits, err := c.git.GetCommits(s.Branch, s.Base)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get active commits: %w", err)
+	}
+
+	// Convert to changes with IsMerged = false
+	activeChanges = c.commitsToChanges(activeCommits, prData, false)
+
+	// Renumber positions for active changes (1-indexed)
+	for i := range activeChanges {
+		activeChanges[i].Position = i + 1
+	}
+
+	// Build AllChanges (merged first, then active)
+	allChanges = make([]Change, 0, len(mergedChanges)+len(activeChanges))
+	allChanges = append(allChanges, mergedChanges...)
+	allChanges = append(allChanges, activeChanges...)
+
+	return allChanges, activeChanges, nil
+}
+
+// commitsToChanges converts git commits to Changes with the specified merged status
+func (c *Client) commitsToChanges(commits []git.Commit, prData *PRData, isMerged bool) []Change {
+	changes := make([]Change, len(commits))
+	for i, commit := range commits {
 		uuid := commit.Message.Trailers["PR-UUID"]
 		var pr *PR
 		if uuid != "" {
@@ -290,16 +380,17 @@ func (c *Client) getChangesForStack(s *Stack) ([]Change, error) {
 		}
 
 		changes[i] = Change{
-			Position:    i + 1,
+			Position:    i + 1, // 1-indexed by commit order; renumbered later for active changes only
 			Title:       commit.Message.Title,
 			Description: commit.Message.Body,
 			CommitHash:  commit.Hash,
 			UUID:        uuid,
 			PR:          pr,
+			IsMerged:    isMerged,
 		}
 	}
 
-	return changes, nil
+	return changes
 }
 
 // LoadPRs loads PR tracking data for a stack

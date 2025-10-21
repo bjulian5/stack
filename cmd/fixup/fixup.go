@@ -76,6 +76,9 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("cannot run fixup while editing a change: checkout the stack TOP branch first")
 	}
 
+	// Check sync status and warn if stale
+	ui.WarnIfStackStale(stackCtx.StackName, c.Stack)
+
 	// Check for staged changes - this is required
 	hasStaged, err := c.Git.HasStagedChanges()
 	if err != nil {
@@ -85,13 +88,13 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("no staged changes detected: stage your changes with 'git add' before running fixup")
 	}
 
-	// Validate stack has changes
-	if len(stackCtx.Changes) == 0 {
-		return fmt.Errorf("no changes in stack: add commits to create PRs")
+	// Validate stack has active changes
+	if len(stackCtx.ActiveChanges) == 0 {
+		return fmt.Errorf("no active changes to fixup: all changes are merged")
 	}
 
 	// Use fuzzy finder to select a change to fixup
-	selectedChange, err := ui.SelectChange(stackCtx.Changes)
+	selectedChange, err := ui.SelectChange(stackCtx.ActiveChanges)
 	if err != nil {
 		return err
 	}

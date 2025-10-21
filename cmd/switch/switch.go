@@ -105,7 +105,7 @@ func (c *Command) Run(ctx context.Context) error {
 				fmt.Fprintf(os.Stderr, "Warning: failed to load stack %s: %v\n", s.Name, err)
 				continue
 			}
-			stackChangesMap[s.Name] = ctx.Changes
+			stackChangesMap[s.Name] = ctx.AllChanges
 		}
 
 		idx, err := fuzzyfinder.Find(
@@ -143,7 +143,7 @@ func (c *Command) Run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to load stack details: %w", err)
 		}
-		fmt.Println(ui.RenderStackDetails(stackCtx.Stack, stackCtx.Changes))
+		fmt.Println(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges))
 		return nil
 	}
 
@@ -162,7 +162,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to load stack details: %w", err)
 	}
 
-	fmt.Println(ui.RenderStackDetails(stackCtx.Stack, stackCtx.Changes))
+	fmt.Println(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges))
 
 	return nil
 }

@@ -67,6 +67,9 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("not on a stack branch: switch to a stack first or use 'stack switch'")
 	}
 
+	// Check sync status and warn if stale
+	ui.WarnIfStackStale(stackCtx.StackName, c.Stack)
+
 	// Check if already on TOP branch
 	if !stackCtx.IsEditing() {
 		return fmt.Errorf("already at top of stack")

@@ -67,9 +67,12 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("not on a stack branch: switch to a stack first or use 'stack switch'")
 	}
 
-	// Validate stack has changes
-	if len(stackCtx.Changes) == 0 {
-		return fmt.Errorf("no changes in stack: add commits to create PRs")
+	// Check sync status and warn if stale
+	ui.WarnIfStackStale(stackCtx.StackName, c.Stack)
+
+	// Validate stack has active changes
+	if len(stackCtx.ActiveChanges) == 0 {
+		return fmt.Errorf("no active changes in stack: all changes are merged")
 	}
 
 	// Check if we're on TOP branch
@@ -87,12 +90,12 @@ func (c *Command) Run(ctx context.Context) error {
 	targetPosition := currentChange.Position + 1
 
 	// Validate target exists
-	if targetPosition > len(stackCtx.Changes) {
-		return fmt.Errorf("already at top position %d of %d", currentChange.Position, len(stackCtx.Changes))
+	if targetPosition > len(stackCtx.ActiveChanges) {
+		return fmt.Errorf("already at top position %d of %d", currentChange.Position, len(stackCtx.ActiveChanges))
 	}
 
 	// Get target change by index (Position is 1-indexed)
-	targetChange := &stackCtx.Changes[targetPosition-1]
+	targetChange := &stackCtx.ActiveChanges[targetPosition-1]
 
 	// Validate UUID exists
 	if targetChange.UUID == "" {

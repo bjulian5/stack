@@ -69,7 +69,7 @@ func (c *Command) Run(ctx context.Context) error {
 			fmt.Fprintf(os.Stderr, "Warning: failed to load stack %s: %v\n", s.Name, err)
 			continue
 		}
-		stackChanges[s.Name] = ctx.Changes
+		stackChanges[s.Name] = ctx.AllChanges
 	}
 
 	output := ui.RenderStackList(stacks, currentStack, stackChanges)

@@ -16,8 +16,13 @@ type StackContext struct {
 	// Nil if not a stack context.
 	Stack *Stack
 
-	// Changes contains all changes in the stack.
-	Changes []Change
+	// AllChanges contains the complete history (merged + active changes).
+	// Use for display purposes to show full stack history.
+	AllChanges []Change
+
+	// ActiveChanges contains only unmerged changes from the TOP branch.
+	// Use for all operations: navigation, editing, pushing.
+	ActiveChanges []Change
 
 	// currentUUID is the UUID of the change being edited.
 	// Empty if not editing (e.g., on TOP branch or loaded by name).
@@ -43,10 +48,11 @@ func (s *StackContext) CurrentChange() *Change {
 }
 
 // FindChange finds a change by UUID in this stack.
+// Searches AllChanges (both merged and active) to find the change.
 func (s *StackContext) FindChange(uuid string) *Change {
-	for i := range s.Changes {
-		if s.Changes[i].UUID == uuid {
-			return &s.Changes[i]
+	for i := range s.AllChanges {
+		if s.AllChanges[i].UUID == uuid {
+			return &s.AllChanges[i]
 		}
 	}
 	return nil
@@ -62,6 +68,52 @@ func (s *StackContext) FormatUUIDBranch(username string, uuid string) string {
 // Returns a branch name in the format: username/stack-<name>/TOP
 func FormatStackBranch(username string, stackName string) string {
 	return fmt.Sprintf("%s/stack-%s/TOP", username, stackName)
+}
+
+// ValidateBottomUpMerges ensures that only bottom PRs are merged (no out-of-order merges).
+// Returns an error if any PR in the middle or top is merged while earlier PRs are not.
+func ValidateBottomUpMerges(activeChanges []Change, mergedPRNumbers map[int]bool) error {
+	if len(mergedPRNumbers) == 0 {
+		return nil // No newly merged PRs
+	}
+
+	// Find the first change that is NOT newly merged
+	firstUnmergedIdx := -1
+	for i, change := range activeChanges {
+		if change.PR == nil {
+			// Local change, not pushed yet - definitely not merged
+			firstUnmergedIdx = i
+			break
+		}
+		if !mergedPRNumbers[change.PR.PRNumber] {
+			// This PR is not in the newly merged set
+			firstUnmergedIdx = i
+			break
+		}
+	}
+
+	// If all changes are merged, that's fine
+	if firstUnmergedIdx == -1 {
+		return nil
+	}
+
+	// Check if any changes after the first unmerged are in the merged set
+	for i := firstUnmergedIdx + 1; i < len(activeChanges); i++ {
+		change := activeChanges[i]
+		if change.PR != nil && mergedPRNumbers[change.PR.PRNumber] {
+			// Found an out-of-order merge!
+			return fmt.Errorf(
+				"out-of-order merge detected: PR #%d (change #%d) is merged, but change #%d is not.\n\n"+
+					"Stack requires bottom-up merging. To fix:\n"+
+					"  1. Ask for PR #%d to be reverted, OR\n"+
+					"  2. Manually merge the earlier PRs first, OR\n"+
+					"  3. Use git commands to manually rebase the stack",
+				change.PR.PRNumber, i+1, firstUnmergedIdx+1, change.PR.PRNumber,
+			)
+		}
+	}
+
+	return nil
 }
 
 // isUUIDBranch checks if a branch name matches the UUID branch pattern

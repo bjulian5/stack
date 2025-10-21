@@ -327,3 +327,70 @@ func (c *Client) GetRemoteName() (string, error) {
 	// Return the first remote (usually "origin")
 	return remotes[0], nil
 }
+
+// Fetch fetches from a remote repository
+func (c *Client) Fetch(remote string) error {
+	cmd := exec.Command("git", "fetch", remote)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to fetch from %s: %w\nOutput: %s", remote, err, string(output))
+	}
+	return nil
+}
+
+// CreateBranchAt creates a new branch at a specific commit or ref
+func (c *Client) CreateBranchAt(branchName string, ref string) error {
+	cmd := exec.Command("git", "branch", branchName, ref)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to create branch %s at %s: %w\nOutput: %s", branchName, ref, err, string(output))
+	}
+	return nil
+}
+
+// Rebase rebases current branch on top of another branch
+func (c *Client) Rebase(onto string) error {
+	cmd := exec.Command("git", "rebase", onto)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("rebase failed: %w\nOutput: %s", err, string(output))
+	}
+	return nil
+}
+
+// DeleteBranch deletes a local branch
+func (c *Client) DeleteBranch(branchName string, force bool) error {
+	args := []string{"branch"}
+	if force {
+		args = append(args, "-D")
+	} else {
+		args = append(args, "-d")
+	}
+	args = append(args, branchName)
+
+	cmd := exec.Command("git", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to delete branch %s: %w\nOutput: %s", branchName, err, string(output))
+	}
+	return nil
+}
+
+// DeleteRemoteBranch deletes a branch on the remote repository
+func (c *Client) DeleteRemoteBranch(branchName string) error {
+	remote, err := c.GetRemoteName()
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command("git", "push", remote, "--delete", branchName)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Check if branch doesn't exist on remote (not an error)
+		if strings.Contains(string(output), "remote ref does not exist") {
+			return nil
+		}
+		return fmt.Errorf("failed to delete remote branch %s: %w\nOutput: %s", branchName, err, string(output))
+	}
+	return nil
+}

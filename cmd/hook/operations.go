@@ -70,9 +70,10 @@ func updateAllUUIDBranches(g *git.Client, ctx *stack.StackContext) error {
 		return fmt.Errorf("failed to get username: %w", err)
 	}
 
-	// Iterate through changes and update any corresponding UUID branches
-	for i := range ctx.Changes {
-		change := &ctx.Changes[i]
+	// Iterate through active changes and update any corresponding UUID branches
+	// Only active changes can have UUID branches (merged changes don't)
+	for i := range ctx.ActiveChanges {
+		change := &ctx.ActiveChanges[i]
 
 		// Skip changes without a UUID (shouldn't happen in normal operation)
 		if change.UUID == "" {

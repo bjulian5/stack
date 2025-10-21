@@ -234,3 +234,42 @@ func (c *Client) OpenPR(prNumber int) error {
 	_, err := c.execGH("pr", "view", fmt.Sprintf("%d", prNumber), "--web")
 	return err
 }
+
+// PRState contains the merge state of a pull request
+type PRState struct {
+	Number   int       // PR number
+	State    string    // "OPEN", "CLOSED", "MERGED"
+	IsMerged bool      // True if PR is merged
+	MergedAt time.Time // When PR was merged (zero if not merged)
+}
+
+// GetPRState queries the merge state of a pull request from GitHub
+func (c *Client) GetPRState(prNumber int) (*PRState, error) {
+	output, err := c.execGH(
+		"pr", "view", fmt.Sprintf("%d", prNumber),
+		"--json", "number,state,mergedAt",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get PR state: %w", err)
+	}
+
+	// Parse the JSON response
+	var response struct {
+		Number   int       `json:"number"`
+		State    string    `json:"state"` // "OPEN", "CLOSED", "MERGED"
+		MergedAt time.Time `json:"mergedAt"`
+	}
+
+	if err := json.Unmarshal(output, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse PR state: %w", err)
+	}
+
+	state := &PRState{
+		Number:   response.Number,
+		State:    response.State,
+		IsMerged: response.State == "MERGED",
+		MergedAt: response.MergedAt,
+	}
+
+	return state, nil
+}

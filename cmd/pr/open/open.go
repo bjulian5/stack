@@ -68,7 +68,7 @@ func (c *Command) Run(ctx context.Context) error {
 
 	// Filter changes to only those with PRs
 	var prsOnly []stack.Change
-	for _, change := range stackCtx.Changes {
+	for _, change := range stackCtx.AllChanges {
 		if change.PR != nil {
 			prsOnly = append(prsOnly, change)
 		}
