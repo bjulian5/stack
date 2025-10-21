@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/cmd/bottom"
 	"github.com/bjulian5/stack/cmd/down"
 	"github.com/bjulian5/stack/cmd/edit"
 	"github.com/bjulian5/stack/cmd/hook"
@@ -15,6 +16,7 @@ import (
 	"github.com/bjulian5/stack/cmd/push"
 	"github.com/bjulian5/stack/cmd/show"
 	switchcmd "github.com/bjulian5/stack/cmd/switch"
+	"github.com/bjulian5/stack/cmd/top"
 	"github.com/bjulian5/stack/cmd/up"
 )
 
@@ -49,6 +51,8 @@ func init() {
 		&edit.Command{},
 		&up.Command{},
 		&down.Command{},
+		&top.Command{},
+		&bottom.Command{},
 		&switchcmd.Command{},
 		&push.Command{},
 		&pr.Command{},
