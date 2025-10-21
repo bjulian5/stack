@@ -1,0 +1,208 @@
+package push
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/spf13/cobra"
+
+	"github.com/bjulian5/stack/internal/common"
+	"github.com/bjulian5/stack/internal/gh"
+	"github.com/bjulian5/stack/internal/git"
+	"github.com/bjulian5/stack/internal/stack"
+	"github.com/bjulian5/stack/internal/ui"
+)
+
+// Command pushes PRs to GitHub
+type Command struct {
+	// Flags
+	Ready  bool // Mark PRs as ready (not draft)
+	DryRun bool // Show what would happen without actually doing it
+
+	Git   *git.Client
+	Stack *stack.Client
+	GH    *gh.Client
+}
+
+// Register registers the command with cobra
+func (c *Command) Register(parent *cobra.Command) {
+	var err error
+	c.Git, err = git.NewClient()
+	if err != nil {
+		panic(err)
+	}
+	c.Stack = stack.NewClient(c.Git)
+	c.GH = gh.NewClient()
+
+	cmd := &cobra.Command{
+		Use:   "push",
+		Short: "Push PRs to GitHub",
+		Long: `Push all PRs in the current stack to GitHub.
+
+Creates new PRs or updates existing ones. By default, PRs are created as drafts.
+Use --ready to mark them as ready for review.
+
+Example:
+  stack push              # Push all PRs as drafts
+  stack push --ready      # Push all PRs as ready for review
+  stack push --dry-run    # Show what would happen`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.Run(cmd.Context())
+		},
+	}
+
+	cmd.Flags().BoolVar(&c.Ready, "ready", false, "Mark PRs as ready for review (not draft)")
+	cmd.Flags().BoolVar(&c.DryRun, "dry-run", false, "Show what would happen without pushing")
+
+	parent.AddCommand(cmd)
+}
+
+// pushPR pushes a single PR to GitHub
+// Returns the PR number, URL, and whether it was newly created
+func (c *Command) pushPR(
+	stackName string,
+	change stack.Change,
+	prBranch string,
+	baseBranch string,
+	existingPRNumber int,
+) (prNumber int, url string, isNew bool, err error) {
+	// Create/update PR branch ref to point to this commit (update-ref is idempotent)
+	if err := c.Git.UpdateRef(prBranch, change.CommitHash); err != nil {
+		return 0, "", false, fmt.Errorf("failed to update branch %s: %w", prBranch, err)
+	}
+
+	// Push branch to remote
+	if err := c.Git.Push(prBranch, true); err != nil {
+		return 0, "", false, fmt.Errorf("failed to push branch %s: %w", prBranch, err)
+	}
+
+	// Build PR spec
+	spec := gh.PRSpec{
+		Number: existingPRNumber,
+		Title:  change.Title,
+		Body:   change.Description,
+		Base:   baseBranch,
+		Head:   prBranch,
+		Draft:  !c.Ready,
+	}
+
+	// Sync PR on GitHub
+	ghPR, err := c.GH.SyncPR(spec)
+	if err != nil {
+		return 0, "", false, fmt.Errorf("failed to sync PR for %s: %w", change.Title, err)
+	}
+
+	// Update local PR tracking
+	if err := c.Stack.SyncPRFromGitHub(stackName, change.UUID, prBranch, change.CommitHash, ghPR); err != nil {
+		return 0, "", false, fmt.Errorf("failed to update PR tracking: %w", err)
+	}
+
+	return ghPR.Number, ghPR.URL, existingPRNumber == 0, nil
+}
+
+// Run executes the command
+func (c *Command) Run(ctx context.Context) error {
+	// Get stack context
+	stackCtx, err := c.Stack.GetStackContext()
+	if err != nil {
+		return err
+	}
+
+	if !stackCtx.IsStack() {
+		return fmt.Errorf("not on a stack branch. Use 'stack switch' to switch to a stack.")
+	}
+
+	// Check for uncommitted changes
+	hasChanges, err := c.Git.HasUncommittedChanges()
+	if err != nil {
+		return err
+	}
+	if hasChanges {
+		return fmt.Errorf("you have uncommitted changes. Commit or stash them before pushing.")
+	}
+
+	if len(stackCtx.Changes) == 0 {
+		fmt.Println(ui.RenderInfoMessage("No PRs to push in this stack."))
+		return nil
+	}
+
+	// Get username for branch naming
+	username, err := common.GetUsername()
+	if err != nil {
+		return fmt.Errorf("failed to get username: %w", err)
+	}
+
+	// Load existing PRs
+	prData, err := c.Stack.LoadPRs(stackCtx.StackName)
+	if err != nil {
+		return fmt.Errorf("failed to load PRs: %w", err)
+	}
+
+	if c.DryRun {
+		fmt.Println(ui.RenderInfoMessage("Dry run mode - no changes will be made"))
+		fmt.Println()
+	}
+
+	// Push each PR
+	var created, updated int
+	var previousBranch string // Track base branch for next PR
+
+	for i, change := range stackCtx.Changes {
+		position := i + 1
+		total := len(stackCtx.Changes)
+
+		// Get PR branch name
+		prBranch := stackCtx.GetPRBranch(username, change.UUID)
+
+		// Determine base branch (previous PR's branch or stack base)
+		baseBranch := stackCtx.Stack.Base
+		if previousBranch != "" {
+			baseBranch = previousBranch
+		}
+
+		// Get existing PR number
+		existingPRNumber := 0
+		if existingPR := prData.PRs[change.UUID]; existingPR != nil {
+			existingPRNumber = existingPR.PRNumber
+		}
+
+		// Handle dry-run display
+		if c.DryRun {
+			if existingPRNumber > 0 {
+				fmt.Printf("Would update PR #%d: %s\n", existingPRNumber, change.Title)
+			} else {
+				fmt.Printf("Would create PR: %s\n", change.Title)
+			}
+			previousBranch = prBranch
+			continue
+		}
+
+		// Push PR to GitHub
+		prNumber, prURL, isNew, err := c.pushPR(stackCtx.StackName, change, prBranch, baseBranch, existingPRNumber)
+		if err != nil {
+			return err
+		}
+
+		// Track stats
+		if isNew {
+			created++
+		} else {
+			updated++
+		}
+
+		// Display progress
+		fmt.Println(ui.RenderPushProgress(position, total, change.Title, prNumber, prURL, isNew))
+
+		// Set previous branch for next iteration
+		previousBranch = prBranch
+	}
+
+	if c.DryRun {
+		return nil
+	}
+
+	// Display summary
+	fmt.Println(ui.RenderPushSummary(created, updated))
+
+	return nil
+}

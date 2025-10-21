@@ -248,3 +248,43 @@ func (c *Client) HasUncommittedChanges() (bool, error) {
 	}
 	return len(strings.TrimSpace(string(output))) > 0, nil
 }
+
+// Push pushes a branch to the remote repository
+func (c *Client) Push(branch string, force bool) error {
+	args := []string{"push"}
+
+	// Get remote name
+	remote, err := c.GetRemoteName()
+	if err != nil {
+		return err
+	}
+	args = append(args, remote, branch)
+
+	if force {
+		args = append(args, "--force")
+	}
+
+	cmd := exec.Command("git", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to push branch %s: %w\nOutput: %s", branch, err, string(output))
+	}
+	return nil
+}
+
+// GetRemoteName returns the default remote name (usually "origin")
+func (c *Client) GetRemoteName() (string, error) {
+	cmd := exec.Command("git", "remote")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get remote: %w", err)
+	}
+
+	remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(remotes) == 0 {
+		return "", fmt.Errorf("no git remote configured")
+	}
+
+	// Return the first remote (usually "origin")
+	return remotes[0], nil
+}

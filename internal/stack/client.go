@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bjulian5/stack/internal/common"
+	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 )
 
@@ -436,6 +437,36 @@ func (c *Client) DeletePR(stackName string, uuid string) error {
 	}
 
 	delete(prData.PRs, uuid)
+
+	return c.SavePRs(stackName, prData)
+}
+
+// SyncPRFromGitHub syncs PR information from GitHub to local storage
+// This is used by stack push to update prs.json with GitHub PR data
+func (c *Client) SyncPRFromGitHub(stackName, uuid, branch, commitHash string, ghPR *gh.PR) error {
+	prData, err := c.LoadPRs(stackName)
+	if err != nil {
+		return err
+	}
+
+	// Get existing PR or create new one
+	pr, exists := prData.PRs[uuid]
+	if !exists {
+		pr = &PR{
+			CreatedAt: ghPR.CreatedAt,
+		}
+	}
+
+	// Update PR with GitHub data
+	pr.PRNumber = ghPR.Number
+	pr.URL = ghPR.URL
+	pr.State = ghPR.State
+	pr.Branch = branch
+	pr.CommitHash = commitHash
+	pr.LastPushed = ghPR.UpdatedAt
+
+	// Store back in map
+	prData.PRs[uuid] = pr
 
 	return c.SavePRs(stackName, prData)
 }

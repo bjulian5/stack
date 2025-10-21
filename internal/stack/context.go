@@ -58,6 +58,21 @@ func (s *StackContext) FormatUUIDBranch(username string, uuid string) string {
 	return fmt.Sprintf("%s/stack-%s/%s", username, s.StackName, uuid)
 }
 
+// GetPRBranch formats a PR branch name for a change in this stack.
+// This is the same as FormatUUIDBranch but uses the short UUID (8 chars)
+// Returns a branch name in the format: username/stack-<name>/<short-uuid>
+func (s *StackContext) GetPRBranch(username string, uuid string) string {
+	return s.FormatUUIDBranch(username, shortUUID(uuid))
+}
+
+// shortUUID returns the first 8 characters of a UUID for branch naming
+func shortUUID(uuid string) string {
+	if len(uuid) < 8 {
+		return uuid
+	}
+	return uuid[:8]
+}
+
 // FormatStackBranch formats a stack branch name (TOP branch).
 // Returns a branch name in the format: username/stack-<name>/TOP
 func FormatStackBranch(username string, stackName string) string {

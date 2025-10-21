@@ -245,3 +245,48 @@ func RenderNotOnStackMessage() string {
 func RenderError(err error) string {
 	return RenderErrorMessage(err.Error())
 }
+
+// RenderPushProgress renders progress for pushing a PR
+func RenderPushProgress(position, total int, title string, prNumber int, url string, isNew bool) string {
+	var output strings.Builder
+
+	action := "Updated"
+	if isNew {
+		action = "Created"
+	}
+
+	output.WriteString(SuccessStyle.Render(fmt.Sprintf("✓ %d/%d", position, total)))
+	output.WriteString(" ")
+	output.WriteString(Bold(title))
+	output.WriteString("\n")
+	output.WriteString("      ")
+	output.WriteString(Dim(fmt.Sprintf("%s PR #%d:", action, prNumber)))
+	output.WriteString(" ")
+	output.WriteString(Muted(url))
+
+	return output.String()
+}
+
+// RenderPushSummary renders a summary after pushing PRs
+func RenderPushSummary(created, updated int) string {
+	var output strings.Builder
+
+	output.WriteString("\n")
+	output.WriteString(RenderSuccessMessage("Push complete!"))
+	output.WriteString("\n\n")
+
+	var parts []string
+	if created > 0 {
+		parts = append(parts, fmt.Sprintf("%d created", created))
+	}
+	if updated > 0 {
+		parts = append(parts, fmt.Sprintf("%d updated", updated))
+	}
+
+	if len(parts) > 0 {
+		output.WriteString(Dim("PRs: "))
+		output.WriteString(strings.Join(parts, ", "))
+	}
+
+	return output.String()
+}
