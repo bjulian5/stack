@@ -394,3 +394,24 @@ func (c *Client) DeleteRemoteBranch(branchName string) error {
 	}
 	return nil
 }
+
+// SetConfig sets a git config value
+func (c *Client) SetConfig(key string, value string) error {
+	cmd := exec.Command("git", "config", key, value)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to set config %s=%s: %w", key, value, err)
+	}
+	return nil
+}
+
+// StripComments removes git comment lines from a message using git stripspace
+// This respects the configured comment character (core.commentChar)
+func (c *Client) StripComments(message string) (string, error) {
+	cmd := exec.Command("git", "stripspace", "--strip-comments")
+	cmd.Stdin = strings.NewReader(message)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to strip comments: %w", err)
+	}
+	return string(output), nil
+}

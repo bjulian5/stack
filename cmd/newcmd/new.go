@@ -8,7 +8,6 @@ import (
 
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
-	"github.com/bjulian5/stack/internal/hooks"
 	"github.com/bjulian5/stack/internal/stack"
 )
 
@@ -62,6 +61,16 @@ Example:
 
 // Run executes the command
 func (c *Command) Run(ctx context.Context) error {
+	// Check if stack is installed
+	installed, err := c.Stack.IsInstalled()
+	if err != nil {
+		return fmt.Errorf("failed to check installation status: %w", err)
+	}
+
+	if !installed {
+		return fmt.Errorf("stack is not installed in this repository\n\nRun 'stack install' first to set up hooks and configuration")
+	}
+
 	// Create the stack
 	s, err := c.Stack.CreateStack(c.StackName, c.BaseBranch)
 	if err != nil {
@@ -73,16 +82,10 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to switch to stack: %w", err)
 	}
 
-	// Install git hooks
-	if err := hooks.InstallHooks(c.Git.GitRoot()); err != nil {
-		return fmt.Errorf("failed to install git hooks: %w", err)
-	}
-
 	// Display results
 	fmt.Printf("✓ Created stack '%s'\n", s.Name)
 	fmt.Printf("✓ Branch: %s\n", s.Branch)
 	fmt.Printf("✓ Base: %s\n", s.Base)
-	fmt.Printf("✓ Installed git hooks\n")
 	fmt.Printf("✓ Switched to stack branch\n")
 
 	return nil

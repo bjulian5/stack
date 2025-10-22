@@ -16,7 +16,6 @@ type CommitMsgCommand struct {
 	Git   *git.Client
 	Stack *stack.Client
 
-	// Arguments from git
 	MessageFile string
 }
 
@@ -40,46 +39,42 @@ func (c *CommitMsgCommand) Register(parent *cobra.Command) {
 
 // Run executes the commit-msg hook
 func (c *CommitMsgCommand) Run() error {
-	// Get stack context
 	ctx, err := c.Stack.GetStackContext()
 	if err != nil || !ctx.IsStack() {
-		// Not in a stack or error - exit silently
 		return nil
 	}
 
-	// Read commit message file
 	content, err := os.ReadFile(c.MessageFile)
 	if err != nil {
-		// Can't read file - exit silently
 		return nil
 	}
 
+	// Strip comments to avoid trailer parsing issues
 	message := string(content)
+	stripped, err := c.Git.StripComments(message)
+	if err != nil {
+		stripped = message
+	}
 
-	// Parse commit message
-	commit := git.ParseCommitMessage(message)
+	commit := git.ParseCommitMessage(stripped)
 
-	// Validate: must have PR-UUID
 	if commit.Trailers["PR-UUID"] == "" {
 		fmt.Fprintln(os.Stderr, "Error: Commit message missing PR-UUID trailer")
 		fmt.Fprintln(os.Stderr, "This should have been added by prepare-commit-msg hook")
 		return fmt.Errorf("missing PR-UUID trailer")
 	}
 
-	// Validate: must have PR-Stack
 	if commit.Trailers["PR-Stack"] == "" {
 		fmt.Fprintln(os.Stderr, "Error: Commit message missing PR-Stack trailer")
 		fmt.Fprintln(os.Stderr, "This should have been added by prepare-commit-msg hook")
 		return fmt.Errorf("missing PR-Stack trailer")
 	}
 
-	// Validate: title must not be empty
 	if strings.TrimSpace(commit.Title) == "" {
 		fmt.Fprintln(os.Stderr, "Error: Commit message title cannot be empty")
 		fmt.Fprintln(os.Stderr, "The first line of your commit message will be the PR title")
 		return fmt.Errorf("empty commit title")
 	}
 
-	// All validations passed
 	return nil
 }

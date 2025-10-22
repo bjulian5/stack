@@ -11,6 +11,7 @@ import (
 	"github.com/bjulian5/stack/cmd/edit"
 	"github.com/bjulian5/stack/cmd/fixup"
 	"github.com/bjulian5/stack/cmd/hook"
+	"github.com/bjulian5/stack/cmd/install"
 	"github.com/bjulian5/stack/cmd/list"
 	"github.com/bjulian5/stack/cmd/newcmd"
 	"github.com/bjulian5/stack/cmd/pr"
@@ -47,6 +48,7 @@ func Execute(ctx context.Context) {
 func init() {
 	// Register all commands
 	commands := []Command{
+		&install.Command{},
 		&newcmd.Command{},
 		&list.Command{},
 		&show.Command{},

@@ -2,6 +2,7 @@ package hook
 
 import (
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -15,17 +16,9 @@ type PrepareCommitMsgCommand struct {
 	Git   *git.Client
 	Stack *stack.Client
 
-	// Arguments from git
-
-	// MessageFile is the path to the commit message file
 	MessageFile string
-
-	// Source is the source of the commit message. Has values of
-	// "message", "template", "merge", "squash", or "commit"
-	Source string
-
-	// CommitSHA is the commit SHA (if applicable)
-	CommitSHA string
+	Source      string
+	CommitSHA   string
 }
 
 // Register registers the prepare-commit-msg command
@@ -57,38 +50,51 @@ func (c *PrepareCommitMsgCommand) Register(parent *cobra.Command) {
 
 // Run executes the prepare-commit-msg hook
 func (c *PrepareCommitMsgCommand) Run() error {
-	// Get stack context
 	ctx, err := c.Stack.GetStackContext()
 	if err != nil || !ctx.IsStack() {
-		// Not in a stack or error - exit silently
 		return nil
 	}
 
-	// Read commit message file
 	content, err := os.ReadFile(c.MessageFile)
 	if err != nil {
 		return nil
 	}
 
-	// Parse commit message
-	commitMsg := git.ParseCommitMessage(string(content))
+	// Strip comments to avoid parsing them as trailers
+	stripped, err := c.Git.StripComments(string(content))
+	if err != nil {
+		stripped = string(content)
+	}
 
-	// Check if message already has PR-UUID trailer (amend case)
+	commitMsg := git.ParseCommitMessage(stripped)
+
 	if commitMsg.Trailers["PR-UUID"] != "" {
-		// Already has metadata, don't modify
 		return nil
 	}
 
-	// Generate UUID
-	uuid := common.GenerateUUID()
+	if commitMsg.Body == "" {
+		if template, _ := c.Git.FindPRTemplate(); template != "" {
+			commitMsg.Body = template
+		}
+	}
 
-	// Add trailers to message
+	uuid := common.GenerateUUID()
 	commitMsg.AddTrailer("PR-UUID", uuid)
 	commitMsg.AddTrailer("PR-Stack", ctx.StackName)
 
-	// Write back to file
-	if err := os.WriteFile(c.MessageFile, []byte(commitMsg.String()), 0644); err != nil {
-		return nil // Exit silently
+	newContent := commitMsg.String()
+
+	// Preserve git comments from original
+	if len(content) > len(stripped) {
+		commentStart := len(stripped)
+		comments := string(content[commentStart:])
+		if trimmed := strings.TrimSpace(comments); trimmed != "" {
+			newContent = newContent + "\n" + trimmed
+		}
+	}
+
+	if err := os.WriteFile(c.MessageFile, []byte(newContent), 0644); err != nil {
+		return nil
 	}
 
 	return nil
