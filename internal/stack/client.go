@@ -963,3 +963,87 @@ func IsStackBranch(branch string) bool {
 	// Check second part starts with "stack-" and third part is "TOP"
 	return strings.HasPrefix(parts[1], "stack-") && parts[2] == "TOP"
 }
+
+// UpdateUUIDBranches reloads stack context and updates all UUID branches to point to their new commit locations
+// Returns the number of branches that were actually updated
+func (c *Client) UpdateUUIDBranches(stackName string) (int, error) {
+	ctx, err := c.GetStackContextByName(stackName)
+	if err != nil {
+		return 0, fmt.Errorf("failed to reload stack context: %w", err)
+	}
+
+	username, err := common.GetUsername()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get username: %w", err)
+	}
+
+	updatedCount := 0
+	for i := range ctx.ActiveChanges {
+		change := &ctx.ActiveChanges[i]
+
+		if change.UUID == "" {
+			continue
+		}
+
+		branchName := ctx.FormatUUIDBranch(username, change.UUID)
+
+		if !c.git.BranchExists(branchName) {
+			continue
+		}
+
+		currentHash, err := c.git.GetCommitHash(branchName)
+		if err == nil && currentHash == change.CommitHash {
+			continue
+		}
+
+		if err := c.git.UpdateRef(branchName, change.CommitHash); err != nil {
+			return updatedCount, fmt.Errorf("failed to update branch %s: %w", branchName, err)
+		}
+		updatedCount++
+	}
+
+	return updatedCount, nil
+}
+
+// RebaseParams contains parameters for rebasing subsequent commits with recovery
+type RebaseParams struct {
+	StackName         string
+	StackBranch       string
+	OldCommitHash     string
+	NewCommitHash     string
+	OriginalStackHead string
+}
+
+// RebaseSubsequentCommitsWithRecovery rebases commits with automatic state save/clear for recovery
+func (c *Client) RebaseSubsequentCommitsWithRecovery(params RebaseParams) (int, error) {
+	rebaseState := RebaseState{
+		OriginalStackHead: params.OriginalStackHead,
+		NewCommitHash:     params.NewCommitHash,
+		OldCommitHash:     params.OldCommitHash,
+		StackBranch:       params.StackBranch,
+	}
+	if err := c.SaveRebaseState(params.StackName, rebaseState); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to save rebase state: %v\n", err)
+	}
+
+	gitClient, ok := c.git.(*git.Client)
+	if !ok {
+		return 0, fmt.Errorf("git client type assertion failed")
+	}
+
+	rebasedCount, err := gitClient.RebaseSubsequentCommits(
+		params.StackBranch,
+		params.OldCommitHash,
+		params.NewCommitHash,
+		params.OriginalStackHead,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := c.ClearRebaseState(params.StackName); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to clear rebase state: %v\n", err)
+	}
+
+	return rebasedCount, nil
+}

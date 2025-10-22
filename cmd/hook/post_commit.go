@@ -173,24 +173,25 @@ func (c *PostCommitCommand) handleAmend(ctx *stack.StackContext, currentBranch s
 		return err
 	}
 
-	// If there are subsequent commits, rebase them onto the new commit
 	if subsequentCount > 0 {
-		rebasedCount, err := c.Git.RebaseSubsequentCommits(stackBranch, oldCommit.Hash, newCommitHash, originalStackHead)
+		rebasedCount, err := c.Stack.RebaseSubsequentCommitsWithRecovery(stack.RebaseParams{
+			StackName:         ctx.StackName,
+			StackBranch:       stackBranch,
+			OldCommitHash:     oldCommit.Hash,
+			NewCommitHash:     newCommitHash,
+			OriginalStackHead: originalStackHead,
+		})
 		if err != nil {
 			return err
 		}
 		subsequentCount = rebasedCount
 	}
 
-	// Reload context to get fresh commit hashes after rebase
-	// The rebase updated the TOP branch with new commit hashes, so we need to reload
-	// the context to ensure UUID branches get updated with correct hashes
 	ctx, err = c.Stack.GetStackContextByName(ctx.StackName)
 	if err != nil {
 		return fmt.Errorf("failed to reload stack context: %w", err)
 	}
 
-	// Perform post-update operations
 	if err := PostUpdateWorkflow(c.Git, c.Stack, ctx, currentBranch); err != nil {
 		return err
 	}
@@ -205,18 +206,8 @@ func (c *PostCommitCommand) handleAmend(ctx *stack.StackContext, currentBranch s
 	return nil
 }
 
-// handleTopBranchAmend handles the case where the user amended a commit directly on the TOP branch
-// This updates all UUID branches to point to their new commit locations after the amend
 func (c *PostCommitCommand) handleTopBranchAmend(ctx *stack.StackContext, currentBranch string) error {
-	// Reload context to get fresh commit hashes after the amend
-	ctx, err := c.Stack.GetStackContextByName(ctx.StackName)
-	if err != nil {
-		return fmt.Errorf("failed to reload stack context: %w", err)
-	}
-
-	// Update all UUID branches to point to their new commit locations
-	// This is the key fix - without this, UUID branches become stale after TOP branch amends
-	if err := updateAllUUIDBranches(c.Git, ctx); err != nil {
+	if _, err := c.Stack.UpdateUUIDBranches(ctx.StackName); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to update UUID branches: %v\n", err)
 	}
 
@@ -297,24 +288,25 @@ func (c *PostCommitCommand) handleInsert(ctx *stack.StackContext, currentBranch 
 		return err
 	}
 
-	// If there are commits after the insertion point, rebase them onto the new commit
 	if subsequentCount > 0 {
-		rebasedCount, err := c.Git.RebaseSubsequentCommits(stackBranch, insertAfter.Hash, newCommitHead, originalStackHead)
+		rebasedCount, err := c.Stack.RebaseSubsequentCommitsWithRecovery(stack.RebaseParams{
+			StackName:         ctx.StackName,
+			StackBranch:       stackBranch,
+			OldCommitHash:     insertAfter.Hash,
+			NewCommitHash:     newCommitHead,
+			OriginalStackHead: originalStackHead,
+		})
 		if err != nil {
 			return err
 		}
 		subsequentCount = rebasedCount
 	}
 
-	// Reload context to get fresh commit hashes after rebase
-	// The rebase updated the TOP branch with new commit hashes, so we need to reload
-	// the context to ensure UUID branches get updated with correct hashes
 	ctx, err = c.Stack.GetStackContextByName(ctx.StackName)
 	if err != nil {
 		return fmt.Errorf("failed to reload stack context: %w", err)
 	}
 
-	// Perform post-update operations
 	if err := PostUpdateWorkflow(c.Git, c.Stack, ctx, currentBranch); err != nil {
 		return err
 	}
