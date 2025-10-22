@@ -9,7 +9,7 @@ type PR struct {
 	PRNumber   int       `json:"pr_number"`
 	URL        string    `json:"url"`
 	Branch     string    `json:"branch"`
-	CommitHash string    `json:"commit_hash"` // Current commit hash on the stack branch
+	CommitHash string    `json:"commit_hash"` // Latest commit hash for this PR
 	CreatedAt  time.Time `json:"created_at"`
 	LastPushed time.Time `json:"last_pushed"`
 	State      string    `json:"state"` // open, draft, closed, merged

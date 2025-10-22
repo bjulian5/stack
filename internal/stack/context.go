@@ -116,8 +116,8 @@ func ValidateBottomUpMerges(activeChanges []Change, mergedPRNumbers map[int]bool
 	return nil
 }
 
-// isUUIDBranch checks if a branch name matches the UUID branch pattern
-func isUUIDBranch(branch string) bool {
+// IsUUIDBranch checks if a branch name matches the UUID branch pattern
+func IsUUIDBranch(branch string) bool {
 	// UUID branches follow pattern: username/stack-<name>/<uuid>
 	// where <uuid> is 16 hex characters (NOT "TOP")
 	parts := strings.Split(branch, "/")

@@ -11,15 +11,9 @@ import (
 
 // PostUpdateWorkflow performs the common post-update operations after modifying a stack
 // This includes:
-// 1. Updating commit tracking in prs.json
-// 2. Updating all UUID branches to point to their new commit locations
-// 3. Checking out the original UUID branch
+// 1. Updating all UUID branches to point to their new commit locations
+// 2. Checking out the original UUID branch
 func PostUpdateWorkflow(g *git.Client, s *stack.Client, ctx *stack.StackContext, returnBranch string) error {
-	// Update commit tracking in prs.json
-	if err := updateCommitTracking(g, s, ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to update commit tracking: %v\n", err)
-	}
-
 	// Update ALL UUID branches for this stack
 	if err := updateAllUUIDBranches(g, ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to update UUID branches: %v\n", err)
@@ -30,16 +24,6 @@ func PostUpdateWorkflow(g *git.Client, s *stack.Client, ctx *stack.StackContext,
 		return fmt.Errorf("failed to checkout UUID branch: %w", err)
 	}
 
-	return nil
-}
-
-// updateCommitTracking is a no-op now - we don't update commit hashes in prs.json here.
-// Commit hashes should only be updated when we push to GitHub via SyncPRFromGitHub().
-// This allows us to detect when local commits differ from what's on GitHub (needs push).
-func updateCommitTracking(g *git.Client, s *stack.Client, ctx *stack.StackContext) error {
-	// Note: We intentionally do NOT update commit hashes here.
-	// The commit hash in PR metadata represents what's on GitHub, not what's local.
-	// It gets updated only during `stack push` via SyncPRFromGitHub().
 	return nil
 }
 

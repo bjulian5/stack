@@ -993,7 +993,6 @@ This approach is more git-native and eliminates the need for state files.
    - ✅ `operations.go` - Common workflows
      - `GetStackContext()` - Extract context from branch
      - `PostUpdateWorkflow()` - Update tracking and branches after stack changes
-     - `updateCommitTracking()` - Sync prs.json with current commits
      - `updateAllUUIDBranches()` - Update all UUID branch refs to new locations
 
 3. **Git operations for hooks** (`internal/git/rebase.go`)

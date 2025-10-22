@@ -231,9 +231,9 @@ func (c *Client) GetStackContext() (*StackContext, error) {
 
 	// Determine stack name and editing UUID from branch
 	var editingUUID string
-	if isStackBranch(branch) {
+	if IsStackBranch(branch) {
 		ctx.StackName = ExtractStackName(branch)
-	} else if isUUIDBranch(branch) {
+	} else if IsUUIDBranch(branch) {
 		ctx.StackName, editingUUID = ExtractUUIDFromBranch(branch)
 		ctx.currentUUID = editingUUID
 	} else {
@@ -939,11 +939,21 @@ func (c *Client) CheckoutChangeForEditing(stackCtx *StackContext, change *Change
 		}
 	}
 
+	// If this is the topmost change, checkout the TOP branch instead of staying on UUID branch
+	// This allows users to work on the entire stack when at the top position
+	if change.Position == len(stackCtx.ActiveChanges) {
+		if err := c.git.CheckoutBranch(stackCtx.Stack.Branch); err != nil {
+			return "", fmt.Errorf("failed to checkout TOP branch: %w", err)
+		}
+		// Return the TOP branch name to indicate where we ended up
+		return stackCtx.Stack.Branch, nil
+	}
+
 	return branchName, nil
 }
 
 // IsStackBranch checks if a branch name matches the stack branch pattern
-func isStackBranch(branch string) bool {
+func IsStackBranch(branch string) bool {
 	// Stack branches follow pattern: username/stack-<name>/TOP
 	parts := strings.Split(branch, "/")
 	if len(parts) != 3 {

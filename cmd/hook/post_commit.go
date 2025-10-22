@@ -44,7 +44,36 @@ func (c *PostCommitCommand) Run() error {
 
 	// Get stack context
 	ctx, err := c.Stack.GetStackContext()
-	if err != nil || !ctx.IsEditing() {
+	if err != nil {
+		return nil
+	}
+
+	// If not a stack, nothing to do
+	if !ctx.IsStack() {
+		return nil
+	}
+
+	// If not editing (i.e., on TOP branch), check if this is an amend
+	if !ctx.IsEditing() {
+		// Get the HEAD commit to check if it's an amend
+		headCommit, err := c.Git.GetCommit("HEAD")
+		if err != nil {
+			return nil
+		}
+
+		// Check if the commit's UUID already exists in the stack
+		commitUUID := headCommit.Message.Trailers["PR-UUID"]
+		if commitUUID != "" && ctx.FindChange(commitUUID) != nil {
+			// This is an amend on the TOP branch - update UUID branches
+			currentBranch, err := c.Git.GetCurrentBranch()
+			if err != nil {
+				return nil
+			}
+
+			if err := c.handleTopBranchAmend(ctx, currentBranch); err != nil {
+				fmt.Fprintf(os.Stderr, "Error updating stack after TOP branch amend: %v\n", err)
+			}
+		}
 		return nil
 	}
 
@@ -83,7 +112,13 @@ func (c *PostCommitCommand) Run() error {
 // handleAmend handles the case where the user amended an existing commit
 func (c *PostCommitCommand) handleAmend(ctx *stack.StackContext, currentBranch string, newCommit git.Commit) error {
 	stackBranch := ctx.Stack.Branch
-	uuid := ctx.CurrentChange().UUID
+
+	// Defensive check: ensure we're actually editing a change
+	currentChange := ctx.CurrentChange()
+	if currentChange == nil {
+		return fmt.Errorf("not currently editing a change (not on UUID branch)")
+	}
+	uuid := currentChange.UUID
 
 	// Switch to stack branch
 	if err := c.Git.CheckoutBranch(stackBranch); err != nil {
@@ -167,6 +202,25 @@ func (c *PostCommitCommand) handleAmend(ctx *stack.StackContext, currentBranch s
 		fmt.Printf("✓ Updated commit\n")
 	}
 
+	return nil
+}
+
+// handleTopBranchAmend handles the case where the user amended a commit directly on the TOP branch
+// This updates all UUID branches to point to their new commit locations after the amend
+func (c *PostCommitCommand) handleTopBranchAmend(ctx *stack.StackContext, currentBranch string) error {
+	// Reload context to get fresh commit hashes after the amend
+	ctx, err := c.Stack.GetStackContextByName(ctx.StackName)
+	if err != nil {
+		return fmt.Errorf("failed to reload stack context: %w", err)
+	}
+
+	// Update all UUID branches to point to their new commit locations
+	// This is the key fix - without this, UUID branches become stale after TOP branch amends
+	if err := updateAllUUIDBranches(c.Git, ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to update UUID branches: %v\n", err)
+	}
+
+	fmt.Printf("✓ Updated commit on TOP branch\n")
 	return nil
 }
 
