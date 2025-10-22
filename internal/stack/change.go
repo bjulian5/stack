@@ -35,3 +35,15 @@ type Change struct {
 	// Zero value if not merged
 	MergedAt time.Time `json:"merged_at"`
 }
+
+// NeedsPush returns true if this change has a PR but the local commit
+// differs from what was last pushed to GitHub.
+func (c *Change) NeedsPush() bool {
+	// No PR means it's local-only (not yet pushed)
+	if c.PR == nil {
+		return false
+	}
+
+	// Compare local commit hash with the hash stored in PR metadata
+	return c.CommitHash != c.PR.CommitHash
+}

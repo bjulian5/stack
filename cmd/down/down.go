@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
@@ -16,6 +17,7 @@ type Command struct {
 	// Clients (can be mocked in tests)
 	Git   *git.Client
 	Stack *stack.Client
+	GH    *gh.Client
 }
 
 // Register registers the command with cobra
@@ -25,7 +27,8 @@ func (c *Command) Register(parent *cobra.Command) {
 	if err != nil {
 		panic(err)
 	}
-	c.Stack = stack.NewClient(c.Git)
+	c.GH = gh.NewClient()
+	c.Stack = stack.NewClient(c.Git, c.GH)
 
 	cmd := &cobra.Command{
 		Use:   "down",
@@ -68,8 +71,11 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("not on a stack branch: switch to a stack first or use 'stack switch'")
 	}
 
-	// Check sync status and warn if stale
-	ui.WarnIfStackStale(stackCtx.StackName, c.Stack)
+	// Auto-refresh to ensure we have latest PR states from GitHub
+	stackCtx, err = c.Stack.ForceRefresh(stackCtx)
+	if err != nil {
+		return fmt.Errorf("failed to sync with GitHub: %w", err)
+	}
 
 	// Validate stack has active changes
 	if len(stackCtx.ActiveChanges) == 0 {
@@ -110,7 +116,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Checkout UUID branch for editing
-	branchName, err := stack.CheckoutChangeForEditing(c.Git, stackCtx, targetChange)
+	branchName, err := c.Stack.CheckoutChangeForEditing(stackCtx, targetChange)
 	if err != nil {
 		return err
 	}

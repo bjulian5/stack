@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
@@ -16,6 +17,7 @@ type Command struct {
 	// Clients (can be mocked in tests)
 	Git   *git.Client
 	Stack *stack.Client
+	GH    *gh.Client
 }
 
 // Register registers the command with cobra
@@ -25,7 +27,8 @@ func (c *Command) Register(parent *cobra.Command) {
 	if err != nil {
 		panic(err)
 	}
-	c.Stack = stack.NewClient(c.Git)
+	c.GH = gh.NewClient()
+	c.Stack = stack.NewClient(c.Git, c.GH)
 
 	cmd := &cobra.Command{
 		Use:   "fixup",
@@ -76,8 +79,11 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("cannot run fixup while editing a change: checkout the stack TOP branch first")
 	}
 
-	// Check sync status and warn if stale
-	ui.WarnIfStackStale(stackCtx.StackName, c.Stack)
+	// Auto-refresh to ensure we have latest PR states from GitHub
+	stackCtx, err = c.Stack.ForceRefresh(stackCtx)
+	if err != nil {
+		return fmt.Errorf("failed to sync with GitHub: %w", err)
+	}
 
 	// Check for staged changes - this is required
 	hasStaged, err := c.Git.HasStagedChanges()

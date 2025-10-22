@@ -33,32 +33,13 @@ func PostUpdateWorkflow(g *git.Client, s *stack.Client, ctx *stack.StackContext,
 	return nil
 }
 
-// updateCommitTracking updates the commit hash tracking in prs.json for all PRs in the stack
+// updateCommitTracking is a no-op now - we don't update commit hashes in prs.json here.
+// Commit hashes should only be updated when we push to GitHub via SyncPRFromGitHub().
+// This allows us to detect when local commits differ from what's on GitHub (needs push).
 func updateCommitTracking(g *git.Client, s *stack.Client, ctx *stack.StackContext) error {
-	// Load PRs
-	prData, err := s.LoadPRs(ctx.StackName)
-	if err != nil {
-		return fmt.Errorf("failed to load PRs: %w", err)
-	}
-
-	// For each UUID in prs.json, find its current commit hash in the stack changes
-	for uuid, pr := range prData.PRs {
-		change := ctx.FindChange(uuid)
-		if change == nil {
-			// Commit might have been deleted or not yet created
-			continue
-		}
-
-		// Update the commit hash
-		pr.CommitHash = change.CommitHash
-		prData.PRs[uuid] = pr
-	}
-
-	// Save updated PRs
-	if err := s.SavePRs(ctx.StackName, prData); err != nil {
-		return fmt.Errorf("failed to save PRs: %w", err)
-	}
-
+	// Note: We intentionally do NOT update commit hashes here.
+	// The commit hash in PR metadata represents what's on GitHub, not what's local.
+	// It gets updated only during `stack push` via SyncPRFromGitHub().
 	return nil
 }
 

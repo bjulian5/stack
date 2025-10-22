@@ -26,18 +26,27 @@ type GitOperations interface {
 	GetCommits(branch, base string) ([]git.Commit, error)
 	GetCommitHash(ref string) (string, error)
 	GitRoot() string
+	GetRemoteName() (string, error)
+	Fetch(remote string) error
+	Rebase(onto string) error
+	DeleteBranch(branchName string, force bool) error
+	DeleteRemoteBranch(branchName string) error
+	ResetHard(ref string) error
+	CreateAndCheckoutBranchAt(name string, commitHash string) error
 }
 
 // Client provides stack operations
 type Client struct {
 	git     GitOperations
+	gh      *gh.Client
 	gitRoot string
 }
 
 // NewClient creates a new stack client
-func NewClient(gitOps GitOperations) *Client {
+func NewClient(gitOps GitOperations, ghClient *gh.Client) *Client {
 	return &Client{
 		git:     gitOps,
+		gh:      ghClient,
 		gitRoot: gitOps.GitRoot(),
 	}
 }
@@ -65,6 +74,20 @@ func (c *Client) LoadStack(name string) (*Stack, error) {
 	var stack Stack
 	if err := json.Unmarshal(data, &stack); err != nil {
 		return nil, fmt.Errorf("failed to parse stack config: %w", err)
+	}
+
+	// Backfill Owner and RepoName if missing (for stacks created before this feature)
+	if stack.Owner == "" || stack.RepoName == "" {
+		owner, repoName, err := c.gh.GetRepoInfo()
+		if err != nil {
+			// Non-fatal - we'll fetch it later when needed
+			// Just continue without backfilling
+		} else {
+			stack.Owner = owner
+			stack.RepoName = repoName
+			// Save the updated stack (ignore errors to keep LoadStack read-only semantics)
+			_ = c.SaveStack(&stack)
+		}
 	}
 
 	return &stack, nil
@@ -314,12 +337,20 @@ func (c *Client) CreateStack(name string, baseBranch string) (*Stack, error) {
 		return nil, fmt.Errorf("failed to create stack branch: %w", err)
 	}
 
+	// Fetch and cache repo info
+	owner, repoName, err := c.gh.GetRepoInfo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get repo info: %w", err)
+	}
+
 	// Create stack metadata
 	s := &Stack{
-		Name:    name,
-		Branch:  branchName,
-		Base:    baseBranch,
-		Created: time.Now(),
+		Name:     name,
+		Branch:   branchName,
+		Base:     baseBranch,
+		Owner:    owner,
+		RepoName: repoName,
+		Created:  time.Now(),
 	}
 
 	if err := c.SaveStack(s); err != nil {
@@ -493,6 +524,343 @@ func (c *Client) SyncPRFromGitHub(stackName, uuid, branch, commitHash string, gh
 	prData.PRs[uuid] = pr
 
 	return c.SavePRs(stackName, prData)
+}
+
+// ====================================================================
+// Refresh Operations (moved from RefreshOperations)
+// ====================================================================
+
+// RefreshResult contains the results of a refresh operation
+type RefreshResult struct {
+	MergedCount    int      // Number of PRs that were merged
+	RemainingCount int      // Number of PRs still active
+	MergedChanges  []Change // The changes that were merged
+}
+
+// PerformRefresh performs a complete refresh operation on a stack
+// Returns the refresh result or an error if the operation fails
+func (c *Client) PerformRefresh(stackCtx *StackContext) (*RefreshResult, error) {
+	// If no active changes, nothing to refresh
+	if len(stackCtx.ActiveChanges) == 0 {
+		// Still update sync metadata
+		if err := c.UpdateSyncMetadata(stackCtx.StackName); err != nil {
+			return nil, err
+		}
+		return &RefreshResult{
+			MergedCount:    0,
+			RemainingCount: 0,
+			MergedChanges:  nil,
+		}, nil
+	}
+
+	// Query GitHub for PR states first (fast check for merges)
+	newlyMerged, err := c.FindMergedPRs(stackCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(newlyMerged) == 0 {
+		// No merges found - update metadata and return early (skip fetch!)
+		if err := c.UpdateSyncMetadata(stackCtx.StackName); err != nil {
+			return nil, err
+		}
+		return &RefreshResult{
+			MergedCount:    0,
+			RemainingCount: len(stackCtx.ActiveChanges),
+			MergedChanges:  nil,
+		}, nil
+	}
+
+	// Merges found - fetch from remote before rebasing
+	if err := c.FetchRemote(); err != nil {
+		return nil, fmt.Errorf("failed to fetch: %w", err)
+	}
+
+	// Validate bottom-up order
+	mergedPRNumbers := make(map[int]bool)
+	for _, change := range newlyMerged {
+		mergedPRNumbers[change.PR.PRNumber] = true
+	}
+	if err := ValidateBottomUpMerges(stackCtx.ActiveChanges, mergedPRNumbers); err != nil {
+		return nil, err
+	}
+
+	// Save merged changes to stack metadata
+	if err := c.SaveMergedChanges(stackCtx.StackName, newlyMerged); err != nil {
+		return nil, fmt.Errorf("failed to save merged changes: %w", err)
+	}
+
+	// Rebase TOP on latest base
+	if err := c.RebaseTopBranch(stackCtx); err != nil {
+		return nil, fmt.Errorf("failed to rebase TOP: %w", err)
+	}
+
+	// Clean up UUID branches for merged PRs (non-fatal errors)
+	_ = c.CleanupMergedBranches(stackCtx, newlyMerged)
+
+	// Update sync metadata
+	if err := c.UpdateSyncMetadata(stackCtx.StackName); err != nil {
+		return nil, err
+	}
+
+	remainingCount := len(stackCtx.ActiveChanges) - len(newlyMerged)
+	return &RefreshResult{
+		MergedCount:    len(newlyMerged),
+		RemainingCount: remainingCount,
+		MergedChanges:  newlyMerged,
+	}, nil
+}
+
+// ForceRefresh ALWAYS syncs with GitHub regardless of staleness threshold.
+// Use this for critical operations that could corrupt state (edit, fixup, push, navigation).
+// This ensures we have the absolute latest PR states before mutating operations.
+func (c *Client) ForceRefresh(stackCtx *StackContext) (*StackContext, error) {
+
+	// Perform refresh (no threshold check)
+	result, err := c.PerformRefresh(stackCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sync stack with GitHub: %w", err)
+	}
+
+	// Show brief result if anything changed
+	if result.MergedCount > 0 {
+		fmt.Printf("✓ Found %d merged PR(s)\n", result.MergedCount)
+	}
+
+	// Reload context with fresh data
+	freshCtx, err := c.GetStackContext()
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload stack context: %w", err)
+	}
+
+	return freshCtx, nil
+}
+
+// MaybeRefreshStack syncs with GitHub only if staleness threshold exceeded.
+// Use this for non-critical operations (show, list) where slight staleness is acceptable.
+// Respects the 5-minute threshold to avoid unnecessary API calls.
+func (c *Client) MaybeRefreshStack(stackCtx *StackContext) (*StackContext, error) {
+	// Quick check: do we need sync?
+	syncStatus, err := c.CheckSyncStatus(stackCtx.StackName)
+	if err != nil {
+		// If we can't check, be conservative and refresh anyway
+	} else if !syncStatus.NeedsSync {
+		// Already fresh, no action needed
+		return stackCtx, nil
+	}
+
+	// Perform refresh
+	result, err := c.PerformRefresh(stackCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sync stack with GitHub: %w", err)
+	}
+
+	// Show brief result if anything changed
+	if result.MergedCount > 0 {
+		fmt.Printf("✓ Found %d merged PR(s)\n", result.MergedCount)
+	}
+
+	// Reload context with fresh data
+	freshCtx, err := c.GetStackContext()
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload stack context: %w", err)
+	}
+
+	return freshCtx, nil
+}
+
+// FetchRemote fetches from the remote repository
+func (c *Client) FetchRemote() error {
+	remote, err := c.git.GetRemoteName()
+	if err != nil {
+		return err
+	}
+
+	if err := c.git.Fetch(remote); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// FindMergedPRs queries GitHub for PR states and returns those that are merged.
+// Uses bulk GraphQL query for efficiency - single API call instead of N calls.
+func (c *Client) FindMergedPRs(stackCtx *StackContext) ([]Change, error) {
+	// Extract PR numbers from active changes
+	var prNumbers []int
+	for _, change := range stackCtx.ActiveChanges {
+		// Skip local changes (not yet pushed to GitHub)
+		if change.PR != nil {
+			prNumbers = append(prNumbers, change.PR.PRNumber)
+		}
+	}
+
+	// If no PRs to check, return empty
+	if len(prNumbers) == 0 {
+		return nil, nil
+	}
+
+	// Bulk query all PRs (much faster than individual queries)
+	result, err := c.gh.BatchGetPRs(stackCtx.Stack.Owner, stackCtx.Stack.RepoName, prNumbers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to batch query PRs: %w", err)
+	}
+
+	var merged []Change
+
+	for _, change := range stackCtx.ActiveChanges {
+		// Skip local changes
+		if change.PR == nil {
+			continue
+		}
+
+		// Lookup PR state from bulk query results
+		prState, found := result.PRStates[change.PR.PRNumber]
+		if !found {
+			// PR was deleted or doesn't exist - skip it
+			continue
+		}
+
+		if prState.IsMerged {
+			// Mark as merged and set timestamp
+			change.IsMerged = true
+			change.MergedAt = prState.MergedAt
+			merged = append(merged, change)
+		}
+	}
+
+	return merged, nil
+}
+
+// SaveMergedChanges appends newly merged changes to the stack metadata
+func (c *Client) SaveMergedChanges(stackName string, newlyMerged []Change) error {
+	// Load current stack
+	s, err := c.LoadStack(stackName)
+	if err != nil {
+		return err
+	}
+
+	// Initialize if nil
+	if s.MergedChanges == nil {
+		s.MergedChanges = []Change{}
+	}
+
+	// Append newly merged changes
+	s.MergedChanges = append(s.MergedChanges, newlyMerged...)
+
+	// Save stack with updated merged changes
+	if err := c.SaveStack(s); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RebaseTopBranch rebases the TOP branch on the latest base branch, removing merged commits
+func (c *Client) RebaseTopBranch(stackCtx *StackContext) error {
+	// Get the base branch (e.g., origin/main)
+	baseBranch := stackCtx.Stack.Base
+
+	// The rebase will automatically skip commits that are already in base
+	// (which includes the merged commits). Note: fetch already done earlier.
+	if err := c.git.Rebase(baseBranch); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// CleanupMergedBranches deletes UUID branches for merged PRs
+// Errors are non-fatal and just printed as warnings
+func (c *Client) CleanupMergedBranches(stackCtx *StackContext, merged []Change) error {
+	username, err := common.GetUsername()
+	if err != nil {
+		return err
+	}
+
+	for _, change := range merged {
+		branchName := stackCtx.FormatUUIDBranch(username, change.UUID)
+
+		// Delete local branch if it exists
+		if c.git.BranchExists(branchName) {
+			_ = c.git.DeleteBranch(branchName, true) // Ignore errors
+		}
+
+		// Delete remote branch if it exists
+		_ = c.git.DeleteRemoteBranch(branchName) // Ignore errors
+	}
+
+	return nil
+}
+
+// UpdateSyncMetadata updates the stack's sync timestamp and hash
+func (c *Client) UpdateSyncMetadata(stackName string) error {
+	s, err := c.LoadStack(stackName)
+	if err != nil {
+		return err
+	}
+
+	// Get current TOP branch hash
+	currentHash, err := c.git.GetCommitHash(s.Branch)
+	if err != nil {
+		return err
+	}
+
+	// Update sync metadata
+	s.LastSynced = time.Now()
+	s.SyncHash = currentHash
+
+	// Save
+	if err := c.SaveStack(s); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// CheckoutChangeForEditing checks out a UUID branch for the given change, creating it if needed.
+// If the branch already exists but points to a different commit, it syncs it to the current commit.
+// Returns the branch name that was checked out.
+func (c *Client) CheckoutChangeForEditing(stackCtx *StackContext, change *Change) (string, error) {
+	// Get username for branch naming
+	username, err := common.GetUsername()
+	if err != nil {
+		return "", fmt.Errorf("failed to get username: %w", err)
+	}
+
+	// Format UUID branch name
+	branchName := stackCtx.FormatUUIDBranch(username, change.UUID)
+
+	// Check if UUID branch already exists
+	if c.git.BranchExists(branchName) {
+		// Get the commit hash the existing branch points to
+		existingHash, err := c.git.GetCommitHash(branchName)
+		if err != nil {
+			return "", fmt.Errorf("failed to get branch commit: %w", err)
+		}
+
+		// Checkout the branch first
+		if err := c.git.CheckoutBranch(branchName); err != nil {
+			return "", fmt.Errorf("failed to checkout branch: %w", err)
+		}
+
+		// If branch is at wrong commit, sync it to the current commit location
+		if existingHash != change.CommitHash {
+			if err := c.git.ResetHard(change.CommitHash); err != nil {
+				return "", fmt.Errorf("failed to sync branch to current commit: %w", err)
+			}
+			// TODO:(this is probably unexpected)
+			fmt.Printf("⚠️  Synced branch to current commit (was at %s, now at %s)\n",
+				git.ShortHash(existingHash), git.ShortHash(change.CommitHash))
+		}
+	} else {
+		// Create and checkout new branch at the commit
+		if err := c.git.CreateAndCheckoutBranchAt(branchName, change.CommitHash); err != nil {
+			return "", fmt.Errorf("failed to create branch: %w", err)
+		}
+	}
+
+	return branchName, nil
 }
 
 // IsStackBranch checks if a branch name matches the stack branch pattern

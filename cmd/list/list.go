@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
@@ -17,6 +18,7 @@ type Command struct {
 	// Clients (can be mocked in tests)
 	Git   *git.Client
 	Stack *stack.Client
+	GH    *gh.Client
 }
 
 // Register registers the command with cobra
@@ -26,7 +28,8 @@ func (c *Command) Register(parent *cobra.Command) {
 	if err != nil {
 		panic(err)
 	}
-	c.Stack = stack.NewClient(c.Git)
+	c.GH = gh.NewClient()
+	c.Stack = stack.NewClient(c.Git, c.GH)
 
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -61,7 +64,7 @@ func (c *Command) Run(ctx context.Context) error {
 		currentStack = stackCtx.StackName
 	}
 
-	// Load changes for all stacks
+	// Load changes for all stacks (with auto-refresh for current stack if stale)
 	stackChanges := make(map[string][]stack.Change)
 	for _, s := range stacks {
 		ctx, err := c.Stack.GetStackContextByName(s.Name)
@@ -69,6 +72,16 @@ func (c *Command) Run(ctx context.Context) error {
 			fmt.Fprintf(os.Stderr, "Warning: failed to load stack %s: %v\n", s.Name, err)
 			continue
 		}
+
+		// Auto-refresh current stack if stale (respects threshold for display operations)
+		if s.Name == currentStack {
+			ctx, err = c.Stack.MaybeRefreshStack(ctx)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to refresh stack %s: %v\n", s.Name, err)
+				// Continue with stale data rather than failing
+			}
+		}
+
 		stackChanges[s.Name] = ctx.AllChanges
 	}
 

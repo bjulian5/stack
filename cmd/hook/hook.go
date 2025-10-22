@@ -3,6 +3,7 @@ package hook
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
 )
@@ -22,7 +23,8 @@ func (c *Command) Register(parent *cobra.Command) {
 		// Hooks should fail silently if not in a git repo
 		return
 	}
-	c.Stack = stack.NewClient(c.Git)
+	ghClient := gh.NewClient()
+	c.Stack = stack.NewClient(c.Git, ghClient)
 
 	cmd := &cobra.Command{
 		Use:    "hook",

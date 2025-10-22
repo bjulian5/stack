@@ -33,11 +33,12 @@ import (
 //   - Could detect terminal capabilities and switch icon styles
 //   - See TODO in cmd/root.go for configuration options
 const (
-	IconOpen   = "●" // U+25CF - Solid circle for open
-	IconDraft  = "◐" // U+25D0 - Half circle for draft
-	IconMerged = "◆" // U+25C6 - Diamond for merged
-	IconClosed = "○" // U+25CB - Empty circle for closed
-	IconLocal  = "◯" // U+25EF - Large circle for local
+	IconOpen     = "●" // U+25CF - Solid circle for open
+	IconDraft    = "◐" // U+25D0 - Half circle for draft
+	IconMerged   = "◆" // U+25C6 - Diamond for merged
+	IconClosed   = "○" // U+25CB - Empty circle for closed
+	IconLocal    = "◯" // U+25EF - Large circle for local
+	IconModified = "⟳" // U+27F3 - Clockwise gapped circle arrow for modified (used in summary counts)
 )
 
 // FormatStatus formats a PR status with icon and colored text
@@ -109,6 +110,8 @@ func GetStatusIcon(state string) string {
 		return IconMerged
 	case "closed":
 		return IconClosed
+	case "needs-push":
+		return IconModified
 	default:
 		return IconLocal
 	}
@@ -121,13 +124,20 @@ func FormatStatusWithCount(state string, count int) string {
 	}
 	icon := GetStatusIcon(state)
 	style := GetStatusStyle(state)
-	text := fmt.Sprintf("%s %d %s", icon, count, state)
+
+	// Special handling for needs-push - use "modified" instead of "needs-push"
+	displayState := state
+	if state == "needs-push" {
+		displayState = "modified"
+	}
+
+	text := fmt.Sprintf("%s %d %s", icon, count, displayState)
 	return style.Render(text)
 }
 
 // FormatPRSummary formats a summary of PR counts
-// e.g., "● 2 open  ◐ 1 draft  ◯ 1 local"
-func FormatPRSummary(openCount, draftCount, mergedCount, localCount int) string {
+// e.g., "● 2 open  ◐ 1 draft  ⟳ 1 modified  ◯ 1 local"
+func FormatPRSummary(openCount, draftCount, mergedCount, localCount, needsPushCount int) string {
 	var parts []string
 
 	if openCount > 0 {
@@ -138,6 +148,9 @@ func FormatPRSummary(openCount, draftCount, mergedCount, localCount int) string 
 	}
 	if mergedCount > 0 {
 		parts = append(parts, FormatStatusWithCount("merged", mergedCount))
+	}
+	if needsPushCount > 0 {
+		parts = append(parts, FormatStatusWithCount("needs-push", needsPushCount))
 	}
 	if localCount > 0 {
 		parts = append(parts, FormatStatusWithCount("local", localCount))
@@ -162,7 +175,17 @@ func FormatChangeStatus(change stack.Change) string {
 	if change.PR == nil {
 		return FormatStatus("local")
 	}
-	return FormatStatus(change.PR.State)
+
+	// Get base status
+	baseStatus := FormatStatus(change.PR.State)
+
+	// Add modifier if the PR needs to be pushed
+	if change.NeedsPush() {
+		modifier := Dim(" (modified)")
+		return baseStatus + modifier
+	}
+
+	return baseStatus
 }
 
 // FormatChangeStatusCompact formats the status for a change in compact form
@@ -170,11 +193,22 @@ func FormatChangeStatusCompact(change stack.Change) string {
 	if change.PR == nil {
 		return FormatStatusCompact("local")
 	}
-	return FormatStatusCompact(change.PR.State)
+
+	// Get base status icon
+	baseStatus := FormatStatusCompact(change.PR.State)
+
+	// Add modifier icon if the PR needs to be pushed
+	if change.NeedsPush() {
+		modifier := StatusModifiedStyle.Render(IconModified)
+		return baseStatus + modifier
+	}
+
+	return baseStatus
 }
 
 // CountPRsByState counts PRs by their state
-func CountPRsByState(changes []stack.Change) (open, draft, merged, closed, local int) {
+// Returns counts for: open, draft, merged, closed, local, and needsPush
+func CountPRsByState(changes []stack.Change) (open, draft, merged, closed, local, needsPush int) {
 	for _, change := range changes {
 		if change.PR == nil {
 			local++
@@ -189,6 +223,11 @@ func CountPRsByState(changes []stack.Change) (open, draft, merged, closed, local
 			case "closed":
 				closed++
 			}
+		}
+
+		// Check if this change needs to be pushed
+		if change.NeedsPush() {
+			needsPush++
 		}
 	}
 	return

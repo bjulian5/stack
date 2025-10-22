@@ -26,8 +26,8 @@ func (c *Command) Register(parent *cobra.Command) {
 	if err != nil {
 		panic(err)
 	}
-	c.Stack = stack.NewClient(c.Git)
 	c.GH = gh.NewClient()
+	c.Stack = stack.NewClient(c.Git, c.GH)
 
 	cmd := &cobra.Command{
 		Use:   "refresh",
@@ -80,13 +80,10 @@ func (c *Command) Run(ctx context.Context) error {
 		return nil
 	}
 
-	// Create refresh operations
-	refreshOps := stack.NewRefreshOperations(c.Git, c.Stack, c.GH)
-
 	// Perform refresh (fetches from remote and syncs with GitHub)
 	fmt.Println("Fetching from remote...")
 	fmt.Println("Checking PR merge status on GitHub...")
-	result, err := refreshOps.PerformRefresh(stackCtx)
+	result, err := c.Stack.PerformRefresh(stackCtx)
 	if err != nil {
 		return err
 	}

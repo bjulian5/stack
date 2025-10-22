@@ -17,11 +17,12 @@ var (
 	ColorInfo    = lipgloss.Color("#3B82F6") // Blue
 
 	// State colors
-	ColorOpen   = lipgloss.Color("#10B981") // Green
-	ColorDraft  = lipgloss.Color("#F59E0B") // Amber
-	ColorMerged = lipgloss.Color("#8B5CF6") // Purple
-	ColorClosed = lipgloss.Color("#6B7280") // Gray
-	ColorLocal  = lipgloss.Color("#9CA3AF") // Light gray
+	ColorOpen     = lipgloss.Color("#10B981") // Green
+	ColorDraft    = lipgloss.Color("#F59E0B") // Amber
+	ColorMerged   = lipgloss.Color("#8B5CF6") // Purple
+	ColorClosed   = lipgloss.Color("#6B7280") // Gray
+	ColorLocal    = lipgloss.Color("#9CA3AF") // Light gray
+	ColorModified = lipgloss.Color("#F59E0B") // Amber (same as warning)
 
 	// Text colors
 	ColorText       = lipgloss.Color("#F3F4F6") // Light gray
@@ -115,6 +116,10 @@ var (
 
 	StatusLocalStyle = lipgloss.NewStyle().
 				Foreground(ColorLocal)
+
+	StatusModifiedStyle = lipgloss.NewStyle().
+				Foreground(ColorModified).
+				Bold(true)
 )
 
 // Message styles
@@ -163,6 +168,8 @@ func GetStatusStyle(state string) lipgloss.Style {
 		return StatusMergedStyle
 	case "closed":
 		return StatusClosedStyle
+	case "needs-push":
+		return StatusModifiedStyle
 	default:
 		return StatusLocalStyle
 	}

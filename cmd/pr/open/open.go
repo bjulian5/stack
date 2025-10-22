@@ -25,7 +25,13 @@ type Command struct {
 
 // Register registers the command with cobra
 func (c *Command) Register(parent *cobra.Command) {
+	var err error
+	c.Git, err = git.NewClient()
+	if err != nil {
+		panic(err)
+	}
 	c.GH = gh.NewClient()
+	c.Stack = stack.NewClient(c.Git, c.GH)
 
 	cmd := &cobra.Command{
 		Use:   "open [top]",

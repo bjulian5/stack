@@ -25,7 +25,7 @@ func RenderStackList(stacks []*stack.Stack, currentStackName string, stackChange
 
 	for _, s := range stacks {
 		changes := stackChanges[s.Name]
-		open, draft, merged, _, local := CountPRsByState(changes)
+		open, draft, merged, _, local, needsPush := CountPRsByState(changes)
 		totalPRs := len(changes)
 
 		isCurrent := s.Name == currentStackName
@@ -56,7 +56,7 @@ func RenderStackList(stacks []*stack.Stack, currentStackName string, stackChange
 		if totalPRs == 0 {
 			panel.WriteString(Muted("none"))
 		} else {
-			summary := FormatPRSummary(open, draft, merged, local)
+			summary := FormatPRSummary(open, draft, merged, local, needsPush)
 			panel.WriteString(summary)
 		}
 
@@ -108,7 +108,7 @@ func RenderStackDetails(s *stack.Stack, changes []stack.Change) string {
 
 	table := NewTable([]Column{
 		{Header: "#", Width: 3, Align: AlignRight},
-		{Header: "Status", Width: 9, Align: AlignLeft},
+		{Header: "Status", MinWidth: 18, MaxWidth: 20, Align: AlignLeft},
 		{Header: "PR", MinWidth: 45, MaxWidth: 70, Align: AlignLeft},
 		{Header: "Title", MinWidth: 30, MaxWidth: 50, Align: AlignLeft},
 		{Header: "Commit", Width: 7, Align: AlignLeft},
@@ -150,7 +150,7 @@ func RenderStackDetails(s *stack.Stack, changes []stack.Change) string {
 	output.WriteString(table.Render())
 	output.WriteString("\n\n")
 
-	open, draft, merged, closed, local := CountPRsByState(changes)
+	open, draft, merged, closed, local, needsPush := CountPRsByState(changes)
 	totalPRs := len(changes)
 
 	var summaryParts []string
@@ -160,7 +160,7 @@ func RenderStackDetails(s *stack.Stack, changes []stack.Change) string {
 	}
 	summaryParts = append(summaryParts, Dim("total"))
 
-	if open > 0 || draft > 0 || merged > 0 || local > 0 {
+	if open > 0 || draft > 0 || merged > 0 || local > 0 || needsPush > 0 {
 		summaryParts = append(summaryParts, Dim("("))
 		var stateParts []string
 		if open > 0 {
@@ -174,6 +174,9 @@ func RenderStackDetails(s *stack.Stack, changes []stack.Change) string {
 		}
 		if closed > 0 {
 			stateParts = append(stateParts, StatusClosedStyle.Render(fmt.Sprintf("%d closed", closed)))
+		}
+		if needsPush > 0 {
+			stateParts = append(stateParts, StatusModifiedStyle.Render(fmt.Sprintf("%d modified", needsPush)))
 		}
 		if local > 0 {
 			stateParts = append(stateParts, StatusLocalStyle.Render(fmt.Sprintf("%d local", local)))
@@ -194,7 +197,8 @@ func RenderStackDetails(s *stack.Stack, changes []stack.Change) string {
 	legendContent := FormatStatus("open") + " - PR is open and ready for review\n" +
 		FormatStatus("draft") + " - PR is in draft state\n" +
 		FormatStatus("merged") + " - PR has been merged (tracked in stack metadata)\n" +
-		FormatStatus("local") + " - Not yet pushed to GitHub"
+		FormatStatus("local") + " - Not yet pushed to GitHub\n" +
+		Dim("(modified)") + " - PR has local changes that need to be pushed"
 
 	legend := RenderPanel(legendContent)
 	output.WriteString(Dim("Legend:"))
@@ -206,7 +210,7 @@ func RenderStackDetails(s *stack.Stack, changes []stack.Change) string {
 
 // RenderStackSummary renders a brief summary of a stack
 func RenderStackSummary(s *stack.Stack, changes []stack.Change) string {
-	open, draft, merged, _, local := CountPRsByState(changes)
+	open, draft, merged, _, local, needsPush := CountPRsByState(changes)
 	totalPRs := len(changes)
 
 	summary := Bold(s.Name) + "\n" +
@@ -216,7 +220,7 @@ func RenderStackSummary(s *stack.Stack, changes []stack.Change) string {
 	if totalPRs == 0 {
 		summary += Muted("none")
 	} else {
-		summary += FormatPRSummary(open, draft, merged, local)
+		summary += FormatPRSummary(open, draft, merged, local, needsPush)
 	}
 
 	return RenderPanel(summary)

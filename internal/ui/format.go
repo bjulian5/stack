@@ -103,16 +103,6 @@ func RenderInfoMessage(message string) string {
 	return InfoStyle.Render("ℹ " + message)
 }
 
-// WarnIfStackStale checks if a stack needs sync and prints a warning if needed.
-// This helper eliminates duplication across commands that need to warn about stale stacks.
-func WarnIfStackStale(stackName string, stackClient *stack.Client) {
-	syncStatus, err := stackClient.CheckSyncStatus(stackName)
-	if err == nil && syncStatus.NeedsSync {
-		fmt.Println(RenderWarningMessage(syncStatus.Warning))
-		fmt.Println()
-	}
-}
-
 // RenderBulletList renders a list with bullets
 func RenderBulletList(items []string) string {
 	var lines []string
@@ -186,7 +176,7 @@ func Muted(text string) string {
 // FormatStackFinderLine formats a stack for display in fuzzy finder
 // Returns a formatted line showing stack name, PR summary, base branch, and optional current marker
 func FormatStackFinderLine(stackName string, base string, changes []stack.Change, currentStackName string) string {
-	open, draft, merged, _, local := CountPRsByState(changes)
+	open, draft, merged, _, local, _ := CountPRsByState(changes)
 	totalPRs := len(changes)
 
 	displayName := Truncate(stackName, 20)

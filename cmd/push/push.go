@@ -31,8 +31,8 @@ func (c *Command) Register(parent *cobra.Command) {
 	if err != nil {
 		panic(err)
 	}
-	c.Stack = stack.NewClient(c.Git)
 	c.GH = gh.NewClient()
+	c.Stack = stack.NewClient(c.Git, c.GH)
 
 	cmd := &cobra.Command{
 		Use:   "push",

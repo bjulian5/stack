@@ -8,6 +8,7 @@ import (
 	"github.com/ktr0731/go-fuzzyfinder"
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
@@ -21,6 +22,7 @@ type Command struct {
 	// Clients (can be mocked in tests)
 	Git   *git.Client
 	Stack *stack.Client
+	GH    *gh.Client
 }
 
 // Register registers the command with cobra
@@ -30,7 +32,8 @@ func (c *Command) Register(parent *cobra.Command) {
 	if err != nil {
 		panic(err)
 	}
-	c.Stack = stack.NewClient(c.Git)
+	c.GH = gh.NewClient()
+	c.Stack = stack.NewClient(c.Git, c.GH)
 
 	cmd := &cobra.Command{
 		Use:   "switch [stack-name]",
@@ -138,11 +141,19 @@ func (c *Command) Run(ctx context.Context) error {
 		fmt.Println(ui.RenderInfoMessage(fmt.Sprintf("Already on stack: %s", ui.Bold(selectedStack.Name))))
 		fmt.Println()
 
-		// Still show the stack details
+		// Still show the stack details (with auto-refresh if stale)
 		stackCtx, err := c.Stack.GetStackContextByName(selectedStack.Name)
 		if err != nil {
 			return fmt.Errorf("failed to load stack details: %w", err)
 		}
+
+		// Auto-refresh if stale (respects threshold for display operations)
+		stackCtx, err = c.Stack.MaybeRefreshStack(stackCtx)
+		if err != nil {
+			// Log warning but continue with stale data
+			fmt.Fprintf(os.Stderr, "Warning: failed to refresh stack: %v\n", err)
+		}
+
 		fmt.Println(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges))
 		return nil
 	}
@@ -156,10 +167,17 @@ func (c *Command) Run(ctx context.Context) error {
 	fmt.Println(ui.RenderSwitchSuccess(selectedStack.Name))
 	fmt.Println()
 
-	// Load and display full stack details
+	// Load and display full stack details (with auto-refresh if stale)
 	stackCtx, err := c.Stack.GetStackContextByName(selectedStack.Name)
 	if err != nil {
 		return fmt.Errorf("failed to load stack details: %w", err)
+	}
+
+	// Auto-refresh if stale (respects threshold for display operations)
+	stackCtx, err = c.Stack.MaybeRefreshStack(stackCtx)
+	if err != nil {
+		// Log warning but continue with stale data
+		fmt.Fprintf(os.Stderr, "Warning: failed to refresh stack: %v\n", err)
 	}
 
 	fmt.Println(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges))

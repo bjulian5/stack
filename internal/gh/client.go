@@ -273,3 +273,130 @@ func (c *Client) GetPRState(prNumber int) (*PRState, error) {
 
 	return state, nil
 }
+
+// GetRepoInfo fetches the repository owner and name from GitHub
+func (c *Client) GetRepoInfo() (owner, repoName string, err error) {
+	output, err := c.execGH("repo", "view", "--json", "owner,name")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get repo info: %w", err)
+	}
+
+	var repo struct {
+		Owner struct {
+			Login string `json:"login"`
+		} `json:"owner"`
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(output, &repo); err != nil {
+		return "", "", fmt.Errorf("failed to parse repo info: %w", err)
+	}
+
+	return repo.Owner.Login, repo.Name, nil
+}
+
+// BatchPRsResult contains results from bulk PR query
+type BatchPRsResult struct {
+	PRStates map[int]*PRState // Map of PR number to state
+}
+
+// BatchGetPRs fetches states for multiple PRs in a single GraphQL query.
+// This is much more efficient than querying each PR individually.
+func (c *Client) BatchGetPRs(owner, repoName string, prNumbers []int) (*BatchPRsResult, error) {
+	if len(prNumbers) == 0 {
+		return &BatchPRsResult{PRStates: make(map[int]*PRState)}, nil
+	}
+
+	// Build dynamic GraphQL query
+	query := c.buildBatchPRQuery(prNumbers)
+
+	// Execute GraphQL query
+	output, err := c.execGH(
+		"api", "graphql",
+		"-f", "query="+query,
+		"-f", "owner="+owner,
+		"-f", "repo="+repoName,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute GraphQL query: %w", err)
+	}
+
+	// Parse response
+	result, err := c.parseBatchPRResponse(output, prNumbers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse batch PR response: %w", err)
+	}
+
+	return result, nil
+}
+
+// buildBatchPRQuery builds a GraphQL query to fetch multiple PRs
+func (c *Client) buildBatchPRQuery(prNumbers []int) string {
+	var sb strings.Builder
+	sb.WriteString(`query($owner: String!, $repo: String!) {
+  repository(owner: $owner, name: $repo) {
+`)
+
+	fragment := `    pr%d: pullRequest(number: %d) {
+      number
+      state
+      merged
+      mergedAt
+    }
+`
+
+	for _, num := range prNumbers {
+		sb.WriteString(fmt.Sprintf(fragment, num, num))
+	}
+
+	sb.WriteString(`  }
+}`)
+
+	return sb.String()
+}
+
+// parseBatchPRResponse parses the GraphQL response into BatchPRsResult
+func (c *Client) parseBatchPRResponse(data []byte, prNumbers []int) (*BatchPRsResult, error) {
+	// Parse JSON response
+	var response struct {
+		Data struct {
+			Repository map[string]json.RawMessage `json:"repository"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// Extract PR data for each PR
+	prStates := make(map[int]*PRState)
+
+	for _, prNum := range prNumbers {
+		key := fmt.Sprintf("pr%d", prNum)
+		prData, exists := response.Data.Repository[key]
+		if !exists {
+			// PR doesn't exist or was deleted
+			continue
+		}
+
+		var pr struct {
+			Number   int       `json:"number"`
+			State    string    `json:"state"` // "OPEN", "CLOSED", "MERGED"
+			Merged   bool      `json:"merged"`
+			MergedAt time.Time `json:"mergedAt"`
+		}
+
+		if err := json.Unmarshal(prData, &pr); err != nil {
+			// Skip PRs that fail to parse
+			continue
+		}
+
+		prStates[prNum] = &PRState{
+			Number:   pr.Number,
+			State:    pr.State,
+			IsMerged: pr.Merged,
+			MergedAt: pr.MergedAt,
+		}
+	}
+
+	return &BatchPRsResult{PRStates: prStates}, nil
+}

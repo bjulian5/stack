@@ -147,6 +147,14 @@ func (c *PostCommitCommand) handleAmend(ctx *stack.StackContext, currentBranch s
 		subsequentCount = rebasedCount
 	}
 
+	// Reload context to get fresh commit hashes after rebase
+	// The rebase updated the TOP branch with new commit hashes, so we need to reload
+	// the context to ensure UUID branches get updated with correct hashes
+	ctx, err = c.Stack.GetStackContextByName(ctx.StackName)
+	if err != nil {
+		return fmt.Errorf("failed to reload stack context: %w", err)
+	}
+
 	// Perform post-update operations
 	if err := PostUpdateWorkflow(c.Git, c.Stack, ctx, currentBranch); err != nil {
 		return err
@@ -242,6 +250,14 @@ func (c *PostCommitCommand) handleInsert(ctx *stack.StackContext, currentBranch 
 			return err
 		}
 		subsequentCount = rebasedCount
+	}
+
+	// Reload context to get fresh commit hashes after rebase
+	// The rebase updated the TOP branch with new commit hashes, so we need to reload
+	// the context to ensure UUID branches get updated with correct hashes
+	ctx, err = c.Stack.GetStackContextByName(ctx.StackName)
+	if err != nil {
+		return fmt.Errorf("failed to reload stack context: %w", err)
 	}
 
 	// Perform post-update operations
