@@ -121,35 +121,21 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("you have uncommitted changes. Commit or stash them before pushing.")
 	}
 
-	// Check sync status and auto-refresh if needed
-	syncStatus, err := c.Stack.CheckSyncStatus(stackCtx.StackName)
-	if err != nil {
-		return fmt.Errorf("failed to check sync status: %w", err)
-	}
-
-	if syncStatus.NeedsSync {
-		fmt.Println(ui.RenderInfoMessage("Stack needs sync - checking for merged PRs..."))
-
-		// Quick check: are any PRs merged?
-		hasMerged, err := c.hasAnyMergedPRs(stackCtx.ActiveChanges)
-		if err != nil {
-			return fmt.Errorf("failed to check PR states: %w", err)
-		}
-
-		if hasMerged {
-			fmt.Println()
-			fmt.Println(ui.RenderWarningMessage("⚠ One or more PRs have been merged on GitHub."))
-			fmt.Println("Please run 'stack refresh' to sync your stack before pushing.")
-			return fmt.Errorf("stack out of sync - run 'stack refresh' first")
-		}
-
-		// No merges detected, safe to continue
-		fmt.Println(ui.RenderInfoMessage("No merged PRs detected - proceeding with push"))
-	}
-
 	if len(stackCtx.ActiveChanges) == 0 {
 		fmt.Println(ui.RenderInfoMessage("No unmerged PRs to push - all changes are merged."))
 		return nil
+	}
+
+	// Check if any PRs have been merged on GitHub
+	hasMerged, err := c.hasAnyMergedPRs(stackCtx.Stack.Owner, stackCtx.Stack.RepoName, stackCtx.ActiveChanges)
+	if err != nil {
+		return fmt.Errorf("failed to check PR states: %w", err)
+	}
+	if hasMerged {
+		fmt.Println()
+		fmt.Println(ui.RenderWarningMessage("One or more PRs have been merged on GitHub."))
+		fmt.Println("Please run 'stack refresh' to sync your stack before pushing.")
+		return fmt.Errorf("stack out of sync - run 'stack refresh' first")
 	}
 
 	// Get username for branch naming
@@ -233,21 +219,30 @@ func (c *Command) Run(ctx context.Context) error {
 	return nil
 }
 
-// hasAnyMergedPRs quickly checks if any PRs in the stack have been merged on GitHub
-func (c *Command) hasAnyMergedPRs(activeChanges []stack.Change) (bool, error) {
+// hasAnyMergedPRs checks if any PRs in the stack have been merged on GitHub
+// Uses batch API to efficiently query all PRs in a single request
+func (c *Command) hasAnyMergedPRs(owner, repoName string, activeChanges []stack.Change) (bool, error) {
+	// Collect all PR numbers from active changes
+	var prNumbers []int
 	for _, change := range activeChanges {
-		// Skip local changes (not yet pushed to GitHub)
-		if change.PR == nil {
-			continue
+		if change.PR != nil {
+			prNumbers = append(prNumbers, change.PR.PRNumber)
 		}
+	}
 
-		// Query GitHub for this PR's state
-		prState, err := c.GH.GetPRState(change.PR.PRNumber)
-		if err != nil {
-			// If we can't check, be conservative and assume something might be merged
-			return true, fmt.Errorf("failed to check PR #%d: %w", change.PR.PRNumber, err)
-		}
+	// If no PRs exist yet, nothing is merged
+	if len(prNumbers) == 0 {
+		return false, nil
+	}
 
+	// Batch query all PRs in one API call
+	result, err := c.GH.BatchGetPRs(owner, repoName, prNumbers)
+	if err != nil {
+		return false, fmt.Errorf("failed to batch query PRs: %w", err)
+	}
+
+	// Check if any are merged
+	for _, prState := range result.PRStates {
 		if prState.IsMerged {
 			return true, nil
 		}

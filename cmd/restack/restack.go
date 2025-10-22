@@ -22,7 +22,6 @@ type Command struct {
 	Onto  string
 }
 
-// Register registers the command with cobra
 func (c *Command) Register(parent *cobra.Command) {
 	var err error
 	c.Git, err = git.NewClient()
@@ -65,9 +64,7 @@ Examples:
 	parent.AddCommand(cmd)
 }
 
-// Run executes the command
 func (c *Command) Run(ctx context.Context) error {
-	// Get stack context and validate
 	stackCtx, err := c.Stack.GetStackContext()
 	if err != nil {
 		return err
@@ -81,7 +78,6 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("cannot restack while editing a change. Commit or abort your changes first.")
 	}
 
-	// Check for uncommitted changes
 	hasChanges, err := c.Git.HasUncommittedChanges()
 	if err != nil {
 		return err
@@ -99,18 +95,14 @@ func (c *Command) Run(ctx context.Context) error {
 		fetch = true
 	}
 
-	// Prepare options
 	opts := stack.RestackOptions{
 		Onto:  targetBase,
 		Fetch: fetch,
 	}
-
-	// Execute restack
 	if err := c.Stack.Restack(stackCtx, opts); err != nil {
 		return err
 	}
 
-	// Display success message
-	fmt.Println(ui.RenderSuccessMessage(fmt.Sprintf("✓ Restacked on %s", targetBase)))
+	fmt.Println(ui.RenderSuccessMessage(fmt.Sprintf("Restacked on %s", targetBase)))
 	return nil
 }

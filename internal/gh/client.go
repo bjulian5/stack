@@ -17,34 +17,34 @@ func NewClient() *Client {
 }
 
 // SyncPR creates or updates a PR on GitHub idempotently
-// If spec.Number is 0, creates a new PR
-// If spec.Number > 0, updates the existing PR
+// Queries GitHub first to determine if PR exists, then creates or updates accordingly
 // Handles edge cases:
 // - PR already exists on GitHub but not tracked locally (auto-recovers)
 // - Closed PRs (reopens and updates)
 // - Merged PRs (returns error - user should run stack refresh)
 func (c *Client) SyncPR(spec PRSpec) (*PR, error) {
-	if spec.Number == 0 {
-		// Attempt to create new PR
-		pr, err := c.createPR(spec)
-		if err != nil {
-			// Auto-recover: check if PR already exists on GitHub
-			if isPRAlreadyExistsError(err) {
-				// Query GitHub for existing PR by head branch
-				existingPR, findErr := c.getPRByHead(spec.Head)
-				if findErr == nil && existingPR != nil {
-					// Found it! Update instead
-					spec.Number = existingPR.Number
-					return c.updatePR(spec)
-				}
-			}
-			return nil, err // Other errors are fatal
-		}
-		return pr, nil
+	// First, query GitHub to see if a PR exists for this head branch
+	existingPR, err := c.getPRByHead(spec.Head)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query PR by head branch: %w", err)
 	}
 
-	// Number provided - update existing PR
-	return c.updatePR(spec)
+	if existingPR == nil {
+		// No PR exists on GitHub - create a new one
+		return c.createPR(spec)
+	}
+
+	// PR exists on GitHub - check if it's merged (can't update merged PRs)
+	if strings.ToLower(existingPR.State) == "merged" {
+		return nil, fmt.Errorf(
+			"PR #%d is already merged. Run 'stack refresh' to sync merged PRs",
+			existingPR.Number,
+		)
+	}
+
+	// Update the existing PR using the pre-fetched state
+	spec.Number = existingPR.Number
+	return c.updatePR(spec, existingPR)
 }
 
 // createPR creates a new PR on GitHub
@@ -79,25 +79,10 @@ func (c *Client) createPR(spec PRSpec) (*PR, error) {
 	return pr, nil
 }
 
-// updatePR updates an existing PR on GitHub
-func (c *Client) updatePR(spec PRSpec) (*PR, error) {
+// updatePR updates an existing PR using pre-fetched PR state
+// This avoids an extra API call to fetch the current state
+func (c *Client) updatePR(spec PRSpec, currentPR *PR) (*PR, error) {
 	prNumber := fmt.Sprintf("%d", spec.Number)
-
-	// First check current PR state
-	currentPR, err := c.getPRByNumber(spec.Number)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch PR #%d: %w", spec.Number, err)
-	}
-
-	// Block updates to merged PRs (permanent state)
-	if currentPR.State == "MERGED" {
-		return nil, fmt.Errorf(
-			"PR #%d is already merged. Run 'stack refresh' to sync merged PRs",
-			spec.Number,
-		)
-	}
-
-	// Allow updates to closed PRs (gh pr edit will reopen them)
 
 	// Update PR title, body, and base
 	editArgs := []string{
@@ -207,11 +192,6 @@ func (c *Client) getPRByNumber(number int) (*PR, error) {
 	}
 
 	return c.parsePRJSON(output)
-}
-
-// isPRAlreadyExistsError checks if error indicates PR already exists (private helper)
-func isPRAlreadyExistsError(err error) bool {
-	return strings.Contains(err.Error(), "already exists")
 }
 
 // normalizeState converts GitHub API state to our internal format

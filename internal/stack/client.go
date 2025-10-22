@@ -841,14 +841,12 @@ func (c *Client) Restack(stackCtx *StackContext, opts RestackOptions) error {
 			return fmt.Errorf("failed to fetch: %w", err)
 		}
 
-		// Update local base ref to match upstream
 		if err := c.UpdateLocalBaseRef(targetBase); err != nil {
 			// Non-fatal: show warning and continue
 			fmt.Fprintf(os.Stderr, "Warning: could not update local base ref: %v\n", err)
 		}
 	}
 
-	// Rebase TOP branch onto target base
 	if err := c.git.Rebase(targetBase); err != nil {
 		return err
 	}
@@ -873,7 +871,6 @@ func (c *Client) UpdateLocalBaseRef(baseBranch string) error {
 		return fmt.Errorf("no upstream tracking branch configured for %s", baseBranch)
 	}
 
-	// Get commit hash of upstream
 	upstreamHash, err := c.git.GetCommitHash(upstream)
 	if err != nil {
 		return err
@@ -890,14 +887,12 @@ func (c *Client) UpdateLocalBaseRef(baseBranch string) error {
 		return nil
 	}
 
-	// Update local branch ref if different
 	if upstreamHash != currentHash {
 		if err := c.git.UpdateRef(baseBranch, upstreamHash); err != nil {
 			return err
 		}
 		fmt.Printf("Updating %s: %s..%s\n", baseBranch, currentHash[:7], upstreamHash[:7])
 	}
-
 	return nil
 }
 
