@@ -1,4 +1,4 @@
-package show
+package status
 
 import (
 	"context"
@@ -34,15 +34,15 @@ func (c *Command) Register(parent *cobra.Command) {
 	c.Stack = stack.NewClient(c.Git, c.GH)
 
 	cmd := &cobra.Command{
-		Use:   "show [stack-name]",
-		Short: "Show details of a stack",
-		Long: `Show detailed information about a stack including all PRs.
+		Use:   "status [stack-name]",
+		Short: "Show status of a stack",
+		Long: `Show detailed status of a stack including all PRs.
 
 If no stack name is provided, shows the current stack.
 
 Example:
-  stack show
-  stack show auth-refactor`,
+  stack status
+  stack status auth-refactor`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -62,7 +62,7 @@ func (c *Command) Run(ctx context.Context) error {
 	if stackName == "" {
 		stackCtx, err := c.Stack.GetStackContext()
 		if err != nil || !stackCtx.IsStack() {
-			return fmt.Errorf("not on a stack branch: use 'stack show <name>'")
+			return fmt.Errorf("not on a stack branch: use 'stack status <name>'")
 		}
 		stackName = stackCtx.StackName
 	}

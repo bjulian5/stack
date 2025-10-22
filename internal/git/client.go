@@ -415,3 +415,16 @@ func (c *Client) StripComments(message string) (string, error) {
 	}
 	return string(output), nil
 }
+
+// GetUpstreamBranch returns the upstream tracking branch for a given branch
+// e.g., "main" -> "origin/main"
+// Returns empty string if no upstream is configured
+func (c *Client) GetUpstreamBranch(branch string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", branch+"@{u}")
+	output, err := cmd.Output()
+	if err != nil {
+		// No upstream configured - not an error, just return empty
+		return "", nil
+	}
+	return strings.TrimSpace(string(output)), nil
+}

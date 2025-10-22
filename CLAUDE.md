@@ -122,7 +122,7 @@ stack/
 │   ├── root.go                      # Root command setup with cobra
 │   ├── command.go                   # Command interface
 │   ├── list/list.go                 # stack list command
-│   ├── show/show.go                 # stack show command
+│   ├── status/status.go             # stack status command
 │   ├── newcmd/new.go                # stack new command (newcmd to avoid "new" keyword)
 │   ├── edit/edit.go                 # stack edit command
 │   ├── switch/switch.go             # stack switch command (package: switchcmd)
@@ -161,7 +161,7 @@ The codebase has completed **Phase 1** (Foundation), **Phase 2** (Git Hooks), an
 **Phase 1 - Foundation (✅ Completed):**
 - ✅ `stack new <name>` - Create new stack
 - ✅ `stack list` - List all stacks
-- ✅ `stack show [name]` - Show stack details
+- ✅ `stack status [name]` - Show stack status
 - ✅ Core git operations (branch management, commit parsing)
 - ✅ Stack metadata storage and retrieval
 

@@ -33,6 +33,9 @@ type GitOperations interface {
 	DeleteRemoteBranch(branchName string) error
 	ResetHard(ref string) error
 	CreateAndCheckoutBranchAt(name string, commitHash string) error
+	GetUpstreamBranch(branch string) (string, error)
+	CreateBranchAt(branchName string, ref string) error
+	UpdateRef(branchName string, commitHash string) error
 }
 
 // Client provides stack operations
@@ -813,6 +816,86 @@ func (c *Client) UpdateSyncMetadata(stackName string) error {
 	// Save
 	if err := c.SaveStack(s); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+type RestackOptions struct {
+	// Onto specifies the base branch to rebase onto (required)
+	Onto string
+
+	// Fetch from remote before rebasing
+	Fetch bool
+}
+
+// Restack rebases the stack on top of the specified base branch.
+// Always updates stack metadata with the new base (idempotent if unchanged).
+// If opts.Fetch is true, fetches from remote and updates local base ref before rebasing.
+func (c *Client) Restack(stackCtx *StackContext, opts RestackOptions) error {
+	targetBase := opts.Onto
+
+	if opts.Fetch {
+		fmt.Println("Fetching from remote...")
+		if err := c.FetchRemote(); err != nil {
+			return fmt.Errorf("failed to fetch: %w", err)
+		}
+
+		// Update local base ref to match upstream
+		if err := c.UpdateLocalBaseRef(targetBase); err != nil {
+			// Non-fatal: show warning and continue
+			fmt.Fprintf(os.Stderr, "Warning: could not update local base ref: %v\n", err)
+		}
+	}
+
+	// Rebase TOP branch onto target base
+	if err := c.git.Rebase(targetBase); err != nil {
+		return err
+	}
+
+	if stackCtx.Stack.Base != targetBase {
+		stackCtx.Stack.Base = targetBase
+		if err := c.SaveStack(stackCtx.Stack); err != nil {
+			return fmt.Errorf("failed to update stack metadata: %w", err)
+		}
+		fmt.Printf("✓ Updated base branch: %s → %s\n", stackCtx.Stack.Base, targetBase)
+	}
+	return nil
+}
+
+// UpdateLocalBaseRef updates the local base branch ref to match its upstream
+func (c *Client) UpdateLocalBaseRef(baseBranch string) error {
+	upstream, err := c.git.GetUpstreamBranch(baseBranch)
+	if err != nil {
+		return err
+	}
+	if upstream == "" {
+		return fmt.Errorf("no upstream tracking branch configured for %s", baseBranch)
+	}
+
+	// Get commit hash of upstream
+	upstreamHash, err := c.git.GetCommitHash(upstream)
+	if err != nil {
+		return err
+	}
+
+	// Get current hash of local base (may not exist, that's ok)
+	currentHash, err := c.git.GetCommitHash(baseBranch)
+	if err != nil {
+		// Branch doesn't exist locally - create it at upstream's commit
+		if err := c.git.CreateBranchAt(baseBranch, upstreamHash); err != nil {
+			return err
+		}
+		fmt.Printf("Created local branch %s at %s\n", baseBranch, upstreamHash[:7])
+		return nil
+	}
+
+	// Update local branch ref if different
+	if upstreamHash != currentHash {
+		if err := c.git.UpdateRef(baseBranch, upstreamHash); err != nil {
+			return err
+		}
+		fmt.Printf("Updating %s: %s..%s\n", baseBranch, currentHash[:7], upstreamHash[:7])
 	}
 
 	return nil

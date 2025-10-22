@@ -135,7 +135,7 @@ Available stacks:
 
 **Command:**
 ```bash
-stack show
+stack status
 ```
 
 **Output:**
@@ -161,7 +161,7 @@ Legend:
 
 **Show specific stack:**
 ```bash
-stack show feature-redesign
+stack status feature-redesign
 ```
 
 ---
@@ -513,12 +513,12 @@ stack list
 
 ---
 
-#### `stack show [name]`
-Show details of current stack (or specified stack).
+#### `stack status [name]`
+Show status of current stack (or specified stack).
 
 ```bash
-stack show
-stack show feature-redesign
+stack status
+stack status feature-redesign
 ```
 
 **Options:**
@@ -585,22 +585,7 @@ stack refresh
 
 ### Utilities
 
-#### `stack status`
-Show current state of the stack.
-
-```bash
-stack status
-```
-
-**Output:**
-```
-Current stack: auth-refactor
-Branch: username/stack-auth-refactor
-Base: main (up to date)
-Uncommitted changes: none
-PRs: 3 total (1 open, 1 draft, 1 local)
-Needs sync: no
-```
+Note: `stack status` is covered in the Stack Management section above. The command shows detailed status of the current or specified stack, including all PRs and their states.
 
 ---
 
@@ -950,7 +935,7 @@ This approach is more git-native and eliminates the need for state files.
    - ✅ `cmd/command.go` - Command interface
    - ✅ `cmd/newcmd/` - `stack new <name>` to create new stack
    - ✅ `cmd/list/` - `stack list` to list all stacks
-   - ✅ `cmd/show/` - `stack show [name]` to show stack details
+   - ✅ `cmd/status/` - `stack status [name]` to show stack status
 
 5. **Common utilities** (`internal/common/`)
    - ✅ `GetUsername()` - detect username from git/gh config
@@ -1052,7 +1037,7 @@ This approach is more git-native and eliminates the need for state files.
 
 3. ✅ UI system (`internal/ui/`)
    - Colored status indicators (🟢🟡🟣⚪)
-   - Styled table formatting for `stack show` and `stack list`
+   - Styled table formatting for `stack status` and `stack list`
    - Message rendering (success, error, warning, info)
    - Formatting utilities (truncate, pad, boxes)
    - lipgloss-based styling for consistency
@@ -1215,8 +1200,8 @@ stack/
 │   ├── command.go               # Command interface for registration pattern
 │   ├── list/
 │   │   └── list.go              # stack list command (✅ completed, uses UI system)
-│   ├── show/
-│   │   └── show.go              # stack show command (✅ completed, uses UI system)
+│   ├── status/
+│   │   └── status.go            # stack status command (✅ completed, uses UI system)
 │   ├── newcmd/
 │   │   └── new.go               # stack new command (newcmd to avoid "new" keyword) (✅ completed)
 │   ├── edit/
@@ -1488,7 +1473,7 @@ stack refresh
 # ✓ Rebasing remaining PRs on origin/main
 # ✓ Deleted branch bjulian5/stack-auth-feature/550e8400
 
-stack show
+stack status
 # Now shows:
 # 1. Add authentication endpoints (was #2)
 # 2. Add login UI (was #3)
