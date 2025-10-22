@@ -77,8 +77,8 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("stack '%s' does not exist", stackName)
 	}
 
-	// Auto-refresh if stale (respects threshold for display operations)
-	stackCtx, err = c.Stack.MaybeRefreshStack(stackCtx)
+	// Sync metadata if stale (respects staleness threshold)
+	stackCtx, err = c.Stack.MaybeRefreshStackMetadata(stackCtx)
 	if err != nil {
 		return fmt.Errorf("failed to sync with GitHub: %w", err)
 	}

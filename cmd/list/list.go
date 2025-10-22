@@ -64,7 +64,7 @@ func (c *Command) Run(ctx context.Context) error {
 		currentStack = stackCtx.StackName
 	}
 
-	// Load changes for all stacks (with auto-refresh for current stack if stale)
+	// Load changes for all stacks
 	stackChanges := make(map[string][]stack.Change)
 	for _, s := range stacks {
 		ctx, err := c.Stack.GetStackContextByName(s.Name)
@@ -73,12 +73,12 @@ func (c *Command) Run(ctx context.Context) error {
 			continue
 		}
 
-		// Auto-refresh current stack if stale (respects threshold for display operations)
+		// Sync metadata if stale (respects staleness threshold)
 		if s.Name == currentStack {
-			ctx, err = c.Stack.MaybeRefreshStack(ctx)
+			ctx, err = c.Stack.MaybeRefreshStackMetadata(ctx)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to refresh stack %s: %v\n", s.Name, err)
-				// Continue with stale data rather than failing
+				// Continue with cached data rather than failing
 			}
 		}
 

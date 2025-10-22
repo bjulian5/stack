@@ -80,30 +80,37 @@ func (c *Command) Run(ctx context.Context) error {
 		return nil
 	}
 
-	// Perform refresh (fetches from remote and syncs with GitHub)
-	fmt.Println("Fetching from remote...")
-	fmt.Println("Checking PR merge status on GitHub...")
-	result, err := c.Stack.PerformRefresh(stackCtx)
+	// Sync metadata with GitHub
+	fmt.Println(ui.RenderInfoMessage("Checking PR merge status on GitHub..."))
+	result, err := c.Stack.SyncPRMetadata(stackCtx)
 	if err != nil {
 		return err
 	}
 
-	// Display results
+	// Display results if no merges
 	if result.MergedCount == 0 {
-		fmt.Println(ui.RenderSuccessMessage("✓ No merged PRs found. Stack is up to date."))
+		fmt.Println(ui.RenderSuccessMessage("No merged PRs found. Stack is up to date."))
 		return nil
 	}
 
-	// Display what was merged
-	fmt.Printf("\nFound %d merged PR(s):\n", result.MergedCount)
-	for _, change := range result.MergedChanges {
-		fmt.Printf("  ✓ #%d: %s\n", change.PR.PRNumber, change.Title)
+	// Apply refresh (fetch + rebase)
+	fmt.Println(ui.RenderInfoMessage("Fetching from remote and rebasing TOP branch..."))
+	if err := c.Stack.ApplyRefresh(stackCtx, result.MergedChanges); err != nil {
+		return err
 	}
+
+	// Display what was merged
+	fmt.Printf("\n%s\n", ui.RenderTitle(fmt.Sprintf("Merged %d PR(s)", result.MergedCount)))
+	mergedItems := make([]string, len(result.MergedChanges))
+	for i, change := range result.MergedChanges {
+		mergedItems[i] = fmt.Sprintf("#%d: %s", change.PR.PRNumber, change.Title)
+	}
+	fmt.Println(ui.RenderBulletList(mergedItems))
 
 	// Display summary
 	fmt.Println()
 	fmt.Println(ui.RenderSuccessMessage(
-		fmt.Sprintf("✓ Stack refreshed: %d merged, %d remaining", result.MergedCount, result.RemainingCount),
+		fmt.Sprintf("Stack refreshed: %d merged, %d remaining", result.MergedCount, result.RemainingCount),
 	))
 
 	return nil

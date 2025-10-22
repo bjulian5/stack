@@ -36,6 +36,7 @@ type GitOperations interface {
 	GetUpstreamBranch(branch string) (string, error)
 	CreateBranchAt(branchName string, ref string) error
 	UpdateRef(branchName string, commitHash string) error
+	HasUncommittedChanges() (bool, error)
 }
 
 // Client provides stack operations
@@ -540,12 +541,12 @@ type RefreshResult struct {
 	MergedChanges  []Change // The changes that were merged
 }
 
-// PerformRefresh performs a complete refresh operation on a stack
-// Returns the refresh result or an error if the operation fails
-func (c *Client) PerformRefresh(stackCtx *StackContext) (*RefreshResult, error) {
-	// If no active changes, nothing to refresh
+// SyncPRMetadata queries GitHub and updates local metadata without modifying git state.
+// This is safe to call from any branch with any working tree state.
+// Returns info about what changed (merged PRs, etc).
+func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) {
+	// If no active changes, just update sync timestamp
 	if len(stackCtx.ActiveChanges) == 0 {
-		// Still update sync metadata
 		if err := c.UpdateSyncMetadata(stackCtx.StackName); err != nil {
 			return nil, err
 		}
@@ -556,14 +557,14 @@ func (c *Client) PerformRefresh(stackCtx *StackContext) (*RefreshResult, error) 
 		}, nil
 	}
 
-	// Query GitHub for PR states first (fast check for merges)
+	// Query GitHub for PR states (batch query for efficiency)
 	newlyMerged, err := c.FindMergedPRs(stackCtx)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(newlyMerged) == 0 {
-		// No merges found - update metadata and return early (skip fetch!)
+		// No merges found - update metadata and return
 		if err := c.UpdateSyncMetadata(stackCtx.StackName); err != nil {
 			return nil, err
 		}
@@ -574,12 +575,7 @@ func (c *Client) PerformRefresh(stackCtx *StackContext) (*RefreshResult, error) 
 		}, nil
 	}
 
-	// Merges found - fetch from remote before rebasing
-	if err := c.FetchRemote(); err != nil {
-		return nil, fmt.Errorf("failed to fetch: %w", err)
-	}
-
-	// Validate bottom-up order
+	// Validate bottom-up merge order
 	mergedPRNumbers := make(map[int]bool)
 	for _, change := range newlyMerged {
 		mergedPRNumbers[change.PR.PRNumber] = true
@@ -592,14 +588,6 @@ func (c *Client) PerformRefresh(stackCtx *StackContext) (*RefreshResult, error) 
 	if err := c.SaveMergedChanges(stackCtx.StackName, newlyMerged); err != nil {
 		return nil, fmt.Errorf("failed to save merged changes: %w", err)
 	}
-
-	// Rebase TOP on latest base
-	if err := c.RebaseTopBranch(stackCtx); err != nil {
-		return nil, fmt.Errorf("failed to rebase TOP: %w", err)
-	}
-
-	// Clean up UUID branches for merged PRs (non-fatal errors)
-	_ = c.CleanupMergedBranches(stackCtx, newlyMerged)
 
 	// Update sync metadata
 	if err := c.UpdateSyncMetadata(stackCtx.StackName); err != nil {
@@ -614,23 +602,51 @@ func (c *Client) PerformRefresh(stackCtx *StackContext) (*RefreshResult, error) 
 	}, nil
 }
 
-// ForceRefresh ALWAYS syncs with GitHub regardless of staleness threshold.
-// Use this for critical operations that could corrupt state (edit, fixup, push, navigation).
-// This ensures we have the absolute latest PR states before mutating operations.
-func (c *Client) ForceRefresh(stackCtx *StackContext) (*StackContext, error) {
+// ApplyRefresh applies a refresh by rebasing the TOP branch onto the latest base.
+// Requires: current branch is TOP, no uncommitted changes.
+// This performs the git operations to actually apply merged PR removals.
+func (c *Client) ApplyRefresh(stackCtx *StackContext, merged []Change) error {
+	// Validate on TOP branch (not editing a specific change)
+	if !stackCtx.IsStack() || stackCtx.IsEditing() {
+		currentBranch, _ := c.git.GetCurrentBranch()
+		return fmt.Errorf("must be on TOP branch (%s) to apply refresh, currently on %s",
+			stackCtx.Stack.Branch, currentBranch)
+	}
 
-	// Perform refresh (no threshold check)
-	result, err := c.PerformRefresh(stackCtx)
+	hasChanges, err := c.git.HasUncommittedChanges()
 	if err != nil {
-		return nil, fmt.Errorf("failed to sync stack with GitHub: %w", err)
+		return fmt.Errorf("failed to check working tree: %w", err)
+	}
+	if hasChanges {
+		return fmt.Errorf("cannot apply refresh with uncommitted changes - commit or stash first")
 	}
 
-	// Show brief result if anything changed
-	if result.MergedCount > 0 {
-		fmt.Printf("✓ Found %d merged PR(s)\n", result.MergedCount)
+	// Rebase TOP branch using Restack (handles fetch + update-ref + rebase)
+	if err := c.Restack(stackCtx, RestackOptions{
+		Onto:  stackCtx.Stack.Base,
+		Fetch: true,
+	}); err != nil {
+		return fmt.Errorf("failed to rebase TOP: %w", err)
 	}
 
-	// Reload context with fresh data
+	// Clean up UUID branches for merged PRs (non-fatal errors)
+	_ = c.CleanupMergedBranches(stackCtx, merged)
+
+	return nil
+}
+
+// RefreshStackMetadata syncs metadata from GitHub without staleness threshold.
+// IMPORTANT: This is read-only - never performs git operations.
+// Use for commands that need fresh state (edit, navigation, switch).
+// Returns fresh context with updated metadata.
+func (c *Client) RefreshStackMetadata(stackCtx *StackContext) (*StackContext, error) {
+	// Always sync metadata (no staleness check)
+	_, err := c.SyncPRMetadata(stackCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sync with GitHub: %w", err)
+	}
+
+	// Reload context with fresh metadata
 	freshCtx, err := c.GetStackContext()
 	if err != nil {
 		return nil, fmt.Errorf("failed to reload stack context: %w", err)
@@ -639,31 +655,25 @@ func (c *Client) ForceRefresh(stackCtx *StackContext) (*StackContext, error) {
 	return freshCtx, nil
 }
 
-// MaybeRefreshStack syncs with GitHub only if staleness threshold exceeded.
-// Use this for non-critical operations (show, list) where slight staleness is acceptable.
-// Respects the 5-minute threshold to avoid unnecessary API calls.
-func (c *Client) MaybeRefreshStack(stackCtx *StackContext) (*StackContext, error) {
+// MaybeRefreshStackMetadata syncs metadata from GitHub only if staleness threshold exceeded.
+// IMPORTANT: This is read-only - never performs git operations.
+// Use for read-only display commands (list, status) where slight staleness is acceptable.
+// Returns fresh context with updated metadata (or existing context if still fresh).
+func (c *Client) MaybeRefreshStackMetadata(stackCtx *StackContext) (*StackContext, error) {
 	// Quick check: do we need sync?
 	syncStatus, err := c.CheckSyncStatus(stackCtx.StackName)
-	if err != nil {
-		// If we can't check, be conservative and refresh anyway
-	} else if !syncStatus.NeedsSync {
+	if err == nil && !syncStatus.NeedsSync {
 		// Already fresh, no action needed
 		return stackCtx, nil
 	}
 
-	// Perform refresh
-	result, err := c.PerformRefresh(stackCtx)
+	// Sync metadata (no git operations)
+	_, err = c.SyncPRMetadata(stackCtx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to sync stack with GitHub: %w", err)
+		return nil, fmt.Errorf("failed to sync with GitHub: %w", err)
 	}
 
-	// Show brief result if anything changed
-	if result.MergedCount > 0 {
-		fmt.Printf("✓ Found %d merged PR(s)\n", result.MergedCount)
-	}
-
-	// Reload context with fresh data
+	// Reload context with fresh metadata
 	freshCtx, err := c.GetStackContext()
 	if err != nil {
 		return nil, fmt.Errorf("failed to reload stack context: %w", err)
@@ -672,8 +682,13 @@ func (c *Client) MaybeRefreshStack(stackCtx *StackContext) (*StackContext, error
 	return freshCtx, nil
 }
 
-// FetchRemote fetches from the remote repository
-func (c *Client) FetchRemote() error {
+// IsChangeMerged returns true if a change has been merged on GitHub
+func (c *Client) IsChangeMerged(change *Change) bool {
+	return change.PR != nil && strings.ToLower(change.PR.State) == "merged"
+}
+
+// fetchRemote fetches from the remote repository
+func (c *Client) fetchRemote() error {
 	remote, err := c.git.GetRemoteName()
 	if err != nil {
 		return err
@@ -759,20 +774,6 @@ func (c *Client) SaveMergedChanges(stackName string, newlyMerged []Change) error
 	return nil
 }
 
-// RebaseTopBranch rebases the TOP branch on the latest base branch, removing merged commits
-func (c *Client) RebaseTopBranch(stackCtx *StackContext) error {
-	// Get the base branch (e.g., origin/main)
-	baseBranch := stackCtx.Stack.Base
-
-	// The rebase will automatically skip commits that are already in base
-	// (which includes the merged commits). Note: fetch already done earlier.
-	if err := c.git.Rebase(baseBranch); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // CleanupMergedBranches deletes UUID branches for merged PRs
 // Errors are non-fatal and just printed as warnings
 func (c *Client) CleanupMergedBranches(stackCtx *StackContext, merged []Change) error {
@@ -837,7 +838,7 @@ func (c *Client) Restack(stackCtx *StackContext, opts RestackOptions) error {
 
 	if opts.Fetch {
 		fmt.Println("Fetching from remote...")
-		if err := c.FetchRemote(); err != nil {
+		if err := c.fetchRemote(); err != nil {
 			return fmt.Errorf("failed to fetch: %w", err)
 		}
 

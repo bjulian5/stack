@@ -79,8 +79,8 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("cannot run fixup while editing a change: checkout the stack TOP branch first")
 	}
 
-	// Auto-refresh to ensure we have latest PR states from GitHub
-	stackCtx, err = c.Stack.ForceRefresh(stackCtx)
+	// Sync metadata with GitHub (read-only, no git operations)
+	stackCtx, err = c.Stack.RefreshStackMetadata(stackCtx)
 	if err != nil {
 		return fmt.Errorf("failed to sync with GitHub: %w", err)
 	}
@@ -107,6 +107,14 @@ func (c *Command) Run(ctx context.Context) error {
 	if selectedChange == nil {
 		// User cancelled
 		return nil
+	}
+
+	// Error if trying to fixup a merged change
+	if c.Stack.IsChangeMerged(selectedChange) {
+		return fmt.Errorf(
+			"cannot fixup change #%d - it has been merged on GitHub\nRun 'stack refresh' to sync your stack",
+			selectedChange.Position,
+		)
 	}
 
 	// Validate the change has a commit hash

@@ -70,8 +70,8 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("not on a stack branch: switch to a stack first or use 'stack switch'")
 	}
 
-	// Auto-refresh to ensure we have latest PR states from GitHub
-	stackCtx, err = c.Stack.ForceRefresh(stackCtx)
+	// Sync metadata with GitHub (read-only, no git operations)
+	stackCtx, err = c.Stack.RefreshStackMetadata(stackCtx)
 	if err != nil {
 		return fmt.Errorf("failed to sync with GitHub: %w", err)
 	}
@@ -101,6 +101,14 @@ func (c *Command) Run(ctx context.Context) error {
 	branchName, err := c.Stack.CheckoutChangeForEditing(stackCtx, firstChange)
 	if err != nil {
 		return err
+	}
+
+	// Warn if navigating to a merged change
+	if c.Stack.IsChangeMerged(firstChange) {
+		fmt.Println(ui.RenderWarningMessage(fmt.Sprintf(
+			"Change #%d has been merged on GitHub - run 'stack refresh' to sync",
+			firstChange.Position,
+		)))
 	}
 
 	// Print success message

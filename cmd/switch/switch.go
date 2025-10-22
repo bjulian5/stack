@@ -141,16 +141,16 @@ func (c *Command) Run(ctx context.Context) error {
 		fmt.Println(ui.RenderInfoMessage(fmt.Sprintf("Already on stack: %s", ui.Bold(selectedStack.Name))))
 		fmt.Println()
 
-		// Still show the stack details (with auto-refresh if stale)
+		// Still show the stack details
 		stackCtx, err := c.Stack.GetStackContextByName(selectedStack.Name)
 		if err != nil {
 			return fmt.Errorf("failed to load stack details: %w", err)
 		}
 
-		// Auto-refresh if stale (respects threshold for display operations)
-		stackCtx, err = c.Stack.MaybeRefreshStack(stackCtx)
+		// Sync latest metadata from GitHub
+		stackCtx, err = c.Stack.RefreshStackMetadata(stackCtx)
 		if err != nil {
-			// Log warning but continue with stale data
+			// Log warning but continue with cached data
 			fmt.Fprintf(os.Stderr, "Warning: failed to refresh stack: %v\n", err)
 		}
 
@@ -167,16 +167,16 @@ func (c *Command) Run(ctx context.Context) error {
 	fmt.Println(ui.RenderSwitchSuccess(selectedStack.Name))
 	fmt.Println()
 
-	// Load and display full stack details (with auto-refresh if stale)
+	// Load and display full stack details
 	stackCtx, err := c.Stack.GetStackContextByName(selectedStack.Name)
 	if err != nil {
 		return fmt.Errorf("failed to load stack details: %w", err)
 	}
 
-	// Auto-refresh if stale (respects threshold for display operations)
-	stackCtx, err = c.Stack.MaybeRefreshStack(stackCtx)
+	// Sync latest metadata from GitHub
+	stackCtx, err = c.Stack.RefreshStackMetadata(stackCtx)
 	if err != nil {
-		// Log warning but continue with stale data
+		// Log warning but continue with cached data
 		fmt.Fprintf(os.Stderr, "Warning: failed to refresh stack: %v\n", err)
 	}
 

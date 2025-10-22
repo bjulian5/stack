@@ -70,10 +70,21 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("not on a stack branch: switch to a stack first or use 'stack switch'")
 	}
 
-	// Auto-refresh to ensure we have latest PR states from GitHub
-	stackCtx, err = c.Stack.ForceRefresh(stackCtx)
+	// Sync metadata with GitHub (read-only, no git operations)
+	stackCtx, err = c.Stack.RefreshStackMetadata(stackCtx)
 	if err != nil {
 		return fmt.Errorf("failed to sync with GitHub: %w", err)
+	}
+
+	// Warn if the topmost change (current HEAD) has been merged
+	if len(stackCtx.ActiveChanges) > 0 {
+		topmostChange := &stackCtx.ActiveChanges[len(stackCtx.ActiveChanges)-1]
+		if c.Stack.IsChangeMerged(topmostChange) {
+			fmt.Println(ui.RenderWarningMessage(fmt.Sprintf(
+				"Change #%d has been merged on GitHub - run 'stack refresh' to sync",
+				topmostChange.Position,
+			)))
+		}
 	}
 
 	// Check if already on TOP branch
