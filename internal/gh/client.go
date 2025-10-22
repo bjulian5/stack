@@ -380,3 +380,74 @@ func (c *Client) parseBatchPRResponse(data []byte, prNumbers []int) (*BatchPRsRe
 
 	return &BatchPRsResult{PRStates: prStates}, nil
 }
+
+type Comment struct {
+	ID   string `json:"id"`
+	Body string `json:"body"`
+	URL  string `json:"url"`
+}
+
+func (c *Client) ListPRComments(prNumber int) ([]Comment, error) {
+	output, err := c.execGH(
+		"pr", "view", fmt.Sprintf("%d", prNumber),
+		"--comments",
+		"--json", "comments",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list PR comments: %w", err)
+	}
+
+	var response struct {
+		Comments []Comment `json:"comments"`
+	}
+	if err := json.Unmarshal(output, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse comments: %w", err)
+	}
+
+	return response.Comments, nil
+}
+
+func (c *Client) CreatePRComment(prNumber int, body string) (string, error) {
+	_, err := c.execGH(
+		"pr", "comment", fmt.Sprintf("%d", prNumber),
+		"--body", body,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to create PR comment: %w", err)
+	}
+
+	comments, err := c.ListPRComments(prNumber)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch comment ID after creation: %w", err)
+	}
+
+	if len(comments) == 0 {
+		return "", fmt.Errorf("no comments found after creating comment")
+	}
+
+	return comments[len(comments)-1].ID, nil
+}
+
+func (c *Client) UpdatePRComment(commentID string, body string) error {
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("failed to marshal comment body: %w", err)
+	}
+
+	query := fmt.Sprintf(`
+		mutation {
+			updateIssueComment(input: {id: "%s", body: %s}) {
+				issueComment {
+					id
+				}
+			}
+		}
+	`, commentID, string(bodyJSON))
+
+	_, err = c.execGH("api", "graphql", "-f", "query="+query)
+	if err != nil {
+		return fmt.Errorf("failed to update comment: %w", err)
+	}
+
+	return nil
+}

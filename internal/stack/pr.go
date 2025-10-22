@@ -6,13 +6,14 @@ import (
 
 // PR represents a pull request in the stack
 type PR struct {
-	PRNumber   int       `json:"pr_number"`
-	URL        string    `json:"url"`
-	Branch     string    `json:"branch"`
-	CommitHash string    `json:"commit_hash"` // Latest commit hash for this PR
-	CreatedAt  time.Time `json:"created_at"`
-	LastPushed time.Time `json:"last_pushed"`
-	State      string    `json:"state"` // open, draft, closed, merged
+	PRNumber     int       `json:"pr_number"`
+	URL          string    `json:"url"`
+	Branch       string    `json:"branch"`
+	CommitHash   string    `json:"commit_hash"`              // Latest commit hash for this PR
+	VizCommentID string    `json:"viz_comment_id,omitempty"` // GitHub comment ID for stack visualization
+	CreatedAt    time.Time `json:"created_at"`
+	LastPushed   time.Time `json:"last_pushed"`
+	State        string    `json:"state"` // open, draft, closed, merged
 }
 
 // PRData is a wrapper for PR tracking data

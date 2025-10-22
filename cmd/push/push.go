@@ -18,6 +18,7 @@ type Command struct {
 	// Flags
 	Ready  bool // Mark PRs as ready (not draft)
 	DryRun bool // Show what would happen without actually doing it
+	Force  bool // Force update stack visualizations even if no PRs created
 
 	Git   *git.Client
 	Stack *stack.Client
@@ -45,7 +46,8 @@ Use --ready to mark them as ready for review.
 Example:
   stack push              # Push all PRs as drafts
   stack push --ready      # Push all PRs as ready for review
-  stack push --dry-run    # Show what would happen`,
+  stack push --dry-run    # Show what would happen
+  stack push --force      # Force update stack visualizations`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.Run(cmd.Context())
 		},
@@ -53,6 +55,7 @@ Example:
 
 	cmd.Flags().BoolVar(&c.Ready, "ready", false, "Mark PRs as ready for review (not draft)")
 	cmd.Flags().BoolVar(&c.DryRun, "dry-run", false, "Show what would happen without pushing")
+	cmd.Flags().BoolVar(&c.Force, "force", false, "Force update stack visualizations even if no PRs created")
 
 	parent.AddCommand(cmd)
 }
@@ -215,6 +218,24 @@ func (c *Command) Run(ctx context.Context) error {
 
 	// Display summary
 	fmt.Println(ui.RenderPushSummary(created, updated))
+
+	// Update stack visualizations if any PRs were created or if force flag is set
+	if created > 0 || c.Force {
+		fmt.Println()
+		fmt.Println(ui.RenderInfoMessage("Updating stack visualizations..."))
+
+		// Reload stack context to get fresh PR data
+		freshCtx, err := c.Stack.GetStackContext()
+		if err != nil {
+			return fmt.Errorf("failed to reload stack context: %w", err)
+		}
+
+		if err := c.Stack.SyncVisualizationComments(freshCtx); err != nil {
+			return fmt.Errorf("failed to sync visualization comments: %w", err)
+		}
+
+		fmt.Println(ui.RenderSuccessMessage("Stack visualizations updated"))
+	}
 
 	return nil
 }
