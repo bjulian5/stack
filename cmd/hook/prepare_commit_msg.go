@@ -1,6 +1,7 @@
 package hook
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -94,7 +95,7 @@ func (c *PrepareCommitMsgCommand) Run() error {
 	}
 
 	if err := os.WriteFile(c.MessageFile, []byte(newContent), 0644); err != nil {
-		return nil
+		return fmt.Errorf("failed to write commit message: %w", err)
 	}
 
 	return nil
