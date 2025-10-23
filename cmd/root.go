@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bjulian5/stack/cmd/bottom"
+	"github.com/bjulian5/stack/cmd/cleanup"
+	"github.com/bjulian5/stack/cmd/delete"
 	"github.com/bjulian5/stack/cmd/down"
 	"github.com/bjulian5/stack/cmd/edit"
 	"github.com/bjulian5/stack/cmd/fixup"
@@ -63,6 +65,8 @@ func init() {
 		&push.Command{},
 		&refresh.Command{},
 		&restack.Command{},
+		&delete.Command{},
+		&cleanup.Command{},
 		&pr.Command{},
 		&hook.Command{},
 	}

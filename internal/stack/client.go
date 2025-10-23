@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -55,17 +56,14 @@ func NewClient(gitOps GitOperations, ghClient *gh.Client) *Client {
 	}
 }
 
-// getStackDir returns the directory where stack metadata is stored
 func (c *Client) getStackDir(stackName string) string {
 	return filepath.Join(c.gitRoot, ".git", "stack", stackName)
 }
 
-// getStacksRootDir returns the root directory for all stacks
 func (c *Client) getStacksRootDir() string {
 	return filepath.Join(c.gitRoot, ".git", "stack")
 }
 
-// LoadStack loads a stack configuration from disk
 func (c *Client) LoadStack(name string) (*Stack, error) {
 	stackDir := c.getStackDir(name)
 	configPath := filepath.Join(stackDir, "config.json")
@@ -80,16 +78,10 @@ func (c *Client) LoadStack(name string) (*Stack, error) {
 		return nil, fmt.Errorf("failed to parse stack config: %w", err)
 	}
 
-	// Backfill Owner and RepoName if missing (for stacks created before this feature)
 	if stack.Owner == "" || stack.RepoName == "" {
-		owner, repoName, err := c.gh.GetRepoInfo()
-		if err != nil {
-			// Non-fatal - we'll fetch it later when needed
-			// Just continue without backfilling
-		} else {
+		if owner, repoName, err := c.gh.GetRepoInfo(); err == nil {
 			stack.Owner = owner
 			stack.RepoName = repoName
-			// Save the updated stack (ignore errors to keep LoadStack read-only semantics)
 			_ = c.SaveStack(&stack)
 		}
 	}
@@ -97,16 +89,13 @@ func (c *Client) LoadStack(name string) (*Stack, error) {
 	return &stack, nil
 }
 
-// SaveStack saves a stack configuration to disk
 func (c *Client) SaveStack(stack *Stack) error {
 	stackDir := c.getStackDir(stack.Name)
 
-	// Create stack directory if it doesn't exist
 	if err := os.MkdirAll(stackDir, 0755); err != nil {
 		return fmt.Errorf("failed to create stack directory: %w", err)
 	}
 
-	// Write config
 	configPath := filepath.Join(stackDir, "config.json")
 	data, err := json.MarshalIndent(stack, "", "  ")
 	if err != nil {
@@ -120,99 +109,81 @@ func (c *Client) SaveStack(stack *Stack) error {
 	return nil
 }
 
-// SyncStatus indicates if a stack needs GitHub synchronization
 type SyncStatus struct {
-	NeedsSync bool   // True if stack needs refresh
-	Reason    string // Why sync is needed (internal use)
-	Warning   string // User-facing warning message
+	NeedsSync bool
+	Reason    string
+	Warning   string
 }
 
-// CheckSyncStatus checks if a stack needs refresh without hitting GitHub.
-// Returns status indicating whether sync is needed and why.
 func (c *Client) CheckSyncStatus(stackName string) (*SyncStatus, error) {
 	stack, err := c.LoadStack(stackName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load stack: %w", err)
 	}
 
-	status := &SyncStatus{}
-
-	// Never synced - definitely needs sync
 	if stack.LastSynced.IsZero() {
-		status.NeedsSync = true
-		status.Reason = "never_synced"
-		status.Warning = "Stack has never been synced with GitHub. Run 'stack refresh' to check for merged PRs."
-		return status, nil
+		return &SyncStatus{
+			NeedsSync: true,
+			Reason:    "never_synced",
+			Warning:   "Stack has never been synced with GitHub. Run 'stack refresh' to check for merged PRs.",
+		}, nil
 	}
 
-	// Check if TOP branch changed since last sync
-	// This indicates new commits were added
 	currentHash, err := c.git.GetCommitHash(stack.Branch)
 	if err != nil {
-		// If we can't get the hash, be conservative and say sync needed
-		status.NeedsSync = true
-		status.Reason = "hash_check_failed"
-		status.Warning = "Could not verify stack sync status. Run 'stack refresh' to ensure consistency."
-		return status, nil
+		return &SyncStatus{
+			NeedsSync: true,
+			Reason:    "hash_check_failed",
+			Warning:   "Could not verify stack sync status. Run 'stack refresh' to ensure consistency.",
+		}, nil
 	}
 
 	if currentHash != stack.SyncHash {
-		status.NeedsSync = true
-		status.Reason = "commits_changed"
-		status.Warning = "Stack has new commits since last sync. Run 'stack refresh' to ensure consistency with GitHub."
-		return status, nil
+		return &SyncStatus{
+			NeedsSync: true,
+			Reason:    "commits_changed",
+			Warning:   "Stack has new commits since last sync. Run 'stack refresh' to ensure consistency with GitHub.",
+		}, nil
 	}
 
-	// Check time threshold
-	// Even if nothing changed locally, GitHub might have merged PRs
 	if time.Since(stack.LastSynced) > DefaultSyncThreshold {
-		status.NeedsSync = true
-		status.Reason = "stale"
-		status.Warning = "Stack sync is stale. Run 'stack refresh' to check for merged PRs."
-		return status, nil
+		return &SyncStatus{
+			NeedsSync: true,
+			Reason:    "stale",
+			Warning:   "Stack sync is stale. Run 'stack refresh' to check for merged PRs.",
+		}, nil
 	}
 
-	// All checks passed - in sync
-	status.NeedsSync = false
-	return status, nil
+	return &SyncStatus{NeedsSync: false}, nil
 }
 
-// StackExists checks if a stack exists
 func (c *Client) StackExists(name string) bool {
-	stackDir := c.getStackDir(name)
-	configPath := filepath.Join(stackDir, "config.json")
+	configPath := filepath.Join(c.getStackDir(name), "config.json")
 	_, err := os.Stat(configPath)
 	return err == nil
 }
 
-// ListStacks returns all stacks in the repository
 func (c *Client) ListStacks() ([]*Stack, error) {
 	stacksRoot := c.getStacksRootDir()
 
-	// Check if stacks directory exists
 	if _, err := os.Stat(stacksRoot); os.IsNotExist(err) {
 		return []*Stack{}, nil
 	}
 
-	// Read all subdirectories
 	entries, err := os.ReadDir(stacksRoot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read stacks directory: %w", err)
 	}
 
-	stacks := []*Stack{}
+	var stacks []*Stack
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 
-		stack, err := c.LoadStack(entry.Name())
-		if err != nil {
-			// Skip invalid stacks
-			continue
+		if stack, err := c.LoadStack(entry.Name()); err == nil {
+			stacks = append(stacks, stack)
 		}
-
-		stacks = append(stacks, stack)
 	}
 
 	return stacks, nil
@@ -1046,4 +1017,184 @@ func (c *Client) RebaseSubsequentCommitsWithRecovery(params RebaseParams) (int, 
 	}
 
 	return rebasedCount, nil
+}
+
+// ====================================================================
+// Stack Deletion and Cleanup Operations
+// ====================================================================
+
+func (c *Client) ArchiveStack(stackName string) error {
+	stackDir := c.getStackDir(stackName)
+
+	if _, err := os.Stat(stackDir); os.IsNotExist(err) {
+		return fmt.Errorf("stack '%s' does not exist", stackName)
+	}
+
+	archiveRoot := filepath.Join(c.getStacksRootDir(), ".archived")
+	if err := os.MkdirAll(archiveRoot, 0755); err != nil {
+		return fmt.Errorf("failed to create archive directory: %w", err)
+	}
+
+	timestamp := time.Now().Format("20060102-150405")
+	archiveName := fmt.Sprintf("%s-%s", stackName, timestamp)
+	archivePath := filepath.Join(archiveRoot, archiveName)
+
+	if err := os.Rename(stackDir, archivePath); err != nil {
+		return fmt.Errorf("failed to archive stack: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) GetStackBranches(username, stackName string) ([]string, error) {
+	pattern := fmt.Sprintf("refs/heads/%s/stack-%s/*", username, stackName)
+	cmd := exec.Command("git", "for-each-ref", "--format=%(refname:short)", pattern)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list stack branches: %w", err)
+	}
+
+	branchesStr := strings.TrimSpace(string(output))
+	if branchesStr == "" {
+		return []string{}, nil
+	}
+
+	return strings.Split(branchesStr, "\n"), nil
+}
+
+func (c *Client) DeleteStack(stackName string, skipConfirm bool) error {
+	stack, err := c.LoadStack(stackName)
+	if err != nil {
+		return fmt.Errorf("failed to load stack: %w", err)
+	}
+
+	username, err := common.GetUsername()
+	if err != nil {
+		return fmt.Errorf("failed to get username: %w", err)
+	}
+
+	branches, err := c.GetStackBranches(username, stackName)
+	if err != nil {
+		return fmt.Errorf("failed to get stack branches: %w", err)
+	}
+
+	if err := c.checkoutBaseBranchIfNeeded(stack, branches); err != nil {
+		return err
+	}
+
+	if err := c.ArchiveStack(stackName); err != nil {
+		return fmt.Errorf("failed to archive stack metadata: %w", err)
+	}
+
+	fmt.Printf("✓ Archived stack metadata to .git/stack/.archived/%s-*\n", stackName)
+
+	c.deleteBranches(branches)
+	return nil
+}
+
+func (c *Client) checkoutBaseBranchIfNeeded(stack *Stack, branches []string) error {
+	currentBranch, err := c.git.GetCurrentBranch()
+	if err != nil {
+		return fmt.Errorf("failed to get current branch: %w", err)
+	}
+
+	for _, branch := range branches {
+		if branch == currentBranch {
+			fmt.Printf("Currently on stack branch '%s', checking out base branch '%s'...\n", currentBranch, stack.Base)
+			if err := c.git.CheckoutBranch(stack.Base); err != nil {
+				return fmt.Errorf("failed to checkout base branch: %w", err)
+			}
+			break
+		}
+	}
+	return nil
+}
+
+func (c *Client) deleteBranches(branches []string) {
+	deletedLocal, deletedRemote := 0, 0
+
+	for _, branch := range branches {
+		if c.git.BranchExists(branch) {
+			if err := c.git.DeleteBranch(branch, true); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to delete local branch %s: %v\n", branch, err)
+			} else {
+				deletedLocal++
+			}
+		}
+
+		if err := c.git.DeleteRemoteBranch(branch); err != nil {
+			if !strings.Contains(err.Error(), "remote ref does not exist") {
+				fmt.Fprintf(os.Stderr, "Warning: failed to delete remote branch %s: %v\n", branch, err)
+			}
+		} else {
+			deletedRemote++
+		}
+	}
+
+	if deletedLocal > 0 {
+		fmt.Printf("✓ Deleted %d local branch(es)\n", deletedLocal)
+	}
+	if deletedRemote > 0 {
+		fmt.Printf("✓ Deleted %d remote branch(es)\n", deletedRemote)
+	}
+}
+
+type CleanupCandidate struct {
+	Stack       *Stack
+	Reason      string
+	ChangeCount int
+}
+
+func (c *Client) IsStackEligibleForCleanup(stackCtx *StackContext) (bool, string) {
+	if len(stackCtx.ActiveChanges) == 0 {
+		return true, "empty"
+	}
+
+	for i := range stackCtx.ActiveChanges {
+		if !c.IsChangeMerged(&stackCtx.ActiveChanges[i]) {
+			return false, ""
+		}
+	}
+
+	return true, "all_merged"
+}
+
+func (c *Client) GetCleanupCandidates() ([]CleanupCandidate, error) {
+	stacks, err := c.ListStacks()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list stacks: %w", err)
+	}
+
+	var candidates []CleanupCandidate
+
+	for _, s := range stacks {
+		stackCtx, err := c.loadStackWithSync(s.Name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to load stack %s: %v\n", s.Name, err)
+			continue
+		}
+
+		if eligible, reason := c.IsStackEligibleForCleanup(stackCtx); eligible {
+			candidates = append(candidates, CleanupCandidate{
+				Stack:       s,
+				Reason:      reason,
+				ChangeCount: len(stackCtx.AllChanges),
+			})
+		}
+	}
+
+	return candidates, nil
+}
+
+func (c *Client) loadStackWithSync(name string) (*StackContext, error) {
+	stackCtx, err := c.GetStackContextByName(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := c.SyncPRMetadata(stackCtx); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to sync stack %s with GitHub: %v\n", name, err)
+	}
+
+	return c.GetStackContextByName(name)
 }
