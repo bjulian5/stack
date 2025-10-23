@@ -252,7 +252,7 @@ func (c *Command) Run(ctx context.Context) error {
 
 	ui.Print(ui.RenderPushSummary(created, updated, skipped))
 
-	if created > 0 || c.Force {
+	if created > 0 || updated > 0 || c.Force {
 		ui.Println("")
 		ui.Info("Updating stack visualizations...")
 
