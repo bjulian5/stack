@@ -16,7 +16,6 @@ import (
 // Command pushes PRs to GitHub
 type Command struct {
 	// Flags
-	Ready  bool // Mark PRs as ready (not draft)
 	DryRun bool // Show what would happen without actually doing it
 	Force  bool // Force push all PRs (bypass diff check) and update visualizations
 
@@ -40,15 +39,15 @@ func (c *Command) Register(parent *cobra.Command) {
 		Short: "Push PRs to GitHub",
 		Long: `Push all PRs in the current stack to GitHub.
 
-Creates new PRs or updates existing ones. By default, PRs are created as drafts.
-Use --ready to mark them as ready for review.
+Creates new PRs or updates existing ones based on each change's local draft/ready state.
+By default, new changes are created as drafts. Use 'stack ready' or 'stack draft' to
+change a PR's state before pushing.
 
 By default, stack uses a diff-based approach and skips PRs that haven't changed.
 Use --force to bypass the diff check and push all PRs regardless.
 
 Example:
-  stack push              # Push all PRs as drafts (skips unchanged)
-  stack push --ready      # Push all PRs as ready for review
+  stack push              # Push all PRs (respects local draft/ready state)
   stack push --dry-run    # Show what would happen
   stack push --force      # Force push all PRs even if unchanged`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -56,7 +55,6 @@ Example:
 		},
 	}
 
-	cmd.Flags().BoolVar(&c.Ready, "ready", false, "Mark PRs as ready for review (not draft)")
 	cmd.Flags().BoolVar(&c.DryRun, "dry-run", false, "Show what would happen without pushing")
 	cmd.Flags().BoolVar(&c.Force, "force", false, "Force push all PRs even if unchanged (bypass diff check)")
 
@@ -85,7 +83,7 @@ func (c *Command) pushPR(
 		Body:   change.Description,
 		Base:   baseBranch,
 		Head:   prBranch,
-		Draft:  !c.Ready,
+		Draft:  change.LocalDraft,
 	}
 
 	ghPR, err := c.GH.SyncPR(spec)
@@ -203,7 +201,7 @@ func (c *Command) Run(ctx context.Context) error {
 				Body:       change.Description,
 				Base:       baseBranch,
 				CommitHash: change.CommitHash,
-				IsDraft:    !c.Ready,
+				IsDraft:    change.LocalDraft,
 			}
 			if !existingPR.NeedsUpdate(desiredState) {
 				skipped++

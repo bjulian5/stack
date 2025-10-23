@@ -63,24 +63,27 @@ Example:
 
 // Run executes the command
 func (c *Command) Run(ctx context.Context) error {
-	// Resolve stack name - use context if not specified
-	stackName := c.StackName
-	if stackName == "" {
-		stackCtx, err := c.Stack.GetStackContext()
+	var stackCtx *stack.StackContext
+	var err error
+
+	// If no stack name provided, use current branch context
+	// If stack name provided, load by name (won't show arrow unless we're on that stack)
+	if c.StackName == "" {
+		// Get context from current branch (includes position)
+		stackCtx, err = c.Stack.GetStackContext()
 		if err != nil || !stackCtx.IsStack() {
 			return fmt.Errorf("not on a stack branch: use 'stack status <name>'")
 		}
-		stackName = stackCtx.StackName
-	}
-
-	// Get stack context
-	stackCtx, err := c.Stack.GetStackContextByName(stackName)
-	if err != nil {
-		return err
+	} else {
+		// Load stack by name
+		stackCtx, err = c.Stack.GetStackContextByName(c.StackName)
+		if err != nil {
+			return err
+		}
 	}
 
 	if stackCtx.Stack == nil {
-		return fmt.Errorf("stack '%s' does not exist", stackName)
+		return fmt.Errorf("stack '%s' does not exist", stackCtx.StackName)
 	}
 
 	// Sync metadata if stale (respects staleness threshold)
@@ -89,12 +92,15 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to sync with GitHub: %w", err)
 	}
 
+	// Get current position for arrow indicator (empty if not on this stack)
+	currentUUID := stackCtx.GetCurrentPositionUUID()
+
 	// Render using table or tree view based on flag
 	var output string
 	if c.Table {
-		output = ui.RenderStackDetailsTable(stackCtx.Stack, stackCtx.AllChanges)
+		output = ui.RenderStackDetailsTable(stackCtx.Stack, stackCtx.AllChanges, currentUUID)
 	} else {
-		output = ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges)
+		output = ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges, currentUUID)
 	}
 	ui.Print(output)
 

@@ -15,12 +15,17 @@ type PR struct {
 	VizCommentID string    `json:"viz_comment_id,omitempty"` // GitHub comment ID for stack visualization
 	CreatedAt    time.Time `json:"created_at"`
 	LastPushed   time.Time `json:"last_pushed"`
-	State        string    `json:"state"` // open, draft, closed, merged
+	State        string    `json:"state"` // open, draft, closed, merged (actual GitHub state)
 
 	// Cached PR metadata for diff-based updates (avoids redundant API calls)
 	Title string `json:"title,omitempty"` // Last pushed PR title
 	Body  string `json:"body,omitempty"`  // Last pushed PR description
 	Base  string `json:"base,omitempty"`  // Last pushed base branch
+
+	// LocalDraft is the user's desired draft state (true = draft, false = ready)
+	// This is the source of truth for push operations. Defaults to true for new changes.
+	// When LocalDraft differs from State, the PR needs to be synced.
+	LocalDraft bool `json:"local_draft"`
 }
 
 // PRCompareState represents the desired state of a PR for comparison
@@ -54,8 +59,8 @@ func (p *PR) NeedsUpdate(desired PRCompareState) bool {
 		return true
 	}
 
-	cachedIsDraft := (p.State == "draft")
-	return cachedIsDraft != desired.IsDraft
+	// Compare against persisted LocalDraft, not GitHub state
+	return p.LocalDraft != desired.IsDraft
 }
 
 // WhyNeedsUpdate returns a human-readable reason why a PR needs updating (for debugging)
@@ -77,8 +82,7 @@ func (p *PR) WhyNeedsUpdate(desired PRCompareState) string {
 		return "commit changed"
 	}
 
-	cachedIsDraft := (p.State == "draft")
-	if cachedIsDraft != desired.IsDraft {
+	if p.LocalDraft != desired.IsDraft {
 		return "draft status changed"
 	}
 

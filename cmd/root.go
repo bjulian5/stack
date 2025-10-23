@@ -10,6 +10,7 @@ import (
 	"github.com/bjulian5/stack/cmd/cleanup"
 	"github.com/bjulian5/stack/cmd/delete"
 	"github.com/bjulian5/stack/cmd/down"
+	"github.com/bjulian5/stack/cmd/draft"
 	"github.com/bjulian5/stack/cmd/edit"
 	"github.com/bjulian5/stack/cmd/fixup"
 	"github.com/bjulian5/stack/cmd/hook"
@@ -18,6 +19,7 @@ import (
 	"github.com/bjulian5/stack/cmd/newcmd"
 	"github.com/bjulian5/stack/cmd/pr"
 	"github.com/bjulian5/stack/cmd/push"
+	"github.com/bjulian5/stack/cmd/ready"
 	"github.com/bjulian5/stack/cmd/refresh"
 	"github.com/bjulian5/stack/cmd/restack"
 	"github.com/bjulian5/stack/cmd/status"
@@ -62,6 +64,8 @@ func init() {
 		&top.Command{},
 		&bottom.Command{},
 		&switchcmd.Command{},
+		&ready.Command{},
+		&draft.Command{},
 		&push.Command{},
 		&refresh.Command{},
 		&restack.Command{},

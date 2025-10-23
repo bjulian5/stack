@@ -111,8 +111,20 @@ func (c *Command) Run(ctx context.Context) error {
 		return err
 	}
 
-	// Print success message
-	ui.Print(ui.RenderEditSuccess(selectedChange.Position, selectedChange.Title, branchName))
+	// Get updated context (now on UUID branch)
+	stackCtx, err = c.Stack.GetStackContext()
+	if err != nil {
+		return fmt.Errorf("failed to get updated stack context: %w", err)
+	}
+
+	// Print success message with stack tree
+	ui.Print(ui.RenderNavigationSuccess(ui.NavigationSuccess{
+		Message:     fmt.Sprintf("Checked out change #%d: %s\nBranch: %s", selectedChange.Position, selectedChange.Title, branchName),
+		Stack:       stackCtx.Stack,
+		Changes:     stackCtx.AllChanges,
+		CurrentUUID: stackCtx.GetCurrentPositionUUID(),
+		IsEditing:   true,
+	}))
 
 	// TODO: Add cleanup mechanism for stale UUID branches after changes are merged/deleted.
 	// Over time, users will accumulate many UUID branches that should be cleaned up.

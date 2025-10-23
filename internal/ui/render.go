@@ -16,58 +16,18 @@ func RenderStackList(stacks []*stack.Stack, currentStackName string, stackChange
 
 // RenderStackDetails renders detailed information about a stack
 // Now uses tree visualization by default via RenderStackTree
-func RenderStackDetails(s *stack.Stack, changes []stack.Change) string {
+// Accepts currentUUID to show current position indicator
+func RenderStackDetails(s *stack.Stack, changes []stack.Change, currentUUID string) string {
 	var output strings.Builder
 
-	// Render the tree visualization
-	treeView := RenderStackTree(s, changes)
+	// Render the tree visualization with current position
+	treeView := RenderStackTree(s, changes, currentUUID)
 	output.WriteString(treeView)
 	output.WriteString("\n\n")
 
 	// Add summary statistics
 	if len(changes) > 0 {
-		open, draft, merged, closed, local, needsPush := CountPRsByState(changes)
-		totalPRs := len(changes)
-
-		var summaryParts []string
-		summaryParts = append(summaryParts, Bold(fmt.Sprintf("%d PR", totalPRs)))
-		if totalPRs != 1 {
-			summaryParts[0] = Bold(fmt.Sprintf("%d PRs", totalPRs))
-		}
-		summaryParts = append(summaryParts, Dim("total"))
-
-		if open > 0 || draft > 0 || merged > 0 || local > 0 || needsPush > 0 {
-			summaryParts = append(summaryParts, Dim("("))
-			var stateParts []string
-			if open > 0 {
-				stateParts = append(stateParts, StatusOpenStyle.Render(fmt.Sprintf("%d open", open)))
-			}
-			if draft > 0 {
-				stateParts = append(stateParts, StatusDraftStyle.Render(fmt.Sprintf("%d draft", draft)))
-			}
-			if merged > 0 {
-				stateParts = append(stateParts, StatusMergedStyle.Render(fmt.Sprintf("%d merged", merged)))
-			}
-			if closed > 0 {
-				stateParts = append(stateParts, StatusClosedStyle.Render(fmt.Sprintf("%d closed", closed)))
-			}
-			if needsPush > 0 {
-				stateParts = append(stateParts, StatusModifiedStyle.Render(fmt.Sprintf("%d modified", needsPush)))
-			}
-			if local > 0 {
-				stateParts = append(stateParts, StatusLocalStyle.Render(fmt.Sprintf("%d local", local)))
-			}
-			for i, part := range stateParts {
-				if i > 0 {
-					summaryParts = append(summaryParts, Dim(", "))
-				}
-				summaryParts = append(summaryParts, part)
-			}
-			summaryParts = append(summaryParts, Dim(")"))
-		}
-
-		summary := strings.Join(summaryParts, " ")
-		output.WriteString(summary)
+		output.WriteString(buildSummaryLine(changes))
 		output.WriteString("\n\n")
 	}
 
@@ -121,6 +81,46 @@ func RenderEditSuccess(position int, title string, branch string) string {
 	output.WriteString(Dim("  • Use 'git commit --amend' to update this change"))
 	output.WriteString("\n")
 	output.WriteString(Dim("  • Use 'git commit' to insert a new change after this one"))
+	return output.String()
+}
+
+// NavigationSuccess contains data for rendering navigation success output
+type NavigationSuccess struct {
+	Message     string
+	Stack       *stack.Stack
+	Changes     []stack.Change
+	CurrentUUID string
+	IsEditing   bool
+}
+
+// RenderNavigationSuccess renders a success message with compact stack tree after navigation
+func RenderNavigationSuccess(data NavigationSuccess) string {
+	var output strings.Builder
+
+	// Success message
+	output.WriteString(SuccessStyle.Render("✓ " + data.Message))
+	output.WriteString("\n\n")
+
+	// Compact stack tree
+	treeView := RenderStackTree(data.Stack, data.Changes, data.CurrentUUID)
+	output.WriteString(treeView)
+
+	// Add summary line
+	if len(data.Changes) > 0 {
+		output.WriteString("\n\n")
+		output.WriteString(buildSummaryLine(data.Changes))
+	}
+
+	// Add editing instructions if on UUID branch
+	if data.IsEditing {
+		output.WriteString("\n\n")
+		output.WriteString(InfoStyle.Render("ℹ " + "Make your changes and commit"))
+		output.WriteString("\n")
+		output.WriteString(Dim("  • Use 'git commit --amend' to update this change"))
+		output.WriteString("\n")
+		output.WriteString(Dim("  • Use 'git commit' to insert a new change after this one"))
+	}
+
 	return output.String()
 }
 
@@ -247,7 +247,8 @@ func RenderMergedPRsTable(mergedChanges []stack.Change) string {
 }
 
 // RenderStackDetailsTable renders a detailed table view of a single stack
-func RenderStackDetailsTable(s *stack.Stack, changes []stack.Change) string {
+// Accepts currentUUID to highlight the current row
+func RenderStackDetailsTable(s *stack.Stack, changes []stack.Change, currentUUID string) string {
 	if len(changes) == 0 {
 		return RenderPanel(Dim("No changes in this stack"))
 	}
@@ -274,6 +275,16 @@ func RenderStackDetailsTable(s *stack.Stack, changes []stack.Change) string {
 		url := "-"
 		if change.PR != nil && change.PR.URL != "" {
 			url = change.PR.URL
+		}
+
+		// Highlight current row with bold styling
+		if currentUUID != "" && change.UUID == currentUUID {
+			position = BoldStyle.Render(position)
+			statusText = BoldStyle.Render(statusText)
+			prLabel = BoldStyle.Render(prLabel)
+			change.Title = BoldStyle.Render(change.Title)
+			commit = BoldStyle.Render(commit)
+			url = BoldStyle.Render(url)
 		}
 
 		rows[i] = []string{position, statusText, prLabel, change.Title, commit, url}

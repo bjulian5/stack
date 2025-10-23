@@ -16,7 +16,7 @@ import (
 //	  ├─● #123 Add JWT auth (a1b2c3d)
 //	  ├─◐ #124 Refresh tokens (b2c3d4e)
 //	  ╰─◯ Unit tests (c3d4e5f) [local]
-func RenderStackTree(s *stack.Stack, changes []stack.Change) string {
+func RenderStackTree(s *stack.Stack, changes []stack.Change, currentUUID string) string {
 	if len(changes) == 0 {
 		return TreeRootStyle.Render(s.Name) + "\n" + Dim("  No changes yet")
 	}
@@ -29,7 +29,7 @@ func RenderStackTree(s *stack.Stack, changes []stack.Change) string {
 
 	// Add each change as a child of the base
 	for _, change := range changes {
-		changeLabel := formatChangeForTree(change)
+		changeLabel := formatChangeForTree(change, currentUUID)
 		baseNode.Child(changeLabel)
 	}
 
@@ -51,7 +51,7 @@ func RenderStackTree(s *stack.Stack, changes []stack.Change) string {
 //	├─● #123 Add JWT auth (a1b2c3d)
 //	├─◐ #124 Refresh tokens (b2c3d4e)
 //	╰─◯ Unit tests (c3d4e5f) [local]
-func RenderStackTreeCompact(s *stack.Stack, changes []stack.Change) string {
+func RenderStackTreeCompact(s *stack.Stack, changes []stack.Change, currentUUID string) string {
 	if len(changes) == 0 {
 		return TreeRootStyle.Render(s.Name) + "\n" + Dim("  No changes yet")
 	}
@@ -61,7 +61,7 @@ func RenderStackTreeCompact(s *stack.Stack, changes []stack.Change) string {
 
 	// Add each change directly as a child
 	for _, change := range changes {
-		changeLabel := formatChangeForTree(change)
+		changeLabel := formatChangeForTree(change, currentUUID)
 		t.Child(changeLabel)
 	}
 
@@ -140,7 +140,8 @@ func RenderChangeListTree(changes []stack.Change) string {
 	t := tree.Root(HeaderStyle.Render("Select a change:"))
 
 	for i, change := range changes {
-		label := fmt.Sprintf("%d. %s", i+1, formatChangeForTree(change))
+		// Don't show current indicator in selection menu
+		label := fmt.Sprintf("%d. %s", i+1, formatChangeForTree(change, ""))
 		t.Child(label)
 	}
 
@@ -153,7 +154,8 @@ func RenderChangeListTree(changes []stack.Change) string {
 }
 
 // formatChangeForTree formats a change for display in a tree
-func formatChangeForTree(change stack.Change) string {
+// If currentUUID matches this change's UUID, adds a green arrow indicator
+func formatChangeForTree(change stack.Change, currentUUID string) string {
 	status := GetChangeStatus(change)
 	icon := status.RenderCompact()
 
@@ -178,12 +180,19 @@ func formatChangeForTree(change stack.Change) string {
 	}
 
 	// Build the line: "● #123 Add JWT auth (a1b2c3d)"
-	return fmt.Sprintf("%s %s %s %s",
+	line := fmt.Sprintf("%s %s %s %s",
 		icon,
 		Highlight(prLabel),
 		title,
 		Dim(fmt.Sprintf("(%s)", commitHash)),
 	)
+
+	// Add current position arrow if this is the current change
+	if currentUUID != "" && change.UUID == currentUUID {
+		line += " " + CurrentPositionArrowStyle.Render("←")
+	}
+
+	return line
 }
 
 // formatStackNameForTree formats a stack name with current marker

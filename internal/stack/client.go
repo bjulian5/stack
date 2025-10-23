@@ -200,13 +200,15 @@ func (c *Client) GetStackContext() (*StackContext, error) {
 
 	ctx := &StackContext{}
 
-	// Determine stack name and editing UUID from branch
+	// Determine stack name and branch type
+	var isUUIDBranch bool
 	var editingUUID string
 	if IsStackBranch(branch) {
 		ctx.StackName = ExtractStackName(branch)
+		isUUIDBranch = false
 	} else if IsUUIDBranch(branch) {
 		ctx.StackName, editingUUID = ExtractUUIDFromBranch(branch)
-		ctx.currentUUID = editingUUID
+		isUUIDBranch = true
 	} else {
 		// Not on a stack-related branch
 		return ctx, nil
@@ -227,6 +229,20 @@ func (c *Client) GetStackContext() (*StackContext, error) {
 		}
 		ctx.AllChanges = allChanges
 		ctx.ActiveChanges = activeChanges
+
+		// Set position based on branch type
+		if isUUIDBranch {
+			// On UUID branch - editing a specific change
+			ctx.currentUUID = editingUUID
+			ctx.onUUIDBranch = true
+		} else {
+			// On TOP branch - position at HEAD (last change)
+			if len(allChanges) > 0 {
+				lastChange := allChanges[len(allChanges)-1]
+				ctx.currentUUID = lastChange.UUID
+			}
+			ctx.onUUIDBranch = false
+		}
 	}
 
 	return ctx, nil
@@ -256,7 +272,8 @@ func (c *Client) GetStackContextByName(name string) (*StackContext, error) {
 		Stack:         stack,
 		AllChanges:    allChanges,
 		ActiveChanges: activeChanges,
-		currentUUID:   "", // Not editing (loaded by name)
+		currentUUID:   "",        // Not on this stack (loaded by name)
+		onUUIDBranch:  false,     // Not on this stack
 	}, nil
 }
 
@@ -379,9 +396,13 @@ func (c *Client) commitsToChanges(commits []git.Commit, prData *PRData, isMerged
 	for i, commit := range commits {
 		uuid := commit.Message.Trailers["PR-UUID"]
 		var pr *PR
+		localDraft := true // Default to draft for new changes
+
 		if uuid != "" {
 			if p, ok := prData.PRs[uuid]; ok {
 				pr = p
+				// Use the persisted LocalDraft value from PR metadata
+				localDraft = pr.LocalDraft
 			}
 		}
 
@@ -391,6 +412,7 @@ func (c *Client) commitsToChanges(commits []git.Commit, prData *PRData, isMerged
 			Description: commit.Message.Body,
 			CommitHash:  commit.Hash,
 			UUID:        uuid,
+			LocalDraft:  localDraft,
 			PR:          pr,
 			IsMerged:    isMerged,
 		}
@@ -471,6 +493,28 @@ func (c *Client) SetPR(stackName string, uuid string, pr *PR) error {
 	return c.SavePRs(stackName, prData)
 }
 
+// SetLocalDraft sets the LocalDraft preference for a change by UUID
+func (c *Client) SetLocalDraft(stackName string, uuid string, localDraft bool) error {
+	prData, err := c.LoadPRs(stackName)
+	if err != nil {
+		return err
+	}
+
+	pr, exists := prData.PRs[uuid]
+	if !exists {
+		// Create new PR entry with just LocalDraft set
+		pr = &PR{
+			LocalDraft: localDraft,
+		}
+	} else {
+		pr.LocalDraft = localDraft
+	}
+
+	prData.PRs[uuid] = pr
+
+	return c.SavePRs(stackName, prData)
+}
+
 // SyncPRFromGitHub syncs PR information from GitHub to local storage
 func (c *Client) SyncPRFromGitHub(data PRSyncData) error {
 	prData, err := c.LoadPRs(data.StackName)
@@ -481,9 +525,11 @@ func (c *Client) SyncPRFromGitHub(data PRSyncData) error {
 	pr, exists := prData.PRs[data.UUID]
 	if !exists {
 		pr = &PR{
-			CreatedAt: data.GitHubPR.CreatedAt,
+			CreatedAt:  data.GitHubPR.CreatedAt,
+			LocalDraft: true, // Default to draft for new PRs
 		}
 	}
+	// If PR already exists, preserve existing LocalDraft value
 
 	pr.PRNumber = data.GitHubPR.Number
 	pr.URL = data.GitHubPR.URL
@@ -617,7 +663,7 @@ func (c *Client) RefreshStackMetadata(stackCtx *StackContext) (*StackContext, er
 	}
 
 	// Reload context with fresh metadata
-	freshCtx, err := c.GetStackContext()
+	freshCtx, err := c.GetStackContextByName(stackCtx.StackName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reload stack context: %w", err)
 	}
@@ -644,7 +690,7 @@ func (c *Client) MaybeRefreshStackMetadata(stackCtx *StackContext) (*StackContex
 	}
 
 	// Reload context with fresh metadata
-	freshCtx, err := c.GetStackContext()
+	freshCtx, err := c.GetStackContextByName(stackCtx.StackName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reload stack context: %w", err)
 	}

@@ -98,8 +98,20 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to checkout top branch: %w", err)
 	}
 
-	// Print success message
-	ui.Successf("Moved to top of stack: %s", topBranch)
+	// Get updated context (now on TOP branch)
+	stackCtx, err = c.Stack.GetStackContext()
+	if err != nil {
+		return fmt.Errorf("failed to get updated stack context: %w", err)
+	}
+
+	// Print success message with stack tree
+	ui.Print(ui.RenderNavigationSuccess(ui.NavigationSuccess{
+		Message:     fmt.Sprintf("Moved to top of stack: %s", topBranch),
+		Stack:       stackCtx.Stack,
+		Changes:     stackCtx.AllChanges,
+		CurrentUUID: stackCtx.GetCurrentPositionUUID(),
+		IsEditing:   false,
+	}))
 
 	return nil
 }

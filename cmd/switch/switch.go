@@ -140,10 +140,10 @@ func (c *Command) Run(ctx context.Context) error {
 		ui.Infof("Already on stack: %s", ui.Bold(selectedStack.Name))
 		ui.Print("")
 
-		// Still show the stack details
-		stackCtx, err := c.Stack.GetStackContextByName(selectedStack.Name)
+		// Still show the stack details (we're already on this stack)
+		stackCtx, err := c.Stack.GetStackContext()
 		if err != nil {
-			return fmt.Errorf("failed to load stack details: %w", err)
+			return fmt.Errorf("failed to get stack context: %w", err)
 		}
 
 		// Sync latest metadata from GitHub
@@ -153,7 +153,10 @@ func (c *Command) Run(ctx context.Context) error {
 			ui.Warningf("Failed to refresh stack: %v", err)
 		}
 
-		ui.Print(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges))
+		// Get current position (we're on this stack, so arrow will show)
+		currentUUID := stackCtx.GetCurrentPositionUUID()
+
+		ui.Print(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges, currentUUID))
 		return nil
 	}
 
@@ -166,10 +169,10 @@ func (c *Command) Run(ctx context.Context) error {
 	ui.Print(ui.RenderSwitchSuccess(selectedStack.Name))
 	ui.Print("")
 
-	// Load and display full stack details
-	stackCtx, err := c.Stack.GetStackContextByName(selectedStack.Name)
+	// Load and display full stack details (we just switched, so we're on this stack)
+	stackCtx, err := c.Stack.GetStackContext()
 	if err != nil {
-		return fmt.Errorf("failed to load stack details: %w", err)
+		return fmt.Errorf("failed to get stack context: %w", err)
 	}
 
 	// Sync latest metadata from GitHub
@@ -179,7 +182,10 @@ func (c *Command) Run(ctx context.Context) error {
 		ui.Warningf("Failed to refresh stack: %v", err)
 	}
 
-	ui.Print(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges))
+	// Get current position (we're on TOP branch, arrow will show at last change)
+	currentUUID := stackCtx.GetCurrentPositionUUID()
+
+	ui.Print(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges, currentUUID))
 
 	return nil
 }

@@ -116,7 +116,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Checkout UUID branch for editing
-	branchName, err := c.Stack.CheckoutChangeForEditing(stackCtx, targetChange)
+	_, err = c.Stack.CheckoutChangeForEditing(stackCtx, targetChange)
 	if err != nil {
 		return err
 	}
@@ -129,8 +129,20 @@ func (c *Command) Run(ctx context.Context) error {
 		)
 	}
 
-	// Print success message
-	ui.Print(ui.RenderEditSuccess(targetChange.Position, targetChange.Title, branchName))
+	// Get updated context (now on UUID branch)
+	stackCtx, err = c.Stack.GetStackContext()
+	if err != nil {
+		return fmt.Errorf("failed to get updated stack context: %w", err)
+	}
+
+	// Print success message with stack tree
+	ui.Print(ui.RenderNavigationSuccess(ui.NavigationSuccess{
+		Message:     fmt.Sprintf("Moved to change #%d: %s", targetChange.Position, targetChange.Title),
+		Stack:       stackCtx.Stack,
+		Changes:     stackCtx.AllChanges,
+		CurrentUUID: stackCtx.GetCurrentPositionUUID(),
+		IsEditing:   true,
+	}))
 
 	return nil
 }

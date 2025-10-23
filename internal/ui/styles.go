@@ -246,6 +246,11 @@ var (
 
 	TreeBranchStyle = lipgloss.NewStyle().
 			Foreground(ColorTreeBranch)
+
+	// Current position arrow style (green arrow indicator)
+	CurrentPositionArrowStyle = lipgloss.NewStyle().
+					Foreground(ColorSuccess).
+					Bold(true)
 )
 
 // GetStatusStyle returns the appropriate style for a PR state

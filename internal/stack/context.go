@@ -24,9 +24,14 @@ type StackContext struct {
 	// Use for all operations: navigation, editing, pushing.
 	ActiveChanges []Change
 
-	// currentUUID is the UUID of the change being edited.
-	// Empty if not editing (e.g., on TOP branch or loaded by name).
+	// currentUUID is the UUID where we are positioned in this stack.
+	// Set when on UUID branch OR TOP branch.
+	// Empty only when loaded by name (not currently on this stack).
 	currentUUID string
+
+	// onUUIDBranch indicates if we're on a UUID branch (editing a specific change).
+	// false when on TOP branch or loaded by name.
+	onUUIDBranch bool
 }
 
 // IsStack returns true if this context represents a stack.
@@ -35,8 +40,9 @@ func (s *StackContext) IsStack() bool {
 }
 
 // IsEditing returns true if this context represents editing a specific change.
+// This means we're on a UUID branch (not TOP branch).
 func (s *StackContext) IsEditing() bool {
-	return s.currentUUID != ""
+	return s.onUUIDBranch
 }
 
 // CurrentChange returns the change being edited, or nil if not editing.
@@ -45,6 +51,12 @@ func (s *StackContext) CurrentChange() *Change {
 		return nil
 	}
 	return s.FindChange(s.currentUUID)
+}
+
+// GetCurrentPositionUUID returns the UUID where the arrow should point.
+// Returns empty string if we're not on this stack's branches.
+func (s *StackContext) GetCurrentPositionUUID() string {
+	return s.currentUUID
 }
 
 // FindChange finds a change by UUID in this stack.

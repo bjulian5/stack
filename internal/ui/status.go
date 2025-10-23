@@ -94,9 +94,13 @@ func GetStatus(state string) Status {
 	}
 }
 
-// GetChangeStatus returns a Status for a stack change, accounting for modified state
+// GetChangeStatus returns a Status for a stack change, using LocalDraft as source of truth
 func GetChangeStatus(change stack.Change) Status {
 	if change.PR == nil {
+		// Local-only change, use LocalDraft to determine status
+		if change.LocalDraft {
+			return GetStatus("draft")
+		}
 		return GetStatus("local")
 	}
 
@@ -104,6 +108,10 @@ func GetChangeStatus(change stack.Change) Status {
 		return GetStatus("needs-push")
 	}
 
+	// Use LocalDraft as the primary status (user's desired state)
+	if change.LocalDraft {
+		return GetStatus("draft")
+	}
 	return GetStatus(change.PR.State)
 }
 
@@ -158,38 +166,73 @@ func FormatPRLabelCompact(pr *stack.PR) string {
 }
 
 // FormatChangeStatus formats the status for a change in the stack
-// Returns full status with "(modified)" suffix if needed
+// Shows local draft/ready preference with ⟳ icon if GitHub state differs
 func FormatChangeStatus(change stack.Change) string {
 	if change.PR == nil {
+		// Local-only change
+		if change.LocalDraft {
+			return GetStatus("draft").Render()
+		}
 		return GetStatus("local").Render()
 	}
 
-	baseStatus := GetStatus(change.PR.State)
-
-	// Add modifier if the PR needs to be pushed
-	if change.NeedsPush() {
-		return baseStatus.Render() + Dim(" (modified)")
+	// Determine local desired status
+	var localStatus Status
+	if change.LocalDraft {
+		localStatus = GetStatus("draft")
+	} else {
+		localStatus = GetStatus("open")
 	}
 
-	return baseStatus.Render()
+	// Check if needs push (commit changed)
+	if change.NeedsPush() {
+		return localStatus.Render() + Dim(" (modified)")
+	}
+
+	// Check if local draft state differs from GitHub state
+	githubIsDraft := (change.PR.State == "draft")
+	if change.LocalDraft != githubIsDraft {
+		// Local state differs from GitHub - show sync needed
+		modifiedIcon := GetStatus("needs-push").RenderCompact()
+		return localStatus.Render() + " " + modifiedIcon
+	}
+
+	return localStatus.Render()
 }
 
 // FormatChangeStatusCompact formats the status for a change in compact form
-// Shows both base icon and modified icon if needed
+// Shows local status icon with modifier icon if GitHub state differs
 func FormatChangeStatusCompact(change stack.Change) string {
 	if change.PR == nil {
+		// Local-only change
+		if change.LocalDraft {
+			return GetStatus("draft").RenderCompact()
+		}
 		return GetStatus("local").RenderCompact()
 	}
 
-	baseStatus := GetStatus(change.PR.State)
-
-	// Add modifier icon if the PR needs to be pushed
-	if change.NeedsPush() {
-		modifiedStatus := GetStatus("needs-push")
-		return baseStatus.RenderCompact() + modifiedStatus.RenderCompact()
+	// Determine local desired status
+	var localStatus Status
+	if change.LocalDraft {
+		localStatus = GetStatus("draft")
+	} else {
+		localStatus = GetStatus("open")
 	}
 
-	return baseStatus.RenderCompact()
+	// Add modifier icon if the PR needs to be pushed (commit changed)
+	if change.NeedsPush() {
+		modifiedStatus := GetStatus("needs-push")
+		return localStatus.RenderCompact() + modifiedStatus.RenderCompact()
+	}
+
+	// Add modifier icon if local state differs from GitHub
+	githubIsDraft := (change.PR.State == "draft")
+	if change.LocalDraft != githubIsDraft {
+		modifiedStatus := GetStatus("needs-push")
+		return localStatus.RenderCompact() + modifiedStatus.RenderCompact()
+	}
+
+	return localStatus.RenderCompact()
 }
 
 // FormatPRSummary formats a summary of PR counts

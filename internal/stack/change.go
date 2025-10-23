@@ -23,6 +23,10 @@ type Change struct {
 	// UUID is the PR identifier (empty if not yet assigned)
 	UUID string
 
+	// LocalDraft indicates the user's desired draft state (true = draft, false = ready)
+	// This is the source of truth for push operations. Defaults to true for new changes.
+	LocalDraft bool `json:"local_draft"`
+
 	// PR contains GitHub PR metadata if this change has been pushed
 	// Will be nil if the change is only local
 	PR *PR
