@@ -17,24 +17,26 @@ func NewClient() *Client {
 }
 
 // SyncPR creates or updates a PR on GitHub idempotently
-// Queries GitHub first to determine if PR exists, then creates or updates accordingly
-// Handles edge cases:
-// - PR already exists on GitHub but not tracked locally (auto-recovers)
-// - Closed PRs (reopens and updates)
-// - Merged PRs (returns error - user should run stack refresh)
 func (c *Client) SyncPR(spec PRSpec) (*PR, error) {
-	// First, query GitHub to see if a PR exists for this head branch
-	existingPR, err := c.getPRByHead(spec.Head)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query PR by head branch: %w", err)
+	var existingPR *PR
+	var err error
+
+	if spec.Number > 0 {
+		existingPR, err = c.getPRByNumber(spec.Number)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query PR #%d: %w", spec.Number, err)
+		}
+	} else {
+		existingPR, err = c.getPRByHead(spec.Head)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query PR by head branch: %w", err)
+		}
 	}
 
 	if existingPR == nil {
-		// No PR exists on GitHub - create a new one
 		return c.createPR(spec)
 	}
 
-	// PR exists on GitHub - check if it's merged (can't update merged PRs)
 	if strings.ToLower(existingPR.State) == "merged" {
 		return nil, fmt.Errorf(
 			"PR #%d is already merged. Run 'stack refresh' to sync merged PRs",
@@ -42,7 +44,6 @@ func (c *Client) SyncPR(spec PRSpec) (*PR, error) {
 		)
 	}
 
-	// Update the existing PR using the pre-fetched state
 	spec.Number = existingPR.Number
 	return c.updatePR(spec, existingPR)
 }
@@ -55,36 +56,30 @@ func (c *Client) createPR(spec PRSpec) (*PR, error) {
 		"--body", spec.Body,
 		"--base", spec.Base,
 		"--head", spec.Head,
+		"--json", "number,url,state,isDraft,createdAt,updatedAt",
 	}
 
 	if spec.Draft {
 		args = append(args, "--draft")
 	}
 
-	// Create the PR (outputs URL to stdout)
-	_, err := c.execGH(args...)
+	output, err := c.execGH(args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PR: %w", err)
 	}
 
-	// Query GitHub for the newly created PR details
-	pr, err := c.getPRByHead(spec.Head)
+	pr, err := c.parsePRJSON(output)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch created PR details: %w", err)
-	}
-	if pr == nil {
-		return nil, fmt.Errorf("PR was created but not found")
+		return nil, fmt.Errorf("failed to parse created PR data: %w", err)
 	}
 
 	return pr, nil
 }
 
-// updatePR updates an existing PR using pre-fetched PR state
-// This avoids an extra API call to fetch the current state
+// updatePR updates an existing PR and constructs result without additional fetch
 func (c *Client) updatePR(spec PRSpec, currentPR *PR) (*PR, error) {
 	prNumber := fmt.Sprintf("%d", spec.Number)
 
-	// Update PR title, body, and base
 	editArgs := []string{
 		"pr", "edit", prNumber,
 		"--title", spec.Title,
@@ -96,24 +91,26 @@ func (c *Client) updatePR(spec PRSpec, currentPR *PR) (*PR, error) {
 		return nil, fmt.Errorf("failed to update PR: %w", err)
 	}
 
-	// Handle draft/ready state separately (only if state needs to change)
 	if spec.Draft && !currentPR.IsDraft {
-		// Convert to draft: use "gh pr ready --undo"
 		if _, err := c.execGH("pr", "ready", prNumber, "--undo"); err != nil {
 			return nil, fmt.Errorf("failed to mark PR as draft: %w", err)
 		}
 	} else if !spec.Draft && currentPR.IsDraft {
-		// Mark as ready for review
 		if _, err := c.execGH("pr", "ready", prNumber); err != nil {
 			return nil, fmt.Errorf("failed to mark PR as ready: %w", err)
 		}
 	}
 
-	// Fetch and return updated PR data
-	return c.getPRByNumber(spec.Number)
+	return &PR{
+		Number:    spec.Number,
+		URL:       currentPR.URL,
+		State:     normalizeState("OPEN", spec.Draft),
+		IsDraft:   spec.Draft,
+		CreatedAt: currentPR.CreatedAt,
+		UpdatedAt: time.Now(),
+	}, nil
 }
 
-// prJSON is the common structure for PR data from gh CLI
 type prJSON struct {
 	Number    int       `json:"number"`
 	URL       string    `json:"url"`
@@ -123,7 +120,6 @@ type prJSON struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// toPR converts a prJSON to a PR
 func (p *prJSON) toPR() *PR {
 	return &PR{
 		Number:    p.Number,
@@ -135,7 +131,6 @@ func (p *prJSON) toPR() *PR {
 	}
 }
 
-// parsePRJSON parses PR data from gh CLI JSON output (single PR)
 func (c *Client) parsePRJSON(data []byte) (*PR, error) {
 	var ghPR prJSON
 	if err := json.Unmarshal(data, &ghPR); err != nil {
@@ -144,7 +139,6 @@ func (c *Client) parsePRJSON(data []byte) (*PR, error) {
 	return ghPR.toPR(), nil
 }
 
-// execGH executes a gh CLI command and returns the output
 func (c *Client) execGH(args ...string) ([]byte, error) {
 	cmd := exec.Command("gh", args...)
 	output, err := cmd.Output()
@@ -157,7 +151,6 @@ func (c *Client) execGH(args ...string) ([]byte, error) {
 	return output, nil
 }
 
-// getPRByHead finds a PR by head branch name (private helper)
 func (c *Client) getPRByHead(head string) (*PR, error) {
 	output, err := c.execGH(
 		"pr", "list",
@@ -175,13 +168,12 @@ func (c *Client) getPRByHead(head string) (*PR, error) {
 	}
 
 	if len(prs) == 0 {
-		return nil, nil // No PR found
+		return nil, nil
 	}
 
 	return prs[0].toPR(), nil
 }
 
-// getPRByNumber fetches PR details by number (private helper)
 func (c *Client) getPRByNumber(number int) (*PR, error) {
 	output, err := c.execGH(
 		"pr", "view", fmt.Sprintf("%d", number),
@@ -194,18 +186,11 @@ func (c *Client) getPRByNumber(number int) (*PR, error) {
 	return c.parsePRJSON(output)
 }
 
-// normalizeState converts GitHub API state to our internal format
-// GitHub returns: OPEN, CLOSED, MERGED (uppercase)
-// We need: open, draft, closed, merged (lowercase, with draft derived from isDraft)
 func normalizeState(state string, isDraft bool) string {
-	// Convert to lowercase first
 	state = strings.ToLower(state)
-
-	// If PR is open and marked as draft, return "draft" instead of "open"
 	if state == "open" && isDraft {
 		return "draft"
 	}
-
 	return state
 }
 

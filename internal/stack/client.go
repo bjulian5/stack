@@ -472,33 +472,32 @@ func (c *Client) SetPR(stackName string, uuid string, pr *PR) error {
 }
 
 // SyncPRFromGitHub syncs PR information from GitHub to local storage
-// This is used by stack push to update prs.json with GitHub PR data
-func (c *Client) SyncPRFromGitHub(stackName, uuid, branch, commitHash string, ghPR *gh.PR) error {
-	prData, err := c.LoadPRs(stackName)
+func (c *Client) SyncPRFromGitHub(data PRSyncData) error {
+	prData, err := c.LoadPRs(data.StackName)
 	if err != nil {
 		return err
 	}
 
-	// Get existing PR or create new one
-	pr, exists := prData.PRs[uuid]
+	pr, exists := prData.PRs[data.UUID]
 	if !exists {
 		pr = &PR{
-			CreatedAt: ghPR.CreatedAt,
+			CreatedAt: data.GitHubPR.CreatedAt,
 		}
 	}
 
-	// Update PR with GitHub data
-	pr.PRNumber = ghPR.Number
-	pr.URL = ghPR.URL
-	pr.State = ghPR.State
-	pr.Branch = branch
-	pr.CommitHash = commitHash
-	pr.LastPushed = ghPR.UpdatedAt
+	pr.PRNumber = data.GitHubPR.Number
+	pr.URL = data.GitHubPR.URL
+	pr.State = data.GitHubPR.State
+	pr.Branch = data.Branch
+	pr.CommitHash = data.CommitHash
+	pr.LastPushed = data.GitHubPR.UpdatedAt
+	pr.Title = data.Title
+	pr.Body = data.Body
+	pr.Base = data.Base
 
-	// Store back in map
-	prData.PRs[uuid] = pr
+	prData.PRs[data.UUID] = pr
 
-	return c.SavePRs(stackName, prData)
+	return c.SavePRs(data.StackName, prData)
 }
 
 // ====================================================================

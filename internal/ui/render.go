@@ -143,29 +143,51 @@ func RenderError(err error) string {
 	return ErrorStyle.Render("✗ " + err.Error())
 }
 
+// PushProgress contains data for rendering push progress
+type PushProgress struct {
+	Position int    // Current position (1-indexed)
+	Total    int    // Total number of PRs
+	Title    string // PR title
+	PRNumber int    // PR number
+	URL      string // PR URL
+	Action   string // "created", "updated", or "skipped"
+	Reason   string // Optional reason for update (e.g., "commit changed")
+}
+
 // RenderPushProgress renders progress for pushing a PR
-func RenderPushProgress(position, total int, title string, prNumber int, url string, isNew bool) string {
+func RenderPushProgress(progress PushProgress) string {
 	var output strings.Builder
 
-	action := "Updated"
-	if isNew {
-		action = "Created"
+	actionText := "Updated"
+	switch progress.Action {
+	case "created":
+		actionText = "Created"
+	case "updated":
+		actionText = "Updated"
+	case "skipped":
+		actionText = "Skipped (unchanged)"
 	}
 
-	output.WriteString(SuccessStyle.Render(fmt.Sprintf("✓ %d/%d", position, total)))
+	output.WriteString(SuccessStyle.Render(fmt.Sprintf("✓ %d/%d", progress.Position, progress.Total)))
 	output.WriteString(" ")
-	output.WriteString(Bold(title))
+	output.WriteString(Bold(progress.Title))
 	output.WriteString("\n")
 	output.WriteString("      ")
-	output.WriteString(Dim(fmt.Sprintf("%s PR #%d:", action, prNumber)))
+	output.WriteString(Dim(fmt.Sprintf("%s PR #%d:", actionText, progress.PRNumber)))
 	output.WriteString(" ")
-	output.WriteString(Muted(url))
+	output.WriteString(Muted(progress.URL))
+
+	if progress.Reason != "" {
+		output.WriteString("\n")
+		output.WriteString("      ")
+		output.WriteString(Dim(fmt.Sprintf("(%s)", progress.Reason)))
+	}
 
 	return output.String()
 }
 
 // RenderPushSummary renders a summary after pushing PRs
-func RenderPushSummary(created, updated int) string {
+func RenderPushSummary(created, updated, skipped int) string {
 	var output strings.Builder
 
 	output.WriteString("\n")
@@ -178,6 +200,9 @@ func RenderPushSummary(created, updated int) string {
 	}
 	if updated > 0 {
 		parts = append(parts, fmt.Sprintf("%d updated", updated))
+	}
+	if skipped > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped (unchanged)", skipped))
 	}
 
 	if len(parts) > 0 {

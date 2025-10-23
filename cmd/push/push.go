@@ -18,7 +18,7 @@ type Command struct {
 	// Flags
 	Ready  bool // Mark PRs as ready (not draft)
 	DryRun bool // Show what would happen without actually doing it
-	Force  bool // Force update stack visualizations even if no PRs created
+	Force  bool // Force push all PRs (bypass diff check) and update visualizations
 
 	Git   *git.Client
 	Stack *stack.Client
@@ -43,11 +43,14 @@ func (c *Command) Register(parent *cobra.Command) {
 Creates new PRs or updates existing ones. By default, PRs are created as drafts.
 Use --ready to mark them as ready for review.
 
+By default, stack uses a diff-based approach and skips PRs that haven't changed.
+Use --force to bypass the diff check and push all PRs regardless.
+
 Example:
-  stack push              # Push all PRs as drafts
+  stack push              # Push all PRs as drafts (skips unchanged)
   stack push --ready      # Push all PRs as ready for review
   stack push --dry-run    # Show what would happen
-  stack push --force      # Force update stack visualizations`,
+  stack push --force      # Force push all PRs even if unchanged`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.Run(cmd.Context())
 		},
@@ -55,13 +58,12 @@ Example:
 
 	cmd.Flags().BoolVar(&c.Ready, "ready", false, "Mark PRs as ready for review (not draft)")
 	cmd.Flags().BoolVar(&c.DryRun, "dry-run", false, "Show what would happen without pushing")
-	cmd.Flags().BoolVar(&c.Force, "force", false, "Force update stack visualizations even if no PRs created")
+	cmd.Flags().BoolVar(&c.Force, "force", false, "Force push all PRs even if unchanged (bypass diff check)")
 
 	parent.AddCommand(cmd)
 }
 
-// pushPR pushes a single PR to GitHub
-// Returns the PR number, URL, and whether it was newly created
+// pushPR pushes a single PR to GitHub and returns PR number, URL, and whether it was newly created
 func (c *Command) pushPR(
 	stackName string,
 	change stack.Change,
@@ -69,17 +71,14 @@ func (c *Command) pushPR(
 	baseBranch string,
 	existingPRNumber int,
 ) (prNumber int, url string, isNew bool, err error) {
-	// Create/update PR branch ref to point to this commit (update-ref is idempotent)
 	if err := c.Git.UpdateRef(prBranch, change.CommitHash); err != nil {
 		return 0, "", false, fmt.Errorf("failed to update branch %s: %w", prBranch, err)
 	}
 
-	// Push branch to remote
 	if err := c.Git.Push(prBranch, true); err != nil {
 		return 0, "", false, fmt.Errorf("failed to push branch %s: %w", prBranch, err)
 	}
 
-	// Build PR spec
 	spec := gh.PRSpec{
 		Number: existingPRNumber,
 		Title:  change.Title,
@@ -89,14 +88,22 @@ func (c *Command) pushPR(
 		Draft:  !c.Ready,
 	}
 
-	// Sync PR on GitHub
 	ghPR, err := c.GH.SyncPR(spec)
 	if err != nil {
 		return 0, "", false, fmt.Errorf("failed to sync PR for %s: %w", change.Title, err)
 	}
 
-	// Update local PR tracking
-	if err := c.Stack.SyncPRFromGitHub(stackName, change.UUID, prBranch, change.CommitHash, ghPR); err != nil {
+	syncData := stack.PRSyncData{
+		StackName:  stackName,
+		UUID:       change.UUID,
+		Branch:     prBranch,
+		CommitHash: change.CommitHash,
+		GitHubPR:   ghPR,
+		Title:      spec.Title,
+		Body:       spec.Body,
+		Base:       spec.Base,
+	}
+	if err := c.Stack.SyncPRFromGitHub(syncData); err != nil {
 		return 0, "", false, fmt.Errorf("failed to update PR tracking: %w", err)
 	}
 
@@ -158,30 +165,27 @@ func (c *Command) Run(ctx context.Context) error {
 		ui.Println("")
 	}
 
-	// Push each PR (only active/unmerged changes)
-	var created, updated int
-	var previousBranch string // Track base branch for next PR
+	var created, updated, skipped int
+	var previousBranch string
 
 	for i, change := range stackCtx.ActiveChanges {
 		position := i + 1
 		total := len(stackCtx.ActiveChanges)
 
-		// Get PR branch name
 		prBranch := stackCtx.FormatUUIDBranch(username, change.UUID)
 
-		// Determine base branch (previous PR's branch or stack base)
 		baseBranch := stackCtx.Stack.Base
 		if previousBranch != "" {
 			baseBranch = previousBranch
 		}
 
-		// Get existing PR number
 		existingPRNumber := 0
-		if existingPR := prData.PRs[change.UUID]; existingPR != nil {
-			existingPRNumber = existingPR.PRNumber
+		var existingPR *stack.PR
+		if pr := prData.PRs[change.UUID]; pr != nil {
+			existingPRNumber = pr.PRNumber
+			existingPR = pr
 		}
 
-		// Handle dry-run display
 		if c.DryRun {
 			if existingPRNumber > 0 {
 				ui.Printf("Would update PR #%d: %s\n", existingPRNumber, change.Title)
@@ -192,23 +196,55 @@ func (c *Command) Run(ctx context.Context) error {
 			continue
 		}
 
-		// Push PR to GitHub
+		var updateReason string
+		if existingPR != nil && !c.Force {
+			desiredState := stack.PRCompareState{
+				Title:      change.Title,
+				Body:       change.Description,
+				Base:       baseBranch,
+				CommitHash: change.CommitHash,
+				IsDraft:    !c.Ready,
+			}
+			if !existingPR.NeedsUpdate(desiredState) {
+				skipped++
+				ui.Print(ui.RenderPushProgress(ui.PushProgress{
+					Position: position,
+					Total:    total,
+					Title:    change.Title,
+					PRNumber: existingPR.PRNumber,
+					URL:      existingPR.URL,
+					Action:   "skipped",
+				}))
+				previousBranch = prBranch
+				continue
+			}
+			updateReason = existingPR.WhyNeedsUpdate(desiredState)
+		}
+
 		prNumber, prURL, isNew, err := c.pushPR(stackCtx.StackName, change, prBranch, baseBranch, existingPRNumber)
 		if err != nil {
 			return err
 		}
 
-		// Track stats
+		var action string
 		if isNew {
 			created++
+			action = "created"
 		} else {
 			updated++
+			action = "updated"
 		}
 
-		// Display progress
-		ui.Print(ui.RenderPushProgress(position, total, change.Title, prNumber, prURL, isNew))
+		ui.Print(ui.RenderPushProgress(ui.PushProgress{
+			Position: position,
+			Total:    total,
+			Title:    change.Title,
+			PRNumber: prNumber,
+			URL:      prURL,
+			Action:   action,
+			Reason:   updateReason,
+		}))
 
-		// Set previous branch for next iteration
 		previousBranch = prBranch
 	}
 
@@ -216,15 +252,12 @@ func (c *Command) Run(ctx context.Context) error {
 		return nil
 	}
 
-	// Display summary
-	ui.Print(ui.RenderPushSummary(created, updated))
+	ui.Print(ui.RenderPushSummary(created, updated, skipped))
 
-	// Update stack visualizations if any PRs were created or if force flag is set
 	if created > 0 || c.Force {
 		ui.Println("")
 		ui.Info("Updating stack visualizations...")
 
-		// Reload stack context to get fresh PR data
 		freshCtx, err := c.Stack.GetStackContext()
 		if err != nil {
 			return fmt.Errorf("failed to reload stack context: %w", err)
@@ -241,9 +274,7 @@ func (c *Command) Run(ctx context.Context) error {
 }
 
 // hasAnyMergedPRs checks if any PRs in the stack have been merged on GitHub
-// Uses batch API to efficiently query all PRs in a single request
 func (c *Command) hasAnyMergedPRs(owner, repoName string, activeChanges []stack.Change) (bool, error) {
-	// Collect all PR numbers from active changes
 	var prNumbers []int
 	for _, change := range activeChanges {
 		if change.PR != nil {
@@ -251,18 +282,15 @@ func (c *Command) hasAnyMergedPRs(owner, repoName string, activeChanges []stack.
 		}
 	}
 
-	// If no PRs exist yet, nothing is merged
 	if len(prNumbers) == 0 {
 		return false, nil
 	}
 
-	// Batch query all PRs in one API call
 	result, err := c.GH.BatchGetPRs(owner, repoName, prNumbers)
 	if err != nil {
 		return false, fmt.Errorf("failed to batch query PRs: %w", err)
 	}
 
-	// Check if any are merged
 	for _, prState := range result.PRStates {
 		if prState.IsMerged {
 			return true, nil
