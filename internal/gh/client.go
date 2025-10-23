@@ -206,6 +206,7 @@ type PRState struct {
 	State    string    // "OPEN", "CLOSED", "MERGED"
 	IsMerged bool      // True if PR is merged
 	MergedAt time.Time // When PR was merged (zero if not merged)
+	IsDraft  bool      // True if PR is a draft
 }
 
 // GetPRState queries the merge state of a pull request from GitHub
@@ -306,6 +307,7 @@ func (c *Client) buildBatchPRQuery(prNumbers []int) string {
       state
       merged
       mergedAt
+			isDraft
     }
 `
 
@@ -348,6 +350,7 @@ func (c *Client) parseBatchPRResponse(data []byte, prNumbers []int) (*BatchPRsRe
 			State    string    `json:"state"` // "OPEN", "CLOSED", "MERGED"
 			Merged   bool      `json:"merged"`
 			MergedAt time.Time `json:"mergedAt"`
+			IsDraft  bool      `json:"isDraft"`
 		}
 
 		if err := json.Unmarshal(prData, &pr); err != nil {
@@ -360,6 +363,7 @@ func (c *Client) parseBatchPRResponse(data []byte, prNumbers []int) (*BatchPRsRe
 			State:    pr.State,
 			IsMerged: pr.Merged,
 			MergedAt: pr.MergedAt,
+			IsDraft:  pr.IsDraft,
 		}
 	}
 

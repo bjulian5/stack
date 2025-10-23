@@ -75,7 +75,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("not on a stack branch: switch to a stack first or use 'stack switch'")
 	}
 
-	if stackCtx.IsEditing() {
+	if stackCtx.OnUUIDBranch() {
 		return fmt.Errorf("cannot run fixup while editing a change: checkout the stack TOP branch first")
 	}
 

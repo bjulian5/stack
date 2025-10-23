@@ -22,71 +22,28 @@ type PR struct {
 	Body  string `json:"body,omitempty"`  // Last pushed PR description
 	Base  string `json:"base,omitempty"`  // Last pushed base branch
 
-	// LocalDraft is the user's desired draft state (true = draft, false = ready)
-	// This is the source of truth for push operations. Defaults to true for new changes.
-	// When LocalDraft differs from State, the PR needs to be synced.
-	LocalDraft bool `json:"local_draft"`
-}
+	// LocalDraftStatus is the user's desired draft state (true = draft, false = ready)
+	// This is set by 'stack ready' and 'stack draft' commands.
+	// Defaults to true for new changes.
+	LocalDraftStatus bool `json:"local_draft"`
 
-// PRCompareState represents the desired state of a PR for comparison
-type PRCompareState struct {
-	Title      string
-	Body       string
-	Base       string
-	CommitHash string
-	IsDraft    bool
+	// RemoteDraftStatus is the current draft state on GitHub (true = draft, false = ready)
+	// This is synced from GitHub API during SyncPRMetadata.
+	// When LocalDraftStatus differs from RemoteDraftStatus, the PR needs to be synced.
+	RemoteDraftStatus bool `json:"remote_draft_status"`
 }
 
 // PRSyncData contains all data needed to sync a PR to local storage
 type PRSyncData struct {
-	StackName  string
-	UUID       string
-	Branch     string
-	CommitHash string
-	GitHubPR   *gh.PR
-	Title      string
-	Body       string
-	Base       string
-}
-
-// NeedsUpdate checks if a PR needs to be updated on GitHub
-func (p *PR) NeedsUpdate(desired PRCompareState) bool {
-	if p.Title == "" || p.Body == "" || p.Base == "" {
-		return true
-	}
-
-	if p.Title != desired.Title || p.Body != desired.Body || p.Base != desired.Base || p.CommitHash != desired.CommitHash {
-		return true
-	}
-
-	// Compare against persisted LocalDraft, not GitHub state
-	return p.LocalDraft != desired.IsDraft
-}
-
-// WhyNeedsUpdate returns a human-readable reason why a PR needs updating (for debugging)
-func (p *PR) WhyNeedsUpdate(desired PRCompareState) string {
-	if p.Title == "" || p.Body == "" || p.Base == "" {
-		return "metadata not cached"
-	}
-
-	if p.Title != desired.Title {
-		return "title changed"
-	}
-	if p.Body != desired.Body {
-		return "description changed"
-	}
-	if p.Base != desired.Base {
-		return "base branch changed"
-	}
-	if p.CommitHash != desired.CommitHash {
-		return "commit changed"
-	}
-
-	if p.LocalDraft != desired.IsDraft {
-		return "draft status changed"
-	}
-
-	return ""
+	StackName         string
+	UUID              string
+	Branch            string
+	CommitHash        string
+	GitHubPR          *gh.PR
+	Title             string
+	Body              string
+	Base              string
+	RemoteDraftStatus bool // The draft status that was pushed to GitHub
 }
 
 // PRData is a wrapper for PR tracking data

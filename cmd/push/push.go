@@ -66,7 +66,6 @@ func (c *Command) pushPR(
 	stackName string,
 	change stack.Change,
 	prBranch string,
-	baseBranch string,
 	existingPRNumber int,
 ) (prNumber int, url string, isNew bool, err error) {
 	if err := c.Git.UpdateRef(prBranch, change.CommitHash); err != nil {
@@ -81,9 +80,9 @@ func (c *Command) pushPR(
 		Number: existingPRNumber,
 		Title:  change.Title,
 		Body:   change.Description,
-		Base:   baseBranch,
+		Base:   change.DesiredBase,
 		Head:   prBranch,
-		Draft:  change.LocalDraft,
+		Draft:  change.GetDraftStatus(),
 	}
 
 	ghPR, err := c.GH.SyncPR(spec)
@@ -92,14 +91,15 @@ func (c *Command) pushPR(
 	}
 
 	syncData := stack.PRSyncData{
-		StackName:  stackName,
-		UUID:       change.UUID,
-		Branch:     prBranch,
-		CommitHash: change.CommitHash,
-		GitHubPR:   ghPR,
-		Title:      spec.Title,
-		Body:       spec.Body,
-		Base:       spec.Base,
+		StackName:         stackName,
+		UUID:              change.UUID,
+		Branch:            prBranch,
+		CommitHash:        change.CommitHash,
+		GitHubPR:          ghPR,
+		Title:             spec.Title,
+		Body:              spec.Body,
+		Base:              spec.Base,
+		RemoteDraftStatus: spec.Draft, // What we pushed becomes the new remote state
 	}
 	if err := c.Stack.SyncPRFromGitHub(syncData); err != nil {
 		return 0, "", false, fmt.Errorf("failed to update PR tracking: %w", err)
@@ -134,16 +134,21 @@ func (c *Command) Run(ctx context.Context) error {
 		return nil
 	}
 
-	// Check if any PRs have been merged on GitHub
-	hasMerged, err := c.hasAnyMergedPRs(stackCtx.Stack.Owner, stackCtx.Stack.RepoName, stackCtx.ActiveChanges)
+	res, err := c.Stack.SyncPRMetadata(stackCtx)
 	if err != nil {
-		return fmt.Errorf("failed to check PR states: %w", err)
+		return fmt.Errorf("failed to sync with GitHub: %w", err)
 	}
-	if hasMerged {
+
+	if res.MergedCount > 0 {
 		ui.Println("")
 		ui.Warning("One or more PRs have been merged on GitHub.")
 		ui.Print("Please run 'stack refresh' to sync your stack before pushing.")
 		return fmt.Errorf("stack out of sync - run 'stack refresh' first")
+	}
+
+	stackCtx, err = c.Stack.GetStackContextByName(stackCtx.StackName)
+	if err != nil {
+		return fmt.Errorf("failed to reload stack context: %w", err)
 	}
 
 	// Get username for branch naming
@@ -152,19 +157,12 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to get username: %w", err)
 	}
 
-	// Load existing PRs
-	prData, err := c.Stack.LoadPRs(stackCtx.StackName)
-	if err != nil {
-		return fmt.Errorf("failed to load PRs: %w", err)
-	}
-
 	if c.DryRun {
 		ui.Info("Dry run mode - no changes will be made")
 		ui.Println("")
 	}
 
 	var created, updated, skipped int
-	var previousBranch string
 
 	for i, change := range stackCtx.ActiveChanges {
 		position := i + 1
@@ -172,16 +170,12 @@ func (c *Command) Run(ctx context.Context) error {
 
 		prBranch := stackCtx.FormatUUIDBranch(username, change.UUID)
 
-		baseBranch := stackCtx.Stack.Base
-		if previousBranch != "" {
-			baseBranch = previousBranch
-		}
-
 		existingPRNumber := 0
 		var existingPR *stack.PR
-		if pr := prData.PRs[change.UUID]; pr != nil {
-			existingPRNumber = pr.PRNumber
-			existingPR = pr
+
+		if change.PR != nil {
+			existingPRNumber = change.PR.PRNumber
+			existingPR = change.PR
 		}
 
 		if c.DryRun {
@@ -190,20 +184,14 @@ func (c *Command) Run(ctx context.Context) error {
 			} else {
 				ui.Printf("Would create PR: %s\n", change.Title)
 			}
-			previousBranch = prBranch
 			continue
 		}
 
 		var updateReason string
 		if existingPR != nil && !c.Force {
-			desiredState := stack.PRCompareState{
-				Title:      change.Title,
-				Body:       change.Description,
-				Base:       baseBranch,
-				CommitHash: change.CommitHash,
-				IsDraft:    change.LocalDraft,
-			}
-			if !existingPR.NeedsUpdate(desiredState) {
+			syncStatus := change.NeedsSyncToGitHub()
+
+			if !syncStatus.NeedsSync {
 				skipped++
 				ui.Print(ui.RenderPushProgress(ui.PushProgress{
 					Position: position,
@@ -213,13 +201,13 @@ func (c *Command) Run(ctx context.Context) error {
 					URL:      existingPR.URL,
 					Action:   "skipped",
 				}))
-				previousBranch = prBranch
 				continue
 			}
-			updateReason = existingPR.WhyNeedsUpdate(desiredState)
+
+			updateReason = syncStatus.Reason
 		}
 
-		prNumber, prURL, isNew, err := c.pushPR(stackCtx.StackName, change, prBranch, baseBranch, existingPRNumber)
+		prNumber, prURL, isNew, err := c.pushPR(stackCtx.StackName, change, prBranch, existingPRNumber)
 		if err != nil {
 			return err
 		}
@@ -242,8 +230,6 @@ func (c *Command) Run(ctx context.Context) error {
 			Action:   action,
 			Reason:   updateReason,
 		}))
-
-		previousBranch = prBranch
 	}
 
 	if c.DryRun {
@@ -269,31 +255,4 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// hasAnyMergedPRs checks if any PRs in the stack have been merged on GitHub
-func (c *Command) hasAnyMergedPRs(owner, repoName string, activeChanges []stack.Change) (bool, error) {
-	var prNumbers []int
-	for _, change := range activeChanges {
-		if change.PR != nil {
-			prNumbers = append(prNumbers, change.PR.PRNumber)
-		}
-	}
-
-	if len(prNumbers) == 0 {
-		return false, nil
-	}
-
-	result, err := c.GH.BatchGetPRs(owner, repoName, prNumbers)
-	if err != nil {
-		return false, fmt.Errorf("failed to batch query PRs: %w", err)
-	}
-
-	for _, prState := range result.PRStates {
-		if prState.IsMerged {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }

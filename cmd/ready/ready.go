@@ -79,10 +79,6 @@ func (c *Command) Run(ctx context.Context) error {
 	} else {
 		// Mark current change only
 		currentChange := stackCtx.CurrentChange()
-		if currentChange == nil {
-			// If on TOP branch, mark the top change
-			currentChange = &stackCtx.ActiveChanges[len(stackCtx.ActiveChanges)-1]
-		}
 		changesToMark = []stack.Change{*currentChange}
 	}
 

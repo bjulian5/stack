@@ -32,6 +32,10 @@ type StackContext struct {
 	// onUUIDBranch indicates if we're on a UUID branch (editing a specific change).
 	// false when on TOP branch or loaded by name.
 	onUUIDBranch bool
+
+	// stackActive indicates if this stack is the currently active stack in the repo.
+	// i.e., if the current Git branch is part of this stack.
+	stackActive bool
 }
 
 // IsStack returns true if this context represents a stack.
@@ -39,15 +43,16 @@ func (s *StackContext) IsStack() bool {
 	return s.StackName != ""
 }
 
-// IsEditing returns true if this context represents editing a specific change.
+// OnUUIDBranch returns true if this context represents editing a specific change.
 // This means we're on a UUID branch (not TOP branch).
-func (s *StackContext) IsEditing() bool {
+func (s *StackContext) OnUUIDBranch() bool {
 	return s.onUUIDBranch
 }
 
-// CurrentChange returns the change being edited, or nil if not editing.
+// CurrentChange returns the change at the current position (where HEAD is),
+// or nil if not on this stack's branches or currentUUID is not set.
 func (s *StackContext) CurrentChange() *Change {
-	if !s.IsEditing() {
+	if s.currentUUID == "" {
 		return nil
 	}
 	return s.FindChange(s.currentUUID)
@@ -160,6 +165,18 @@ func IsUUIDBranch(branch string) bool {
 	return true
 }
 
+func validUUID(uuid string) bool {
+	if len(uuid) != 16 {
+		return false
+	}
+	for _, c := range uuid {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 // ExtractStackName extracts the stack name from a stack branch
 func ExtractStackName(branch string) string {
 	// Branch format: username/stack-<name>/TOP
@@ -173,8 +190,8 @@ func ExtractStackName(branch string) string {
 		return ""
 	}
 
-	// Verify it's a stack branch (ends with /TOP)
-	if parts[2] != "TOP" {
+	// Verify it's a stack branch (ends with /TOP or is a valid UUID)
+	if parts[2] != "TOP" && !validUUID(parts[2]) {
 		return ""
 	}
 

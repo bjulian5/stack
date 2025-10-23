@@ -88,7 +88,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Check if already on TOP branch
-	if !stackCtx.IsEditing() {
+	if !stackCtx.OnUUIDBranch() {
 		return fmt.Errorf("already at top of stack")
 	}
 

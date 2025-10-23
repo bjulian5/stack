@@ -85,11 +85,11 @@ func (c *Command) Run(ctx context.Context) error {
 	// Determine target position based on current state
 	var targetPosition int
 
-	if stackCtx.IsEditing() {
+	if stackCtx.OnUUIDBranch() {
 		// On UUID branch - move down from current position
 		currentChange := stackCtx.CurrentChange()
 		if currentChange == nil {
-			return fmt.Errorf("failed to find current change in stack")
+			return fmt.Errorf("failed to determine current change")
 		}
 		targetPosition = currentChange.Position - 1
 

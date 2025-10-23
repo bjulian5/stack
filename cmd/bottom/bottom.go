@@ -85,7 +85,7 @@ func (c *Command) Run(ctx context.Context) error {
 	firstChange := &stackCtx.ActiveChanges[0]
 
 	// Check if already at bottom
-	if stackCtx.IsEditing() {
+	if stackCtx.OnUUIDBranch() {
 		currentChange := stackCtx.CurrentChange()
 		if currentChange != nil && currentChange.Position == 1 {
 			return fmt.Errorf("already at bottom position")

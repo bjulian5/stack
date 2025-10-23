@@ -101,7 +101,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("not on a stack branch. Use 'stack switch' to switch to a stack.")
 	}
 
-	if stackCtx.IsEditing() {
+	if stackCtx.OnUUIDBranch() {
 		return fmt.Errorf("cannot restack while editing a change. Commit or abort your changes first.")
 	}
 

@@ -192,65 +192,29 @@ func (c *Client) ListStacks() ([]*Stack, error) {
 // GetStackContext returns the stack context based on the current git branch.
 // This is the single source of truth for what stack you're working on.
 func (c *Client) GetStackContext() (*StackContext, error) {
-	// Get current branch
-	branch, err := c.git.GetCurrentBranch()
+	currentBranch, err := c.git.GetCurrentBranch()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current branch: %w", err)
 	}
-
-	ctx := &StackContext{}
-
-	// Determine stack name and branch type
-	var isUUIDBranch bool
-	var editingUUID string
-	if IsStackBranch(branch) {
-		ctx.StackName = ExtractStackName(branch)
-		isUUIDBranch = false
-	} else if IsUUIDBranch(branch) {
-		ctx.StackName, editingUUID = ExtractUUIDFromBranch(branch)
-		isUUIDBranch = true
-	} else {
-		// Not on a stack-related branch
-		return ctx, nil
+	stackName := ExtractStackName(currentBranch)
+	if stackName != "" {
+		return c.GetStackContextByName(stackName)
 	}
 
-	// Load stack metadata
-	if ctx.StackName != "" {
-		stack, err := c.LoadStack(ctx.StackName)
-		if err != nil {
-			return ctx, fmt.Errorf("failed to load stack '%s': %w", ctx.StackName, err)
-		}
-		ctx.Stack = stack
-
-		// Load all changes (merged + active)
-		allChanges, activeChanges, err := c.getChangesForStack(stack)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load changes for stack '%s': %w", ctx.StackName, err)
-		}
-		ctx.AllChanges = allChanges
-		ctx.ActiveChanges = activeChanges
-
-		// Set position based on branch type
-		if isUUIDBranch {
-			// On UUID branch - editing a specific change
-			ctx.currentUUID = editingUUID
-			ctx.onUUIDBranch = true
-		} else {
-			// On TOP branch - position at HEAD (last change)
-			if len(allChanges) > 0 {
-				lastChange := allChanges[len(allChanges)-1]
-				ctx.currentUUID = lastChange.UUID
-			}
-			ctx.onUUIDBranch = false
-		}
-	}
-
-	return ctx, nil
+	return &StackContext{}, nil
 }
 
 // GetStackContextByName loads stack context for a specific stack by name.
 // This is useful for commands that operate on a stack without being on a stack branch.
 func (c *Client) GetStackContextByName(name string) (*StackContext, error) {
+	currentBranch, err := c.git.GetCurrentBranch()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current branch: %w", err)
+	}
+	return c.getStackContextByName(name, currentBranch)
+}
+
+func (c *Client) getStackContextByName(name string, currentBranch string) (*StackContext, error) {
 	if name == "" {
 		return nil, fmt.Errorf("stack name is required")
 	}
@@ -267,14 +231,32 @@ func (c *Client) GetStackContextByName(name string) (*StackContext, error) {
 		return nil, err
 	}
 
-	return &StackContext{
+	res := &StackContext{
 		StackName:     name,
 		Stack:         stack,
 		AllChanges:    allChanges,
 		ActiveChanges: activeChanges,
-		currentUUID:   "",    // Not on this stack (loaded by name)
-		onUUIDBranch:  false, // Not on this stack
-	}, nil
+	}
+
+	if IsUUIDBranch(currentBranch) {
+		currentStackName, uuid := ExtractUUIDFromBranch(currentBranch)
+		res.stackActive = currentStackName == name
+		res.currentUUID = uuid
+		res.onUUIDBranch = true
+		return res, nil
+	} else if IsStackBranch(currentBranch) {
+		currentStackName, uuid := ExtractUUIDFromBranch(currentBranch)
+		if uuid != "TOP" {
+			return nil, fmt.Errorf("unexpected stack branch format: %s", currentBranch)
+		}
+		res.stackActive = currentStackName == name
+
+		if len(allChanges) > 0 {
+			lastChange := allChanges[len(allChanges)-1]
+			res.currentUUID = lastChange.UUID
+		}
+	}
+	return res, nil
 }
 
 // SwitchStack checks out the TOP branch of the specified stack.
@@ -382,6 +364,24 @@ func (c *Client) getChangesForStack(s *Stack) (allChanges []Change, activeChange
 		activeChanges[i].Position = i + 1
 	}
 
+	// Calculate and set DesiredBase for each change based on stacking order
+	username, err := common.GetUsername()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get username: %w", err)
+	}
+
+	for i := range activeChanges {
+		if i == 0 {
+			// First change targets the stack's base branch
+			activeChanges[i].DesiredBase = s.Base
+		} else {
+			// Subsequent changes target the previous change's PR branch
+			prevChange := &activeChanges[i-1]
+			prevBranch := fmt.Sprintf("%s/stack-%s/%s", username, s.Name, prevChange.UUID)
+			activeChanges[i].DesiredBase = prevBranch
+		}
+	}
+
 	// Build AllChanges (merged first, then active)
 	allChanges = make([]Change, 0, len(mergedChanges)+len(activeChanges))
 	allChanges = append(allChanges, mergedChanges...)
@@ -396,13 +396,10 @@ func (c *Client) commitsToChanges(commits []git.Commit, prData *PRData, isMerged
 	for i, commit := range commits {
 		uuid := commit.Message.Trailers["PR-UUID"]
 		var pr *PR
-		localDraft := true // Default to draft for new changes
 
 		if uuid != "" {
 			if p, ok := prData.PRs[uuid]; ok {
 				pr = p
-				// Use the persisted LocalDraft value from PR metadata
-				localDraft = pr.LocalDraft
 			}
 		}
 
@@ -412,7 +409,6 @@ func (c *Client) commitsToChanges(commits []git.Commit, prData *PRData, isMerged
 			Description: commit.Message.Body,
 			CommitHash:  commit.Hash,
 			UUID:        uuid,
-			LocalDraft:  localDraft,
 			PR:          pr,
 			IsMerged:    isMerged,
 		}
@@ -493,7 +489,7 @@ func (c *Client) SetPR(stackName string, uuid string, pr *PR) error {
 	return c.SavePRs(stackName, prData)
 }
 
-// SetLocalDraft sets the LocalDraft preference for a change by UUID
+// SetLocalDraft sets the LocalDraftStatus preference for a change by UUID
 func (c *Client) SetLocalDraft(stackName string, uuid string, localDraft bool) error {
 	prData, err := c.LoadPRs(stackName)
 	if err != nil {
@@ -502,14 +498,15 @@ func (c *Client) SetLocalDraft(stackName string, uuid string, localDraft bool) e
 
 	pr, exists := prData.PRs[uuid]
 	if !exists {
-		// Create new PR entry with just LocalDraft set
+		// Create new PR entry with just LocalDraftStatus set
 		pr = &PR{
-			LocalDraft: localDraft,
+			LocalDraftStatus: localDraft,
 		}
 	} else {
-		pr.LocalDraft = localDraft
+		pr.LocalDraftStatus = localDraft
 	}
 
+	fmt.Printf("Setting LocalDraftStatus for %s to %v\n", uuid, localDraft)
 	prData.PRs[uuid] = pr
 
 	return c.SavePRs(stackName, prData)
@@ -525,11 +522,11 @@ func (c *Client) SyncPRFromGitHub(data PRSyncData) error {
 	pr, exists := prData.PRs[data.UUID]
 	if !exists {
 		pr = &PR{
-			CreatedAt:  data.GitHubPR.CreatedAt,
-			LocalDraft: true, // Default to draft for new PRs
+			CreatedAt:        data.GitHubPR.CreatedAt,
+			LocalDraftStatus: true, // Default to draft for new PRs
 		}
 	}
-	// If PR already exists, preserve existing LocalDraft value
+	// If PR already exists, preserve existing LocalDraftStatus value
 
 	pr.PRNumber = data.GitHubPR.Number
 	pr.URL = data.GitHubPR.URL
@@ -540,6 +537,7 @@ func (c *Client) SyncPRFromGitHub(data PRSyncData) error {
 	pr.Title = data.Title
 	pr.Body = data.Body
 	pr.Base = data.Base
+	pr.RemoteDraftStatus = data.RemoteDraftStatus
 
 	prData.PRs[data.UUID] = pr
 
@@ -561,8 +559,7 @@ type RefreshResult struct {
 // This is safe to call from any branch with any working tree state.
 // Returns info about what changed (merged PRs, etc).
 func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) {
-	// If no active changes, just update sync timestamp
-	if len(stackCtx.ActiveChanges) == 0 {
+	if len(stackCtx.AllChanges) == 0 {
 		if err := c.UpdateSyncMetadata(stackCtx.StackName); err != nil {
 			return nil, err
 		}
@@ -573,14 +570,14 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 		}, nil
 	}
 
-	// Query GitHub for PR states (batch query for efficiency)
-	newlyMerged, err := c.FindMergedPRs(stackCtx)
-	if err != nil {
-		return nil, err
+	var prNumbers []int
+	for _, change := range stackCtx.AllChanges {
+		if change.PR != nil {
+			prNumbers = append(prNumbers, change.PR.PRNumber)
+		}
 	}
 
-	if len(newlyMerged) == 0 {
-		// No merges found - update metadata and return
+	if len(prNumbers) == 0 {
 		if err := c.UpdateSyncMetadata(stackCtx.StackName); err != nil {
 			return nil, err
 		}
@@ -589,6 +586,64 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 			RemainingCount: len(stackCtx.ActiveChanges),
 			MergedChanges:  nil,
 		}, nil
+	}
+
+	result, err := c.gh.BatchGetPRs(stackCtx.Stack.Owner, stackCtx.Stack.RepoName, prNumbers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to batch query PRs: %w", err)
+	}
+
+	// Load PR data to update
+	prData, err := c.LoadPRs(stackCtx.StackName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load PRs: %w", err)
+	}
+
+	// Update ALL PR metadata from GitHub (not just merged ones)
+	for _, change := range stackCtx.AllChanges {
+		if change.PR == nil {
+			continue
+		}
+
+		prState, found := result.PRStates[change.PR.PRNumber]
+		if !found {
+			// PR was deleted or not found - skip
+			continue
+		}
+
+		// Update the PR metadata in prData
+		pr := prData.PRs[change.UUID]
+		if pr != nil {
+			pr.State = strings.ToLower(prState.State)
+			pr.RemoteDraftStatus = prState.IsDraft
+			// Preserve pr.LocalDraftStatus - don't overwrite user's preference!
+		}
+	}
+
+	// Save all updated PR metadata
+	if err := c.SavePRs(stackCtx.StackName, prData); err != nil {
+		return nil, fmt.Errorf("failed to save PRs: %w", err)
+	}
+
+	// Identify newly merged changes
+	var newlyMerged []Change
+	for _, change := range stackCtx.AllChanges {
+		if change.PR == nil {
+			continue
+		}
+
+		prState, found := result.PRStates[change.PR.PRNumber]
+		if !found {
+			continue
+		}
+
+		if prState.IsMerged && !c.IsChangeMerged(&change) {
+			// Create a copy of the change with merged status
+			mergedChange := change
+			mergedChange.IsMerged = true
+			mergedChange.MergedAt = prState.MergedAt
+			newlyMerged = append(newlyMerged, mergedChange)
+		}
 	}
 
 	// Validate bottom-up merge order
@@ -623,7 +678,7 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 // This performs the git operations to actually apply merged PR removals.
 func (c *Client) ApplyRefresh(stackCtx *StackContext, merged []Change) error {
 	// Validate on TOP branch (not editing a specific change)
-	if !stackCtx.IsStack() || stackCtx.IsEditing() {
+	if !stackCtx.IsStack() || stackCtx.OnUUIDBranch() {
 		currentBranch, _ := c.git.GetCurrentBranch()
 		return fmt.Errorf("must be on TOP branch (%s) to apply refresh, currently on %s",
 			stackCtx.Stack.Branch, currentBranch)
@@ -715,55 +770,6 @@ func (c *Client) fetchRemote() error {
 	}
 
 	return nil
-}
-
-// FindMergedPRs queries GitHub for PR states and returns those that are merged.
-// Uses bulk GraphQL query for efficiency - single API call instead of N calls.
-func (c *Client) FindMergedPRs(stackCtx *StackContext) ([]Change, error) {
-	// Extract PR numbers from active changes
-	var prNumbers []int
-	for _, change := range stackCtx.ActiveChanges {
-		// Skip local changes (not yet pushed to GitHub)
-		if change.PR != nil {
-			prNumbers = append(prNumbers, change.PR.PRNumber)
-		}
-	}
-
-	// If no PRs to check, return empty
-	if len(prNumbers) == 0 {
-		return nil, nil
-	}
-
-	// Bulk query all PRs (much faster than individual queries)
-	result, err := c.gh.BatchGetPRs(stackCtx.Stack.Owner, stackCtx.Stack.RepoName, prNumbers)
-	if err != nil {
-		return nil, fmt.Errorf("failed to batch query PRs: %w", err)
-	}
-
-	var merged []Change
-
-	for _, change := range stackCtx.ActiveChanges {
-		// Skip local changes
-		if change.PR == nil {
-			continue
-		}
-
-		// Lookup PR state from bulk query results
-		prState, found := result.PRStates[change.PR.PRNumber]
-		if !found {
-			// PR was deleted or doesn't exist - skip it
-			continue
-		}
-
-		if prState.IsMerged {
-			// Mark as merged and set timestamp
-			change.IsMerged = true
-			change.MergedAt = prState.MergedAt
-			merged = append(merged, change)
-		}
-	}
-
-	return merged, nil
 }
 
 // SaveMergedChanges appends newly merged changes to the stack metadata
@@ -977,7 +983,7 @@ func IsStackBranch(branch string) bool {
 	}
 
 	// Check second part starts with "stack-" and third part is "TOP"
-	return strings.HasPrefix(parts[1], "stack-") && parts[2] == "TOP"
+	return strings.HasPrefix(parts[1], "stack-") && (parts[2] == "TOP" || validUUID(parts[2]))
 }
 
 // UpdateUUIDBranches reloads stack context and updates all UUID branches to point to their new commit locations

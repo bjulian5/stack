@@ -54,7 +54,7 @@ func (c *PostCommitCommand) Run() error {
 	}
 
 	// If not editing (i.e., on TOP branch), check if this is an amend
-	if !ctx.IsEditing() {
+	if !ctx.OnUUIDBranch() {
 		// Get the HEAD commit to check if it's an amend
 		headCommit, err := c.Git.GetCommit("HEAD")
 		if err != nil {
