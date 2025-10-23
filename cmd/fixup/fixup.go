@@ -141,7 +141,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Success message
-	fmt.Println(ui.RenderSuccessMessage(fmt.Sprintf("Successfully fixed up change #%d: %s", selectedChange.Position, selectedChange.Title)))
+	fmt.Println(ui.RenderSuccessMessagef("Successfully fixed up change #%d: %s", selectedChange.Position, selectedChange.Title))
 	fmt.Println("You are now on the TOP branch with the updated stack.")
 
 	return nil

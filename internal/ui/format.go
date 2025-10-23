@@ -78,6 +78,11 @@ func RenderTitle(text string) string {
 	return TitleStyle.Render(text)
 }
 
+// RenderTitlef renders a formatted prominent title
+func RenderTitlef(format string, args ...interface{}) string {
+	return RenderTitle(fmt.Sprintf(format, args...))
+}
+
 // RenderSubtitle renders a subtitle
 func RenderSubtitle(text string) string {
 	return SubtitleStyle.Render(text)
@@ -88,9 +93,19 @@ func RenderSuccessMessage(message string) string {
 	return SuccessStyle.Render("✓ " + message)
 }
 
+// RenderSuccessMessagef renders a formatted success message with checkmark
+func RenderSuccessMessagef(format string, args ...interface{}) string {
+	return RenderSuccessMessage(fmt.Sprintf(format, args...))
+}
+
 // RenderWarningMessage renders a warning message with icon
 func RenderWarningMessage(message string) string {
 	return WarningStyle.Render("⚠ " + message)
+}
+
+// RenderWarningMessagef renders a formatted warning message with icon
+func RenderWarningMessagef(format string, args ...interface{}) string {
+	return RenderWarningMessage(fmt.Sprintf(format, args...))
 }
 
 // RenderErrorMessage renders an error message with X
@@ -98,9 +113,19 @@ func RenderErrorMessage(message string) string {
 	return ErrorStyle.Render("✗ " + message)
 }
 
+// RenderErrorMessagef renders a formatted error message with X
+func RenderErrorMessagef(format string, args ...interface{}) string {
+	return RenderErrorMessage(fmt.Sprintf(format, args...))
+}
+
 // RenderInfoMessage renders an info message with icon
 func RenderInfoMessage(message string) string {
 	return InfoStyle.Render("ℹ " + message)
+}
+
+// RenderInfoMessagef renders a formatted info message with icon
+func RenderInfoMessagef(format string, args ...interface{}) string {
+	return RenderInfoMessage(fmt.Sprintf(format, args...))
 }
 
 // RenderBulletList renders a list with bullets

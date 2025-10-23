@@ -105,10 +105,10 @@ func (c *Command) Run(ctx context.Context) error {
 
 	// Warn if navigating to a merged change
 	if c.Stack.IsChangeMerged(firstChange) {
-		fmt.Println(ui.RenderWarningMessage(fmt.Sprintf(
+		fmt.Println(ui.RenderWarningMessagef(
 			"Change #%d has been merged on GitHub - run 'stack refresh' to sync",
 			firstChange.Position,
-		)))
+		))
 	}
 
 	// Print success message

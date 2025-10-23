@@ -138,7 +138,7 @@ func (c *Command) Run(ctx context.Context) error {
 
 	// Check if already on this stack
 	if currentStackName == selectedStack.Name {
-		fmt.Println(ui.RenderInfoMessage(fmt.Sprintf("Already on stack: %s", ui.Bold(selectedStack.Name))))
+		fmt.Println(ui.RenderInfoMessagef("Already on stack: %s", ui.Bold(selectedStack.Name)))
 		fmt.Println()
 
 		// Still show the stack details

@@ -97,7 +97,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	fmt.Println()
-	fmt.Println(ui.RenderSuccessMessage(fmt.Sprintf("Successfully deleted stack: %s", stackName)))
+	fmt.Println(ui.RenderSuccessMessagef("Successfully deleted stack: %s", stackName))
 	return nil
 }
 
@@ -129,7 +129,7 @@ func (c *Command) showDeletionSummary(stackCtx *stack.StackContext, branches []s
 		}
 	}
 
-	fmt.Println(ui.RenderWarningMessage(fmt.Sprintf("About to delete stack: %s", ui.Bold(stackCtx.StackName))))
+	fmt.Println(ui.RenderWarningMessagef("About to delete stack: %s", ui.Bold(stackCtx.StackName)))
 	fmt.Println()
 	fmt.Printf("  Stack details:\n")
 	fmt.Printf("    Base branch: %s\n", stackCtx.Stack.Base)

@@ -102,7 +102,7 @@ func (c *Command) deleteSelected(candidates []stack.CleanupCandidate, indices []
 	successCount := 0
 	for _, idx := range indices {
 		candidate := candidates[idx]
-		fmt.Println(ui.RenderInfoMessage(fmt.Sprintf("Cleaning up stack: %s", candidate.Stack.Name)))
+		fmt.Println(ui.RenderInfoMessagef("Cleaning up stack: %s", candidate.Stack.Name))
 		fmt.Println()
 
 		if err := c.Stack.DeleteStack(candidate.Stack.Name, true); err != nil {
@@ -115,7 +115,7 @@ func (c *Command) deleteSelected(candidates []stack.CleanupCandidate, indices []
 	}
 
 	if successCount > 0 {
-		fmt.Println(ui.RenderSuccessMessage(fmt.Sprintf("Successfully cleaned up %d stack(s)", successCount)))
+		fmt.Println(ui.RenderSuccessMessagef("Successfully cleaned up %d stack(s)", successCount))
 	}
 	return nil
 }

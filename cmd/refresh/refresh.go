@@ -100,7 +100,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Display what was merged
-	fmt.Printf("\n%s\n", ui.RenderTitle(fmt.Sprintf("Merged %d PR(s)", result.MergedCount)))
+	fmt.Printf("\n%s\n", ui.RenderTitlef("Merged %d PR(s)", result.MergedCount))
 	mergedItems := make([]string, len(result.MergedChanges))
 	for i, change := range result.MergedChanges {
 		mergedItems[i] = fmt.Sprintf("#%d: %s", change.PR.PRNumber, change.Title)

@@ -131,7 +131,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return err
 	}
 
-	fmt.Println(ui.RenderSuccessMessage(fmt.Sprintf("Restacked on %s", targetBase)))
+	fmt.Println(ui.RenderSuccessMessagef("Restacked on %s", targetBase))
 	return nil
 }
 
@@ -342,7 +342,7 @@ func (c *Command) updateUUIDBranches(stackName string) error {
 	}
 
 	if updatedCount > 0 {
-		fmt.Println(ui.RenderSuccessMessage(fmt.Sprintf("Updated %d UUID branch(es)", updatedCount)))
+		fmt.Println(ui.RenderSuccessMessagef("Updated %d UUID branch(es)", updatedCount))
 	}
 
 	return nil
