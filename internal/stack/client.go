@@ -272,8 +272,8 @@ func (c *Client) GetStackContextByName(name string) (*StackContext, error) {
 		Stack:         stack,
 		AllChanges:    allChanges,
 		ActiveChanges: activeChanges,
-		currentUUID:   "",        // Not on this stack (loaded by name)
-		onUUIDBranch:  false,     // Not on this stack
+		currentUUID:   "",    // Not on this stack (loaded by name)
+		onUUIDBranch:  false, // Not on this stack
 	}, nil
 }
 
