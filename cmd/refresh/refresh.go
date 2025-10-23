@@ -99,14 +99,10 @@ func (c *Command) Run(ctx context.Context) error {
 		return err
 	}
 
-	// Display what was merged
+	// Display what was merged in table format
 	ui.Println("")
-	ui.Print(ui.RenderTitlef("Merged %d PR(s)", result.MergedCount))
-	mergedItems := make([]string, len(result.MergedChanges))
-	for i, change := range result.MergedChanges {
-		mergedItems[i] = fmt.Sprintf("#%d: %s", change.PR.PRNumber, change.Title)
-	}
-	ui.Print(ui.RenderBulletList(mergedItems))
+	ui.Print(ui.RenderTitlef("Merged PRs (%d detected)", result.MergedCount))
+	ui.Print(ui.RenderMergedPRsTable(result.MergedChanges))
 
 	// Display summary
 	ui.Println("")

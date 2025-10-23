@@ -212,3 +212,165 @@ func RenderPushSummary(created, updated, skipped int) string {
 
 	return output.String()
 }
+
+// RenderMergedPRsTable renders a table of merged PRs for the refresh command
+func RenderMergedPRsTable(mergedChanges []stack.Change) string {
+	if len(mergedChanges) == 0 {
+		return ""
+	}
+
+	rows := make([][]string, len(mergedChanges))
+	for i, change := range mergedChanges {
+		prLabel := "-"
+		if change.PR != nil {
+			prLabel = StatusMergedStyle.Render(fmt.Sprintf("#%d", change.PR.PRNumber))
+		}
+
+		mergedAt := "-"
+		if !change.MergedAt.IsZero() {
+			mergedAt = change.MergedAt.Format("2006-01-02 15:04")
+		}
+
+		rows[i] = []string{
+			fmt.Sprintf("%d", i+1),
+			prLabel,
+			Truncate(change.Title, 40),
+			mergedAt,
+		}
+	}
+
+	t := NewStackTable().
+		Headers("#", "PR", "TITLE", "MERGED AT").
+		Rows(rows...)
+
+	return "\n" + t.String() + "\n"
+}
+
+// RenderStackDetailsTable renders a detailed table view of a single stack
+func RenderStackDetailsTable(s *stack.Stack, changes []stack.Change) string {
+	if len(changes) == 0 {
+		return RenderPanel(Dim("No changes in this stack"))
+	}
+
+	var output strings.Builder
+
+	output.WriteString(Bold(s.Name) + "  " + Dim("→") + "  " + Muted(s.Base) + "\n\n")
+
+	rows := make([][]string, len(changes))
+	for i, change := range changes {
+		position := fmt.Sprintf("%d", change.Position)
+		statusText := GetChangeStatus(change).Render()
+
+		prLabel := "-"
+		if change.PR != nil {
+			prLabel = fmt.Sprintf("#%d", change.PR.PRNumber)
+		}
+
+		commit := change.CommitHash
+		if len(commit) > 7 {
+			commit = commit[:7]
+		}
+
+		url := "-"
+		if change.PR != nil && change.PR.URL != "" {
+			url = change.PR.URL
+		}
+
+		rows[i] = []string{position, statusText, prLabel, change.Title, commit, url}
+	}
+
+	t := NewStackTable().
+		Headers("#", "STATUS", "PR", "TITLE", "COMMIT", "URL").
+		Rows(rows...)
+
+	output.WriteString(t.String() + "\n\n")
+	output.WriteString(buildSummaryLine(changes) + "\n\n")
+	output.WriteString(Dim("Legend:") + "\n" + buildLegendPanel())
+
+	return output.String()
+}
+
+func buildSummaryLine(changes []stack.Change) string {
+	open, draft, merged, closed, local, needsPush := CountPRsByState(changes)
+	totalPRs := len(changes)
+
+	prWord := "PR"
+	if totalPRs != 1 {
+		prWord = "PRs"
+	}
+	summary := Bold(fmt.Sprintf("%d %s", totalPRs, prWord)) + " " + Dim("total")
+
+	if open+draft+merged+closed+local+needsPush == 0 {
+		return summary
+	}
+
+	var states []string
+	if open > 0 {
+		states = append(states, StatusOpenStyle.Render(fmt.Sprintf("%d open", open)))
+	}
+	if draft > 0 {
+		states = append(states, StatusDraftStyle.Render(fmt.Sprintf("%d draft", draft)))
+	}
+	if merged > 0 {
+		states = append(states, StatusMergedStyle.Render(fmt.Sprintf("%d merged", merged)))
+	}
+	if closed > 0 {
+		states = append(states, StatusClosedStyle.Render(fmt.Sprintf("%d closed", closed)))
+	}
+	if needsPush > 0 {
+		states = append(states, StatusModifiedStyle.Render(fmt.Sprintf("%d modified", needsPush)))
+	}
+	if local > 0 {
+		states = append(states, StatusLocalStyle.Render(fmt.Sprintf("%d local", local)))
+	}
+
+	return summary + " " + Dim("(") + strings.Join(states, Dim(", ")) + Dim(")")
+}
+
+func buildLegendPanel() string {
+	content := FormatStatus("open") + " - PR is open and ready for review\n" +
+		FormatStatus("draft") + " - PR is in draft state\n" +
+		FormatStatus("merged") + " - PR has been merged (tracked in stack metadata)\n" +
+		FormatStatus("local") + " - Not yet pushed to GitHub\n" +
+		Dim("(modified)") + " - PR has local changes that need to be pushed"
+	return RenderPanel(content)
+}
+
+// RenderStackListTable renders a table comparing multiple stacks
+func RenderStackListTable(stacks []*stack.Stack, allChanges map[string][]stack.Change, currentStackName string) string {
+	if len(stacks) == 0 {
+		return RenderNoStacksMessage()
+	}
+
+	rows := make([][]string, len(stacks))
+	for i, s := range stacks {
+		changes := allChanges[s.Name]
+		open, draft, merged, _, local, _ := CountPRsByState(changes)
+
+		name := s.Name
+		if s.Name == currentStackName {
+			name = "● " + name
+		}
+
+		rows[i] = []string{
+			Truncate(name, 20),
+			fmt.Sprintf("%d", open),
+			fmt.Sprintf("%d", draft),
+			fmt.Sprintf("%d", merged),
+			fmt.Sprintf("%d", local),
+			s.Base,
+			Truncate(s.Branch, 27),
+		}
+	}
+
+	t := NewStackTable().
+		Headers("STACK", "OPEN", "DRAFT", "MERGED", "LOCAL", "BASE", "BRANCH").
+		Rows(rows...)
+
+	plural := ""
+	if len(stacks) != 1 {
+		plural = "s"
+	}
+
+	return t.String() + "\n\n" + Bold(fmt.Sprintf("%d stack%s total", len(stacks), plural)) + "\n"
+}

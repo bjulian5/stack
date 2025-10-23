@@ -14,6 +14,9 @@ import (
 
 // Command lists all stacks
 type Command struct {
+	// Flags
+	Table bool
+
 	// Clients (can be mocked in tests)
 	Git   *git.Client
 	Stack *stack.Client
@@ -39,11 +42,14 @@ Shows the stack name, number of PRs, and base branch for each stack.
 The current stack is marked with an asterisk (*).
 
 Example:
-  stack list`,
+  stack list
+  stack list --table`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.Run(cmd.Context())
 		},
 	}
+
+	cmd.Flags().BoolVar(&c.Table, "table", false, "Display as table instead of tree")
 
 	parent.AddCommand(cmd)
 }
@@ -84,7 +90,13 @@ func (c *Command) Run(ctx context.Context) error {
 		stackChanges[s.Name] = ctx.AllChanges
 	}
 
-	output := ui.RenderStackList(stacks, currentStack, stackChanges)
+	// Render using table or tree view based on flag
+	var output string
+	if c.Table {
+		output = ui.RenderStackListTable(stacks, stackChanges, currentStack)
+	} else {
+		output = ui.RenderStackList(stacks, currentStack, stackChanges)
+	}
 	ui.Print(output)
 
 	return nil

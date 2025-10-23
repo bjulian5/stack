@@ -17,6 +17,9 @@ type Command struct {
 	// Arguments
 	StackName string
 
+	// Flags
+	Table bool
+
 	// Clients (can be mocked in tests)
 	Git   *git.Client
 	Stack *stack.Client
@@ -42,7 +45,8 @@ If no stack name is provided, shows the current stack.
 
 Example:
   stack status
-  stack status auth-refactor`,
+  stack status auth-refactor
+  stack status --table`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -51,6 +55,8 @@ Example:
 			return c.Run(cmd.Context())
 		},
 	}
+
+	cmd.Flags().BoolVar(&c.Table, "table", false, "Display as table instead of tree")
 
 	parent.AddCommand(cmd)
 }
@@ -83,8 +89,13 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to sync with GitHub: %w", err)
 	}
 
-	// Render using the new UI
-	output := ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges)
+	// Render using table or tree view based on flag
+	var output string
+	if c.Table {
+		output = ui.RenderStackDetailsTable(stackCtx.Stack, stackCtx.AllChanges)
+	} else {
+		output = ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges)
+	}
 	ui.Print(output)
 
 	return nil
