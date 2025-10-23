@@ -111,8 +111,8 @@ func (c *Command) Run(ctx context.Context) error {
 		return err
 	}
 
-	// Print success message using new UI
-	fmt.Println(ui.RenderEditSuccess(selectedChange.Position, selectedChange.Title, branchName))
+	// Print success message
+	ui.Print(ui.RenderEditSuccess(selectedChange.Position, selectedChange.Title, branchName))
 
 	// TODO: Add cleanup mechanism for stale UUID branches after changes are merged/deleted.
 	// Over time, users will accumulate many UUID branches that should be cleaned up.

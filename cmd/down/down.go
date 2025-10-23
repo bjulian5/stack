@@ -123,14 +123,14 @@ func (c *Command) Run(ctx context.Context) error {
 
 	// Warn if navigating to a merged change
 	if c.Stack.IsChangeMerged(targetChange) {
-		fmt.Println(ui.RenderWarningMessagef(
+		ui.Warningf(
 			"Change #%d has been merged on GitHub - run 'stack refresh' to sync",
 			targetChange.Position,
-		))
+		)
 	}
 
 	// Print success message
-	fmt.Println(ui.RenderEditSuccess(targetChange.Position, targetChange.Title, branchName))
+	ui.Print(ui.RenderEditSuccess(targetChange.Position, targetChange.Title, branchName))
 
 	return nil
 }

@@ -123,7 +123,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Create fixup commit
-	fmt.Printf("Creating fixup commit for: %s\n", ui.RenderSuccessMessage(selectedChange.Title))
+	ui.Infof("Creating fixup commit for: %s", selectedChange.Title)
 	if err := c.Git.CommitFixup(selectedChange.CommitHash); err != nil {
 		return err
 	}
@@ -135,14 +135,14 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Run interactive rebase with autosquash
-	fmt.Println("Running autosquash rebase...")
+	ui.Info("Running autosquash rebase...")
 	if err := c.Git.RebaseInteractiveAutosquash(parentHash); err != nil {
 		return err
 	}
 
 	// Success message
-	fmt.Println(ui.RenderSuccessMessagef("Successfully fixed up change #%d: %s", selectedChange.Position, selectedChange.Title))
-	fmt.Println("You are now on the TOP branch with the updated stack.")
+	ui.Successf("Successfully fixed up change #%d: %s", selectedChange.Position, selectedChange.Title)
+	ui.Info("You are now on the TOP branch with the updated stack.")
 
 	return nil
 }

@@ -4,38 +4,109 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Color palette
+// Color palette with adaptive colors for light/dark backgrounds
 var (
-	// Primary colors
-	ColorPrimary   = lipgloss.Color("#7C3AED") // Purple
-	ColorSecondary = lipgloss.Color("#6366F1") // Indigo
+	// Primary colors with adaptive support
+	ColorPrimary = lipgloss.AdaptiveColor{
+		Light: "#5B21B6", // Darker purple for light backgrounds
+		Dark:  "#7C3AED", // Current purple for dark backgrounds
+	}
+	ColorSecondary = lipgloss.AdaptiveColor{
+		Light: "#4338CA", // Darker indigo
+		Dark:  "#6366F1", // Current indigo
+	}
 
-	// Status colors
-	ColorSuccess = lipgloss.Color("#10B981") // Green
-	ColorWarning = lipgloss.Color("#F59E0B") // Amber
-	ColorError   = lipgloss.Color("#EF4444") // Red
-	ColorInfo    = lipgloss.Color("#3B82F6") // Blue
+	// Status colors (semantic, context-aware)
+	ColorSuccess = lipgloss.AdaptiveColor{
+		Light: "#059669", // Darker green
+		Dark:  "#10B981", // Current green
+	}
+	ColorWarning = lipgloss.AdaptiveColor{
+		Light: "#D97706", // Darker amber
+		Dark:  "#F59E0B", // Current amber
+	}
+	ColorError = lipgloss.AdaptiveColor{
+		Light: "#DC2626", // Darker red
+		Dark:  "#EF4444", // Current red
+	}
+	ColorInfo = lipgloss.AdaptiveColor{
+		Light: "#2563EB", // Darker blue
+		Dark:  "#3B82F6", // Current blue
+	}
 
-	// State colors
-	ColorOpen     = lipgloss.Color("#10B981") // Green
-	ColorDraft    = lipgloss.Color("#F59E0B") // Amber
-	ColorMerged   = lipgloss.Color("#8B5CF6") // Purple
-	ColorClosed   = lipgloss.Color("#6B7280") // Gray
-	ColorLocal    = lipgloss.Color("#9CA3AF") // Light gray
-	ColorModified = lipgloss.Color("#F59E0B") // Amber (same as warning)
+	// State colors (more distinct palette)
+	ColorOpen = lipgloss.AdaptiveColor{
+		Light: "#16A34A", // Brighter green for light bg
+		Dark:  "#22C55E", // Brighter green (was #10B981)
+	}
+	ColorDraft = lipgloss.AdaptiveColor{
+		Light: "#EA580C", // Darker orange
+		Dark:  "#F97316", // Bright orange (was amber #F59E0B)
+	}
+	ColorMerged = lipgloss.AdaptiveColor{
+		Light: "#7C3AED", // Purple
+		Dark:  "#A78BFA", // Light purple (better contrast)
+	}
+	ColorClosed = lipgloss.AdaptiveColor{
+		Light: "#475569", // Darker slate
+		Dark:  "#64748B", // Slate (was gray #6B7280)
+	}
+	ColorLocal = lipgloss.AdaptiveColor{
+		Light: "#64748B", // Slate
+		Dark:  "#94A3B8", // Light slate (was #9CA3AF)
+	}
+	ColorModified = lipgloss.AdaptiveColor{
+		Light: "#CA8A04", // Darker gold
+		Dark:  "#FBBF24", // Gold (was amber, now distinct from draft)
+	}
 
-	// Text colors
-	ColorText       = lipgloss.Color("#F3F4F6") // Light gray
-	ColorTextMuted  = lipgloss.Color("#9CA3AF") // Gray
-	ColorTextBright = lipgloss.Color("#FFFFFF") // White
+	// Text colors with adaptive support
+	ColorText = lipgloss.AdaptiveColor{
+		Light: "#1F2937", // Dark gray for light backgrounds
+		Dark:  "#F3F4F6", // Light gray for dark backgrounds
+	}
+	ColorTextMuted = lipgloss.AdaptiveColor{
+		Light: "#6B7280", // Medium gray
+		Dark:  "#9CA3AF", // Light gray
+	}
+	ColorTextBright = lipgloss.AdaptiveColor{
+		Light: "#000000", // Black for light backgrounds
+		Dark:  "#FFFFFF", // White for dark backgrounds
+	}
+
+	// Tree colors (for hierarchical visualization)
+	ColorTreeBranch = lipgloss.AdaptiveColor{
+		Light: "#9CA3AF", // Light gray
+		Dark:  "#6B7280", // Gray
+	}
+	ColorTreeCurrent = lipgloss.AdaptiveColor{
+		Light: "#2563EB", // Blue
+		Dark:  "#3B82F6", // Lighter blue
+	}
+	ColorTreeEnumerator = lipgloss.AdaptiveColor{
+		Light: "#6B7280", // Gray
+		Dark:  "#9CA3AF", // Light gray
+	}
 
 	// Background colors
-	ColorBgSubtle = lipgloss.Color("#1F2937") // Dark gray
-	ColorBgMuted  = lipgloss.Color("#111827") // Darker gray
+	ColorBgSubtle = lipgloss.AdaptiveColor{
+		Light: "#F3F4F6", // Light gray
+		Dark:  "#1F2937", // Dark gray
+	}
+	ColorBgMuted = lipgloss.AdaptiveColor{
+		Light: "#E5E7EB", // Lighter gray
+		Dark:  "#111827", // Darker gray
+	}
 
 	// Border colors
-	ColorBorder       = lipgloss.Color("#374151") // Medium gray
-	ColorBorderBright = lipgloss.Color("#4B5563") // Lighter gray
+	ColorBorder = lipgloss.AdaptiveColor{
+		Light: "#D1D5DB", // Light gray border
+		Dark:  "#374151", // Medium gray border
+	}
+	ColorBorderBright = lipgloss.AdaptiveColor{
+		Light: "#9CA3AF", // Medium gray
+		Dark:  "#4B5563", // Lighter gray
+	}
 )
 
 // Border styles
@@ -157,7 +228,28 @@ var (
 				Foreground(ColorBorder)
 )
 
+// Tree styles (for hierarchical stack visualization)
+var (
+	TreeRootStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(ColorPrimary)
+
+	TreeItemStyle = lipgloss.NewStyle().
+			Foreground(ColorText)
+
+	TreeEnumeratorStyle = lipgloss.NewStyle().
+				Foreground(ColorTreeEnumerator)
+
+	TreeCurrentMarkerStyle = lipgloss.NewStyle().
+				Foreground(ColorTreeCurrent).
+				Bold(true)
+
+	TreeBranchStyle = lipgloss.NewStyle().
+			Foreground(ColorTreeBranch)
+)
+
 // GetStatusStyle returns the appropriate style for a PR state
+// Deprecated: Use GetStatus(state).Style instead
 func GetStatusStyle(state string) lipgloss.Style {
 	switch state {
 	case "open":
@@ -172,21 +264,5 @@ func GetStatusStyle(state string) lipgloss.Style {
 		return StatusModifiedStyle
 	default:
 		return StatusLocalStyle
-	}
-}
-
-// GetStatusColor returns the color for a PR state
-func GetStatusColor(state string) lipgloss.Color {
-	switch state {
-	case "open":
-		return ColorOpen
-	case "draft":
-		return ColorDraft
-	case "merged":
-		return ColorMerged
-	case "closed":
-		return ColorClosed
-	default:
-		return ColorLocal
 	}
 }

@@ -83,21 +83,21 @@ func (c *Command) Run(ctx context.Context) error {
 	if !c.Force {
 		prompt := fmt.Sprintf("Type the stack name '%s' to confirm deletion: ", ui.Bold(stackName))
 		if !ui.Confirm(prompt, stackName) {
-			fmt.Println("Deletion cancelled.")
+			ui.Info("Deletion cancelled.")
 			return nil
 		}
-		fmt.Println()
+		ui.Println("")
 	}
 
-	fmt.Println(ui.RenderInfoMessage("Deleting stack..."))
-	fmt.Println()
+	ui.Info("Deleting stack...")
+	ui.Println("")
 
 	if err := c.Stack.DeleteStack(stackName, c.Force); err != nil {
 		return fmt.Errorf("failed to delete stack: %w", err)
 	}
 
-	fmt.Println()
-	fmt.Println(ui.RenderSuccessMessagef("Successfully deleted stack: %s", stackName))
+	ui.Println("")
+	ui.Successf("Successfully deleted stack: %s", stackName)
 	return nil
 }
 
@@ -129,19 +129,19 @@ func (c *Command) showDeletionSummary(stackCtx *stack.StackContext, branches []s
 		}
 	}
 
-	fmt.Println(ui.RenderWarningMessagef("About to delete stack: %s", ui.Bold(stackCtx.StackName)))
-	fmt.Println()
-	fmt.Printf("  Stack details:\n")
-	fmt.Printf("    Base branch: %s\n", stackCtx.Stack.Base)
-	fmt.Printf("    Changes: %d total (%d open, %d merged)\n", len(stackCtx.AllChanges), openCount, mergedCount)
-	fmt.Printf("    Branches: %d\n", len(branches))
+	ui.Warningf("About to delete stack: %s", ui.Bold(stackCtx.StackName))
+	ui.Println("")
+	ui.Printf("  Stack details:\n")
+	ui.Printf("    Base branch: %s\n", stackCtx.Stack.Base)
+	ui.Printf("    Changes: %d total (%d open, %d merged)\n", len(stackCtx.AllChanges), openCount, mergedCount)
+	ui.Printf("    Branches: %d\n", len(branches))
 	if len(branches) > 0 {
-		fmt.Printf("\n  Branches to be deleted:\n")
+		ui.Printf("\n  Branches to be deleted:\n")
 		for _, branch := range branches {
-			fmt.Printf("    - %s\n", branch)
+			ui.Printf("    - %s\n", branch)
 		}
 	}
-	fmt.Printf("\n  Metadata will be archived to:\n")
-	fmt.Printf("    .git/stack/.archived/%s-<timestamp>\n", stackCtx.StackName)
-	fmt.Println()
+	ui.Printf("\n  Metadata will be archived to:\n")
+	ui.Printf("    .git/stack/.archived/%s-<timestamp>\n", stackCtx.StackName)
+	ui.Println("")
 }

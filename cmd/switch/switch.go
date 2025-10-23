@@ -3,7 +3,6 @@ package switchcmd
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/ktr0731/go-fuzzyfinder"
 	"github.com/spf13/cobra"
@@ -75,7 +74,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	if len(stacks) == 0 {
-		fmt.Println(ui.RenderNoStacksMessage())
+		ui.Print(ui.RenderNoStacksMessage())
 		return nil
 	}
 
@@ -105,7 +104,7 @@ func (c *Command) Run(ctx context.Context) error {
 		for _, s := range stacks {
 			ctx, err := c.Stack.GetStackContextByName(s.Name)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to load stack %s: %v\n", s.Name, err)
+				ui.Warningf("Failed to load stack %s: %v", s.Name, err)
 				continue
 			}
 			stackChangesMap[s.Name] = ctx.AllChanges
@@ -138,8 +137,8 @@ func (c *Command) Run(ctx context.Context) error {
 
 	// Check if already on this stack
 	if currentStackName == selectedStack.Name {
-		fmt.Println(ui.RenderInfoMessagef("Already on stack: %s", ui.Bold(selectedStack.Name)))
-		fmt.Println()
+		ui.Infof("Already on stack: %s", ui.Bold(selectedStack.Name))
+		ui.Print("")
 
 		// Still show the stack details
 		stackCtx, err := c.Stack.GetStackContextByName(selectedStack.Name)
@@ -151,10 +150,10 @@ func (c *Command) Run(ctx context.Context) error {
 		stackCtx, err = c.Stack.RefreshStackMetadata(stackCtx)
 		if err != nil {
 			// Log warning but continue with cached data
-			fmt.Fprintf(os.Stderr, "Warning: failed to refresh stack: %v\n", err)
+			ui.Warningf("Failed to refresh stack: %v", err)
 		}
 
-		fmt.Println(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges))
+		ui.Print(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges))
 		return nil
 	}
 
@@ -164,8 +163,8 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Show success message
-	fmt.Println(ui.RenderSwitchSuccess(selectedStack.Name))
-	fmt.Println()
+	ui.Print(ui.RenderSwitchSuccess(selectedStack.Name))
+	ui.Print("")
 
 	// Load and display full stack details
 	stackCtx, err := c.Stack.GetStackContextByName(selectedStack.Name)
@@ -177,10 +176,10 @@ func (c *Command) Run(ctx context.Context) error {
 	stackCtx, err = c.Stack.RefreshStackMetadata(stackCtx)
 	if err != nil {
 		// Log warning but continue with cached data
-		fmt.Fprintf(os.Stderr, "Warning: failed to refresh stack: %v\n", err)
+		ui.Warningf("Failed to refresh stack: %v", err)
 	}
 
-	fmt.Println(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges))
+	ui.Print(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges))
 
 	return nil
 }

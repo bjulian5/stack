@@ -125,7 +125,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	if len(stackCtx.ActiveChanges) == 0 {
-		fmt.Println(ui.RenderInfoMessage("No unmerged PRs to push - all changes are merged."))
+		ui.Info("No unmerged PRs to push - all changes are merged.")
 		return nil
 	}
 
@@ -135,9 +135,9 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to check PR states: %w", err)
 	}
 	if hasMerged {
-		fmt.Println()
-		fmt.Println(ui.RenderWarningMessage("One or more PRs have been merged on GitHub."))
-		fmt.Println("Please run 'stack refresh' to sync your stack before pushing.")
+		ui.Println("")
+		ui.Warning("One or more PRs have been merged on GitHub.")
+		ui.Print("Please run 'stack refresh' to sync your stack before pushing.")
 		return fmt.Errorf("stack out of sync - run 'stack refresh' first")
 	}
 
@@ -154,8 +154,8 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	if c.DryRun {
-		fmt.Println(ui.RenderInfoMessage("Dry run mode - no changes will be made"))
-		fmt.Println()
+		ui.Info("Dry run mode - no changes will be made")
+		ui.Println("")
 	}
 
 	// Push each PR (only active/unmerged changes)
@@ -184,9 +184,9 @@ func (c *Command) Run(ctx context.Context) error {
 		// Handle dry-run display
 		if c.DryRun {
 			if existingPRNumber > 0 {
-				fmt.Printf("Would update PR #%d: %s\n", existingPRNumber, change.Title)
+				ui.Printf("Would update PR #%d: %s\n", existingPRNumber, change.Title)
 			} else {
-				fmt.Printf("Would create PR: %s\n", change.Title)
+				ui.Printf("Would create PR: %s\n", change.Title)
 			}
 			previousBranch = prBranch
 			continue
@@ -206,7 +206,7 @@ func (c *Command) Run(ctx context.Context) error {
 		}
 
 		// Display progress
-		fmt.Println(ui.RenderPushProgress(position, total, change.Title, prNumber, prURL, isNew))
+		ui.Print(ui.RenderPushProgress(position, total, change.Title, prNumber, prURL, isNew))
 
 		// Set previous branch for next iteration
 		previousBranch = prBranch
@@ -217,12 +217,12 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Display summary
-	fmt.Println(ui.RenderPushSummary(created, updated))
+	ui.Print(ui.RenderPushSummary(created, updated))
 
 	// Update stack visualizations if any PRs were created or if force flag is set
 	if created > 0 || c.Force {
-		fmt.Println()
-		fmt.Println(ui.RenderInfoMessage("Updating stack visualizations..."))
+		ui.Println("")
+		ui.Info("Updating stack visualizations...")
 
 		// Reload stack context to get fresh PR data
 		freshCtx, err := c.Stack.GetStackContext()
@@ -234,7 +234,7 @@ func (c *Command) Run(ctx context.Context) error {
 			return fmt.Errorf("failed to sync visualization comments: %w", err)
 		}
 
-		fmt.Println(ui.RenderSuccessMessage("Stack visualizations updated"))
+		ui.Success("Stack visualizations updated")
 	}
 
 	return nil

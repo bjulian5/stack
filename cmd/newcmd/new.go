@@ -9,6 +9,7 @@ import (
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
+	"github.com/bjulian5/stack/internal/ui"
 )
 
 // Command creates a new stack
@@ -83,10 +84,10 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Display results
-	fmt.Printf("✓ Created stack '%s'\n", s.Name)
-	fmt.Printf("✓ Branch: %s\n", s.Branch)
-	fmt.Printf("✓ Base: %s\n", s.Base)
-	fmt.Printf("✓ Switched to stack branch\n")
+	ui.Successf("Created stack '%s'", s.Name)
+	ui.Successf("Branch: %s", s.Branch)
+	ui.Successf("Base: %s", s.Base)
+	ui.Success("Switched to stack branch")
 
 	return nil
 }

@@ -80,10 +80,10 @@ func (c *Command) Run(ctx context.Context) error {
 	if len(stackCtx.ActiveChanges) > 0 {
 		topmostChange := &stackCtx.ActiveChanges[len(stackCtx.ActiveChanges)-1]
 		if c.Stack.IsChangeMerged(topmostChange) {
-			fmt.Println(ui.RenderWarningMessagef(
+			ui.Warningf(
 				"Change #%d has been merged on GitHub - run 'stack refresh' to sync",
 				topmostChange.Position,
-			))
+			)
 		}
 	}
 
@@ -99,7 +99,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Print success message
-	fmt.Println(ui.RenderSuccessMessagef("Moved to top of stack: %s", topBranch))
+	ui.Successf("Moved to top of stack: %s", topBranch)
 
 	return nil
 }

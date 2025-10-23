@@ -3,7 +3,6 @@ package list
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -69,7 +68,7 @@ func (c *Command) Run(ctx context.Context) error {
 	for _, s := range stacks {
 		ctx, err := c.Stack.GetStackContextByName(s.Name)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to load stack %s: %v\n", s.Name, err)
+			ui.Warningf("failed to load stack %s: %v", s.Name, err)
 			continue
 		}
 
@@ -77,7 +76,7 @@ func (c *Command) Run(ctx context.Context) error {
 		if s.Name == currentStack {
 			ctx, err = c.Stack.MaybeRefreshStackMetadata(ctx)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to refresh stack %s: %v\n", s.Name, err)
+				ui.Warningf("failed to refresh stack %s: %v", s.Name, err)
 				// Continue with cached data rather than failing
 			}
 		}
@@ -86,7 +85,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	output := ui.RenderStackList(stacks, currentStack, stackChanges)
-	fmt.Println(output)
+	ui.Print(output)
 
 	return nil
 }

@@ -85,7 +85,7 @@ func (c *Command) Run(ctx context.Context) error {
 
 	// Render using the new UI
 	output := ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges)
-	fmt.Println(output)
+	ui.Print(output)
 
 	return nil
 }

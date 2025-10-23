@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/bjulian5/stack/internal/stack"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Status icons use Unicode geometric shapes for cross-platform compatibility.
@@ -15,6 +16,7 @@ import (
 //   - IconMerged: ◆ (U+25C6 BLACK DIAMOND) - Diamond shape indicates completion/merged
 //   - IconClosed: ○ (U+25CB WHITE CIRCLE) - Empty circle shows inactive/closed state
 //   - IconLocal:  ◯ (U+25EF LARGE CIRCLE) - Larger empty circle for not-yet-pushed state
+//   - IconModified: ⟳ (U+27F3) - Clockwise gapped circle arrow for modified
 //
 // Terminal compatibility:
 //   - These Unicode characters are widely supported in modern terminals
@@ -27,50 +29,106 @@ import (
 //   - Emoji rendering varies significantly across platforms (macOS, Linux, Windows)
 //   - These geometric shapes have better font support than emoji
 //   - Color-blind safe: Icons have different shapes, not just different colors
-//
-// Future enhancement:
-//   - Consider adding ASCII fallback mode for maximum compatibility
-//   - Could detect terminal capabilities and switch icon styles
-//   - See TODO in cmd/root.go for configuration options
 const (
 	IconOpen     = "●" // U+25CF - Solid circle for open
 	IconDraft    = "◐" // U+25D0 - Half circle for draft
 	IconMerged   = "◆" // U+25C6 - Diamond for merged
 	IconClosed   = "○" // U+25CB - Empty circle for closed
 	IconLocal    = "◯" // U+25EF - Large circle for local
-	IconModified = "⟳" // U+27F3 - Clockwise gapped circle arrow for modified (used in summary counts)
+	IconModified = "⟳" // U+27F3 - Clockwise gapped circle arrow for modified
 )
 
-// FormatStatus formats a PR status with icon and colored text
-func FormatStatus(state string) string {
+// Status represents a PR or change status with rendering capabilities
+type Status struct {
+	Icon  string
+	Label string
+	State string // "open", "draft", "merged", "closed", "local", "needs-push"
+	Style lipgloss.Style
+}
+
+// GetStatus returns a Status object for the given state
+func GetStatus(state string) Status {
 	switch state {
 	case "open":
-		return StatusOpenStyle.Render(IconOpen + " Open")
+		return Status{
+			Icon:  IconOpen,
+			Label: "Open",
+			State: state,
+			Style: StatusOpenStyle,
+		}
 	case "draft":
-		return StatusDraftStyle.Render(IconDraft + " Draft")
+		return Status{
+			Icon:  IconDraft,
+			Label: "Draft",
+			State: state,
+			Style: StatusDraftStyle,
+		}
 	case "merged":
-		return StatusMergedStyle.Render(IconMerged + " Merged")
+		return Status{
+			Icon:  IconMerged,
+			Label: "Merged",
+			State: state,
+			Style: StatusMergedStyle,
+		}
 	case "closed":
-		return StatusClosedStyle.Render(IconClosed + " Closed")
-	default:
-		return StatusLocalStyle.Render(IconLocal + " Local")
+		return Status{
+			Icon:  IconClosed,
+			Label: "Closed",
+			State: state,
+			Style: StatusClosedStyle,
+		}
+	case "needs-push":
+		return Status{
+			Icon:  IconModified,
+			Label: "modified", // Display as "modified" not "needs-push"
+			State: state,
+			Style: StatusModifiedStyle,
+		}
+	default: // "local" or unknown
+		return Status{
+			Icon:  IconLocal,
+			Label: "Local",
+			State: "local",
+			Style: StatusLocalStyle,
+		}
 	}
 }
 
-// FormatStatusCompact formats a status as just the icon
-func FormatStatusCompact(state string) string {
-	switch state {
-	case "open":
-		return StatusOpenStyle.Render(IconOpen)
-	case "draft":
-		return StatusDraftStyle.Render(IconDraft)
-	case "merged":
-		return StatusMergedStyle.Render(IconMerged)
-	case "closed":
-		return StatusClosedStyle.Render(IconClosed)
-	default:
-		return StatusLocalStyle.Render(IconLocal)
+// GetChangeStatus returns a Status for a stack change, accounting for modified state
+func GetChangeStatus(change stack.Change) Status {
+	if change.PR == nil {
+		return GetStatus("local")
 	}
+
+	if change.NeedsPush() {
+		return GetStatus("needs-push")
+	}
+
+	return GetStatus(change.PR.State)
+}
+
+// Render returns the full status with icon and label (e.g., "● Open")
+func (s Status) Render() string {
+	return s.Style.Render(s.Icon + " " + s.Label)
+}
+
+// RenderCompact returns just the styled icon
+func (s Status) RenderCompact() string {
+	return s.Style.Render(s.Icon)
+}
+
+// RenderIcon returns the icon without styling
+func (s Status) RenderIcon() string {
+	return s.Icon
+}
+
+// RenderWithCount returns status with count (e.g., "● 3 open")
+func (s Status) RenderWithCount(count int) string {
+	if count == 0 {
+		return ""
+	}
+	text := fmt.Sprintf("%s %d %s", s.Icon, count, s.Label)
+	return s.Style.Render(text)
 }
 
 // FormatPRLabel formats a PR number with styling and full URL
@@ -79,16 +137,16 @@ func FormatPRLabel(pr *stack.PR) string {
 		return Dim("-")
 	}
 
+	status := GetStatus(pr.State)
+
 	// Display the full URL instead of just the PR number
 	if pr.URL != "" {
-		style := GetStatusStyle(pr.State)
-		return style.Render(pr.URL)
+		return status.Style.Render(pr.URL)
 	}
 
 	// Fallback to PR number if URL is not available
 	label := fmt.Sprintf("#%d", pr.PRNumber)
-	style := GetStatusStyle(pr.State)
-	return style.Render(label)
+	return status.Style.Render(label)
 }
 
 // FormatPRLabelCompact formats a PR number in compact form
@@ -99,40 +157,39 @@ func FormatPRLabelCompact(pr *stack.PR) string {
 	return fmt.Sprintf("#%d", pr.PRNumber)
 }
 
-// GetStatusIcon returns just the icon for a state
-func GetStatusIcon(state string) string {
-	switch state {
-	case "open":
-		return IconOpen
-	case "draft":
-		return IconDraft
-	case "merged":
-		return IconMerged
-	case "closed":
-		return IconClosed
-	case "needs-push":
-		return IconModified
-	default:
-		return IconLocal
+// FormatChangeStatus formats the status for a change in the stack
+// Returns full status with "(modified)" suffix if needed
+func FormatChangeStatus(change stack.Change) string {
+	if change.PR == nil {
+		return GetStatus("local").Render()
 	}
+
+	baseStatus := GetStatus(change.PR.State)
+
+	// Add modifier if the PR needs to be pushed
+	if change.NeedsPush() {
+		return baseStatus.Render() + Dim(" (modified)")
+	}
+
+	return baseStatus.Render()
 }
 
-// FormatStatusWithCount formats a status with a count (e.g., "● 3 open")
-func FormatStatusWithCount(state string, count int) string {
-	if count == 0 {
-		return ""
-	}
-	icon := GetStatusIcon(state)
-	style := GetStatusStyle(state)
-
-	// Special handling for needs-push - use "modified" instead of "needs-push"
-	displayState := state
-	if state == "needs-push" {
-		displayState = "modified"
+// FormatChangeStatusCompact formats the status for a change in compact form
+// Shows both base icon and modified icon if needed
+func FormatChangeStatusCompact(change stack.Change) string {
+	if change.PR == nil {
+		return GetStatus("local").RenderCompact()
 	}
 
-	text := fmt.Sprintf("%s %d %s", icon, count, displayState)
-	return style.Render(text)
+	baseStatus := GetStatus(change.PR.State)
+
+	// Add modifier icon if the PR needs to be pushed
+	if change.NeedsPush() {
+		modifiedStatus := GetStatus("needs-push")
+		return baseStatus.RenderCompact() + modifiedStatus.RenderCompact()
+	}
+
+	return baseStatus.RenderCompact()
 }
 
 // FormatPRSummary formats a summary of PR counts
@@ -141,19 +198,19 @@ func FormatPRSummary(openCount, draftCount, mergedCount, localCount, needsPushCo
 	var parts []string
 
 	if openCount > 0 {
-		parts = append(parts, FormatStatusWithCount("open", openCount))
+		parts = append(parts, GetStatus("open").RenderWithCount(openCount))
 	}
 	if draftCount > 0 {
-		parts = append(parts, FormatStatusWithCount("draft", draftCount))
+		parts = append(parts, GetStatus("draft").RenderWithCount(draftCount))
 	}
 	if mergedCount > 0 {
-		parts = append(parts, FormatStatusWithCount("merged", mergedCount))
+		parts = append(parts, GetStatus("merged").RenderWithCount(mergedCount))
 	}
 	if needsPushCount > 0 {
-		parts = append(parts, FormatStatusWithCount("needs-push", needsPushCount))
+		parts = append(parts, GetStatus("needs-push").RenderWithCount(needsPushCount))
 	}
 	if localCount > 0 {
-		parts = append(parts, FormatStatusWithCount("local", localCount))
+		parts = append(parts, GetStatus("local").RenderWithCount(localCount))
 	}
 
 	if len(parts) == 0 {
@@ -168,42 +225,6 @@ func FormatPRSummary(openCount, draftCount, mergedCount, localCount, needsPushCo
 		result.WriteString(part)
 	}
 	return result.String()
-}
-
-// FormatChangeStatus formats the status for a change in the stack
-func FormatChangeStatus(change stack.Change) string {
-	if change.PR == nil {
-		return FormatStatus("local")
-	}
-
-	// Get base status
-	baseStatus := FormatStatus(change.PR.State)
-
-	// Add modifier if the PR needs to be pushed
-	if change.NeedsPush() {
-		modifier := Dim(" (modified)")
-		return baseStatus + modifier
-	}
-
-	return baseStatus
-}
-
-// FormatChangeStatusCompact formats the status for a change in compact form
-func FormatChangeStatusCompact(change stack.Change) string {
-	if change.PR == nil {
-		return FormatStatusCompact("local")
-	}
-
-	// Get base status icon
-	baseStatus := FormatStatusCompact(change.PR.State)
-
-	// Add modifier icon if the PR needs to be pushed
-	if change.NeedsPush() {
-		modifier := StatusModifiedStyle.Render(IconModified)
-		return baseStatus + modifier
-	}
-
-	return baseStatus
 }
 
 // CountPRsByState counts PRs by their state
@@ -231,4 +252,19 @@ func CountPRsByState(changes []stack.Change) (open, draft, merged, closed, local
 		}
 	}
 	return
+}
+
+// Deprecated: Use GetStatus().Render() instead
+func FormatStatus(state string) string {
+	return GetStatus(state).Render()
+}
+
+// Deprecated: Use GetStatus().RenderCompact() instead
+func FormatStatusCompact(state string) string {
+	return GetStatus(state).RenderCompact()
+}
+
+// Deprecated: Use GetStatus().RenderIcon() instead
+func GetStatusIcon(state string) string {
+	return GetStatus(state).RenderIcon()
 }

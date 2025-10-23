@@ -3,7 +3,6 @@ package cleanup
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -49,8 +48,8 @@ Example:
 }
 
 func (c *Command) Run(ctx context.Context) error {
-	fmt.Println(ui.RenderInfoMessage("Scanning stacks for cleanup candidates..."))
-	fmt.Println()
+	ui.Info("Scanning stacks for cleanup candidates...")
+	ui.Println("")
 
 	candidates, err := c.Stack.GetCleanupCandidates()
 	if err != nil {
@@ -58,7 +57,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	if len(candidates) == 0 {
-		fmt.Println(ui.RenderSuccessMessage("No stacks need cleanup! All stacks are active."))
+		ui.Success("No stacks need cleanup! All stacks are active.")
 		return nil
 	}
 
@@ -67,23 +66,23 @@ func (c *Command) Run(ctx context.Context) error {
 	prompt := "Select stacks to clean up (e.g., '1,3,5' or 'all' or 'none'): "
 	selectedIndices := ui.PromptSelection(prompt, len(candidates))
 	if len(selectedIndices) == 0 {
-		fmt.Println("Cleanup cancelled.")
+		ui.Info("Cleanup cancelled.")
 		return nil
 	}
 
-	fmt.Println()
+	ui.Println("")
 	return c.deleteSelected(candidates, selectedIndices)
 }
 
 func (c *Command) displayCandidates(candidates []stack.CleanupCandidate) {
-	fmt.Printf("Found %d stack(s) eligible for cleanup:\n\n", len(candidates))
+	ui.Printf("Found %d stack(s) eligible for cleanup:\n\n", len(candidates))
 
 	for i, candidate := range candidates {
 		reason := c.formatReason(candidate)
-		fmt.Printf("  [%d] %s\n", i+1, ui.Bold(candidate.Stack.Name))
-		fmt.Printf("      Base: %s\n", candidate.Stack.Base)
-		fmt.Printf("      Reason: %s\n", reason)
-		fmt.Println()
+		ui.Printf("  [%d] %s\n", i+1, ui.Bold(candidate.Stack.Name))
+		ui.Printf("      Base: %s\n", candidate.Stack.Base)
+		ui.Printf("      Reason: %s\n", reason)
+		ui.Println("")
 	}
 }
 
@@ -102,20 +101,20 @@ func (c *Command) deleteSelected(candidates []stack.CleanupCandidate, indices []
 	successCount := 0
 	for _, idx := range indices {
 		candidate := candidates[idx]
-		fmt.Println(ui.RenderInfoMessagef("Cleaning up stack: %s", candidate.Stack.Name))
-		fmt.Println()
+		ui.Infof("Cleaning up stack: %s", candidate.Stack.Name)
+		ui.Println("")
 
 		if err := c.Stack.DeleteStack(candidate.Stack.Name, true); err != nil {
-			fmt.Fprintf(os.Stderr, "Error cleaning up stack %s: %v\n", candidate.Stack.Name, err)
+			ui.Errorf("cleaning up stack %s: %v", candidate.Stack.Name, err)
 			continue
 		}
 
 		successCount++
-		fmt.Println()
+		ui.Println("")
 	}
 
 	if successCount > 0 {
-		fmt.Println(ui.RenderSuccessMessagef("Successfully cleaned up %d stack(s)", successCount))
+		ui.Successf("Successfully cleaned up %d stack(s)", successCount)
 	}
 	return nil
 }

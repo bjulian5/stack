@@ -10,46 +10,50 @@ import (
 )
 
 // Truncate truncates text to maxLen with an ellipsis if needed
+// Uses lipgloss for proper ANSI-aware width handling
 func Truncate(text string, maxLen int) string {
 	if maxLen <= 0 {
 		return ""
 	}
-	if len(text) <= maxLen {
+
+	// Use lipgloss width to handle ANSI codes properly
+	width := lipgloss.Width(text)
+	if width <= maxLen {
 		return text
 	}
+
 	if maxLen <= 3 {
-		return text[:maxLen]
+		// Use lipgloss MaxWidth for proper truncation
+		return lipgloss.NewStyle().MaxWidth(maxLen).Render(text)
 	}
-	return text[:maxLen-3] + "..."
+
+	// Use lipgloss MaxWidth and add ellipsis
+	return lipgloss.NewStyle().MaxWidth(maxLen-3).Render(text) + "..."
 }
 
-// PadRight pads text to the right with spaces
-func PadRight(text string, width int) string {
-	if len(text) >= width {
-		return text
-	}
-	return text + strings.Repeat(" ", width-len(text))
+// Pad pads text to the specified width with given alignment
+// Uses lipgloss PlaceHorizontal for proper rendering
+func Pad(text string, width int, align lipgloss.Position) string {
+	return lipgloss.PlaceHorizontal(width, align, text)
 }
 
-// PadLeft pads text to the left with spaces
+// PadLeft pads text to the left (deprecated - use Pad with lipgloss.Right)
 func PadLeft(text string, width int) string {
-	if len(text) >= width {
-		return text
-	}
-	return strings.Repeat(" ", width-len(text)) + text
+	return Pad(text, width, lipgloss.Right)
 }
 
-// Center centers text within a given width
+// PadRight pads text to the right (deprecated - use Pad with lipgloss.Left)
+func PadRight(text string, width int) string {
+	return Pad(text, width, lipgloss.Left)
+}
+
+// Center centers text within a given width (deprecated - use Pad with lipgloss.Center)
 func Center(text string, width int) string {
-	if len(text) >= width {
-		return text
-	}
-	leftPad := (width - len(text)) / 2
-	rightPad := width - len(text) - leftPad
-	return strings.Repeat(" ", leftPad) + text + strings.Repeat(" ", rightPad)
+	return Pad(text, width, lipgloss.Center)
 }
 
 // RenderBox renders content in a styled box with optional title
+// Uses lipgloss JoinVertical for proper composition
 func RenderBox(title string, content string) string {
 	style := BoxStyle
 	if title != "" {
@@ -58,9 +62,18 @@ func RenderBox(title string, content string) string {
 			Foreground(ColorPrimary).
 			Bold(true).
 			Render(title)
-		return style.Render(fmt.Sprintf("%s\n\n%s", titleStyled, content))
+
+		// Use lipgloss JoinVertical for proper layout
+		combined := lipgloss.JoinVertical(lipgloss.Left, titleStyled, "", content)
+		return style.Render(combined)
 	}
 	return style.Render(content)
+}
+
+// RenderBorderedContent renders content with a border and optional title
+// This is an alias for RenderBox for backward compatibility
+func RenderBorderedContent(content string, title string) string {
+	return RenderBox(title, content)
 }
 
 // RenderPanel renders content in a styled panel
@@ -88,46 +101,6 @@ func RenderSubtitle(text string) string {
 	return SubtitleStyle.Render(text)
 }
 
-// RenderSuccessMessage renders a success message with checkmark
-func RenderSuccessMessage(message string) string {
-	return SuccessStyle.Render("✓ " + message)
-}
-
-// RenderSuccessMessagef renders a formatted success message with checkmark
-func RenderSuccessMessagef(format string, args ...interface{}) string {
-	return RenderSuccessMessage(fmt.Sprintf(format, args...))
-}
-
-// RenderWarningMessage renders a warning message with icon
-func RenderWarningMessage(message string) string {
-	return WarningStyle.Render("⚠ " + message)
-}
-
-// RenderWarningMessagef renders a formatted warning message with icon
-func RenderWarningMessagef(format string, args ...interface{}) string {
-	return RenderWarningMessage(fmt.Sprintf(format, args...))
-}
-
-// RenderErrorMessage renders an error message with X
-func RenderErrorMessage(message string) string {
-	return ErrorStyle.Render("✗ " + message)
-}
-
-// RenderErrorMessagef renders a formatted error message with X
-func RenderErrorMessagef(format string, args ...interface{}) string {
-	return RenderErrorMessage(fmt.Sprintf(format, args...))
-}
-
-// RenderInfoMessage renders an info message with icon
-func RenderInfoMessage(message string) string {
-	return InfoStyle.Render("ℹ " + message)
-}
-
-// RenderInfoMessagef renders a formatted info message with icon
-func RenderInfoMessagef(format string, args ...interface{}) string {
-	return RenderInfoMessage(fmt.Sprintf(format, args...))
-}
-
 // RenderBulletList renders a list with bullets
 func RenderBulletList(items []string) string {
 	var lines []string
@@ -150,7 +123,10 @@ func RenderNumberedList(items []string) string {
 // RenderSeparator renders a horizontal separator line
 func RenderSeparator(width int) string {
 	if width <= 0 {
-		width = 80
+		width = GetTerminalWidth()
+		if width <= 0 {
+			width = Display.DefaultTerminalWidth
+		}
 	}
 	return DimStyle.Render(strings.Repeat("─", width))
 }
@@ -161,61 +137,71 @@ func RenderKeyValue(key string, value string) string {
 	return fmt.Sprintf("%s %s", keyStyled, value)
 }
 
-// RenderKeyValueList renders multiple key-value pairs
+// RenderKeyValueList renders multiple key-value pairs with aligned keys
 func RenderKeyValueList(pairs map[string]string, keys []string) string {
 	var lines []string
+
+	// Calculate max key length using lipgloss.Width for ANSI-aware measurement
 	maxKeyLen := 0
 	for _, key := range keys {
-		if len(key) > maxKeyLen {
-			maxKeyLen = len(key)
+		keyLen := lipgloss.Width(key)
+		if keyLen > maxKeyLen {
+			maxKeyLen = keyLen
 		}
 	}
+
+	// Build aligned key-value pairs
 	for _, key := range keys {
-		paddedKey := PadRight(key, maxKeyLen)
+		// Pad key to max width
+		paddedKey := Pad(key, maxKeyLen, lipgloss.Left)
 		keyStyled := DimStyle.Render(paddedKey + ":")
 		lines = append(lines, fmt.Sprintf("%s %s", keyStyled, pairs[key]))
 	}
+
 	return strings.Join(lines, "\n")
 }
 
-// Dim renders text in a dimmed style
-func Dim(text string) string {
-	return DimStyle.Render(text)
+// Rows joins multiple strings vertically with newlines
+// Uses lipgloss.JoinVertical for consistent layout
+func Rows(items ...string) string {
+	return lipgloss.JoinVertical(lipgloss.Left, items...)
 }
 
-// Bold renders text in bold
-func Bold(text string) string {
-	return BoldStyle.Render(text)
-}
-
-// Highlight renders text with highlight style
-func Highlight(text string) string {
-	return HighlightStyle.Render(text)
-}
-
-// Muted renders text in muted style
-func Muted(text string) string {
-	return MutedStyle.Render(text)
+// Columns joins multiple strings horizontally
+// Uses lipgloss.JoinHorizontal for consistent layout
+func Columns(items ...string) string {
+	return lipgloss.JoinHorizontal(lipgloss.Top, items...)
 }
 
 // FormatStackFinderLine formats a stack for display in fuzzy finder
 // Returns a formatted line showing stack name, PR summary, base branch, and optional current marker
+// Note: Fuzzy finder doesn't support ANSI codes, so we use plain text
 func FormatStackFinderLine(stackName string, base string, changes []stack.Change, currentStackName string) string {
 	open, draft, merged, _, local, _ := CountPRsByState(changes)
 	totalPRs := len(changes)
 
-	displayName := Truncate(stackName, 20)
+	// Simple truncation for stack name
+	displayName := stackName
+	if len(displayName) > Display.MaxStackNameLength {
+		if Display.MaxStackNameLength > 3 {
+			displayName = displayName[:Display.MaxStackNameLength-3] + "..."
+		} else {
+			displayName = displayName[:Display.MaxStackNameLength]
+		}
+	}
 
-	line := fmt.Sprintf("%-20s", displayName)
+	// Pad to fixed width for alignment using simple string padding
+	line := fmt.Sprintf("%-*s", Display.MaxStackNameLength, displayName)
 
+	// Add PR summary
 	if totalPRs == 0 {
 		line += "  (no PRs)"
 	} else {
-		line += fmt.Sprintf("  (%d PR", totalPRs)
+		summary := fmt.Sprintf("(%d PR", totalPRs)
 		if totalPRs != 1 {
-			line += "s"
+			summary += "s"
 		}
-		line += ": "
+		summary += ": "
 
 		var stateParts []string
 		if open > 0 {
@@ -232,13 +218,11 @@ func FormatStackFinderLine(stackName string, base string, changes []stack.Change
 		}
 
 		if len(stateParts) > 0 {
-			line += stateParts[0]
-			for j := 1; j < len(stateParts); j++ {
-				line += ", " + stateParts[j]
-			}
+			summary += strings.Join(stateParts, ", ")
 		}
 
-		line += ")"
+		summary += ")"
+		line += "  " + summary
 	}
 
 	line += fmt.Sprintf("  │  base: %s", base)
@@ -252,86 +236,100 @@ func FormatStackFinderLine(stackName string, base string, changes []stack.Change
 
 // FormatStackPreview formats a stack preview for the fuzzy finder preview window
 // Returns a formatted preview showing stack details and first few PRs
+// Note: Preview pane supports ANSI codes, so we can use styling
 func FormatStackPreview(stackName string, branch string, base string, changes []stack.Change) string {
-	preview := fmt.Sprintf("Stack: %s\n", stackName)
-	preview += fmt.Sprintf("Branch: %s\n", branch)
-	preview += fmt.Sprintf("Base: %s\n", base)
+	lines := []string{
+		RenderKeyValue("Stack", Bold(stackName)),
+		RenderKeyValue("Branch", Muted(branch)),
+		RenderKeyValue("Base", Muted(base)),
+		RenderKeyValue("PRs", fmt.Sprintf("%d", len(changes))),
+	}
 
 	// Handle case where changes failed to load
 	if changes == nil {
-		preview += "\n(Failed to load changes)\n"
-		return preview
+		lines = append(lines, "", Dim("(Failed to load changes)"))
+		return strings.Join(lines, "\n")
 	}
 
-	preview += fmt.Sprintf("PRs: %d\n", len(changes))
-
+	// Add preview of first few PRs
 	if len(changes) > 0 {
-		preview += "\nFirst PRs in stack:\n"
-		maxPreview := 5
+		lines = append(lines, "", Bold("First PRs in stack:"))
+
+		maxPreview := Display.MaxPreviewLines
 		if len(changes) < maxPreview {
 			maxPreview = len(changes)
 		}
+
 		for j := 0; j < maxPreview; j++ {
 			change := changes[j]
-			status := "local"
-			if change.PR != nil {
-				status = change.PR.State
-			}
-			icon := GetStatusIcon(status)
-			title := Truncate(change.Title, 50)
-			preview += fmt.Sprintf("  %d. %s %s\n", j+1, icon, title)
+			status := GetChangeStatus(change)
+			icon := status.RenderCompact()
+			// Don't truncate titles in preview - let them wrap
+			lines = append(lines, fmt.Sprintf("  %d. %s %s", j+1, icon, change.Title))
 		}
+
 		if len(changes) > maxPreview {
-			preview += fmt.Sprintf("  ... and %d more\n", len(changes)-maxPreview)
+			lines = append(lines, Dim(fmt.Sprintf("  ... and %d more", len(changes)-maxPreview)))
 		}
 	}
 
-	return preview
+	return strings.Join(lines, "\n")
 }
 
 // FormatChangeFinderLine formats a change for fuzzy finder display
 // Used by both 'stack edit' and 'stack pr open' commands
+// Note: Fuzzy finder doesn't support ANSI codes, so we use plain text
 func FormatChangeFinderLine(change stack.Change) string {
-	status := "local"
-	if change.PR != nil {
-		status = change.PR.State
-	}
-	icon := GetStatusIcon(status)
+	// Ultra-simple version for debugging
+	status := GetChangeStatus(change)
 
 	prLabel := "local"
 	if change.PR != nil {
-		prLabel = fmt.Sprintf("#%-4d", change.PR.PRNumber)
+		prLabel = fmt.Sprintf("#%d", change.PR.PRNumber)
 	}
 
-	// Truncate title to fit nicely
-	title := Truncate(change.Title, 40)
+	// Keep title as-is, no truncation
+	title := change.Title
 
-	// Import git package for ShortHash - need to handle this differently
-	// Since this is in the ui package, we can't import git
-	// Instead, we'll pass the short hash directly
+	// Short hash
 	shortHash := change.CommitHash
 	if len(shortHash) > 7 {
 		shortHash = shortHash[:7]
 	}
 
-	return fmt.Sprintf("%2d %s %-6s │ %-40s │ %s", change.Position, icon, prLabel, title, shortHash)
+	return fmt.Sprintf("%d %s %s %s %s",
+		change.Position,
+		status.Icon,
+		prLabel,
+		title,
+		shortHash)
 }
 
 // FormatChangePreview formats a change for fuzzy finder preview window
 // Used by both 'stack edit' and 'stack pr open' commands
+// Note: Preview pane supports ANSI codes, so we can use styling
 func FormatChangePreview(change stack.Change) string {
-	preview := fmt.Sprintf("Position: %d\n", change.Position)
-	preview += fmt.Sprintf("Title: %s\n", change.Title)
-	preview += fmt.Sprintf("Commit: %s\n", change.CommitHash)
+	lines := []string{
+		RenderKeyValue("Position", fmt.Sprintf("%d", change.Position)),
+		RenderKeyValue("Title", Bold(change.Title)),
+		RenderKeyValue("Commit", Muted(change.CommitHash)),
+	}
+
 	if change.UUID != "" {
-		preview += fmt.Sprintf("UUID: %s\n", change.UUID)
+		lines = append(lines, RenderKeyValue("UUID", Muted(change.UUID)))
 	}
+
 	if change.PR != nil {
-		preview += fmt.Sprintf("PR: #%d (%s)\n", change.PR.PRNumber, change.PR.State)
-		preview += fmt.Sprintf("URL: %s\n", change.PR.URL)
+		status := GetStatus(change.PR.State)
+		prInfo := fmt.Sprintf("#%d (%s)", change.PR.PRNumber, status.Render())
+		lines = append(lines, RenderKeyValue("PR", prInfo))
+		lines = append(lines, RenderKeyValue("URL", Highlight(change.PR.URL)))
 	}
+
 	if change.Description != "" {
-		preview += fmt.Sprintf("\nDescription:\n%s\n", change.Description)
+		// Don't truncate description - let it wrap naturally
+		lines = append(lines, "", Bold("Description:"), change.Description)
 	}
-	return preview
+
+	return strings.Join(lines, "\n")
 }

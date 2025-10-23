@@ -3,7 +3,6 @@ package restack
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -131,7 +130,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return err
 	}
 
-	fmt.Println(ui.RenderSuccessMessagef("Restacked on %s", targetBase))
+	ui.Successf("Restacked on %s", targetBase)
 	return nil
 }
 
@@ -188,7 +187,7 @@ func (c *Command) runRecover() error {
 }
 
 func (c *Command) handleDetachedHeadRecovery(stackName string, rebaseState *stack.RebaseState) error {
-	fmt.Println("Detecting completed rebase...")
+	ui.Info("Detecting completed rebase...")
 
 	// Get current HEAD (tip of rebased commits)
 	newStackHead, err := c.Git.GetCommitHash("HEAD")
@@ -200,13 +199,13 @@ func (c *Command) handleDetachedHeadRecovery(stackName string, rebaseState *stac
 	if err := c.Git.UpdateRef(rebaseState.StackBranch, newStackHead); err != nil {
 		return fmt.Errorf("failed to update stack branch: %w", err)
 	}
-	fmt.Printf("✓ Updated %s to %s\n", rebaseState.StackBranch, git.ShortHash(newStackHead))
+	ui.Successf("Updated %s to %s", rebaseState.StackBranch, git.ShortHash(newStackHead))
 
 	// Checkout the stack branch
 	if err := c.Git.CheckoutBranch(rebaseState.StackBranch); err != nil {
 		return fmt.Errorf("failed to checkout stack branch: %w", err)
 	}
-	fmt.Printf("✓ Checked out %s\n", rebaseState.StackBranch)
+	ui.Successf("Checked out %s", rebaseState.StackBranch)
 
 	// Reload context and update UUID branches
 	if err := c.updateUUIDBranches(stackName); err != nil {
@@ -215,30 +214,30 @@ func (c *Command) handleDetachedHeadRecovery(stackName string, rebaseState *stac
 
 	// Clear rebase state
 	if err := c.Stack.ClearRebaseState(stackName); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to clear rebase state: %v\n", err)
+		ui.Warningf("failed to clear rebase state: %v", err)
 	}
 
-	fmt.Println(ui.RenderSuccessMessage("Rebase recovery complete!"))
+	ui.Success("Rebase recovery complete!")
 	return nil
 }
 
 func (c *Command) handleAbortRecovery(stackName string, rebaseState *stack.RebaseState, stackCtx *stack.StackContext) error {
-	fmt.Println(ui.RenderInfoMessage("Detected aborted rebase operation."))
-	fmt.Println(ui.RenderInfoMessage("The amend was preserved, but subsequent commits need to be rebased."))
+	ui.Info("Detected aborted rebase operation.")
+	ui.Info("The amend was preserved, but subsequent commits need to be rebased.")
 
 	// If --retry flag is set, skip prompts and retry immediately
 	if c.Retry {
-		fmt.Println("Retrying rebase of subsequent commits...")
+		ui.Info("Retrying rebase of subsequent commits...")
 		return c.retryRebase(stackName, rebaseState, stackCtx)
 	}
 
 	// Prompt user for action
-	fmt.Println("Options:")
-	fmt.Println("  1. Retry rebase (recommended - keeps amend and reapplies commits)")
-	fmt.Println("  2. Restore to previous state (undo amend, recover all commits)")
-	fmt.Println("  3. Keep current state (lose subsequent commits - available in reflog)")
-	fmt.Println()
-	fmt.Print("Choose [1/2/3]: ")
+	ui.Println("Options:")
+	ui.Println("  1. Retry rebase (recommended - keeps amend and reapplies commits)")
+	ui.Println("  2. Restore to previous state (undo amend, recover all commits)")
+	ui.Println("  3. Keep current state (lose subsequent commits - available in reflog)")
+	ui.Println("")
+	ui.Printf("Choose [1/2/3]: ")
 
 	var choice string
 	fmt.Scanln(&choice)
@@ -257,7 +256,7 @@ func (c *Command) handleAbortRecovery(stackName string, rebaseState *stack.Rebas
 }
 
 func (c *Command) retryRebase(stackName string, rebaseState *stack.RebaseState, stackCtx *stack.StackContext) error {
-	fmt.Println("Retrying rebase...")
+	ui.Info("Retrying rebase...")
 
 	// Call RebaseSubsequentCommits with the saved state
 	rebasedCount, err := c.Git.RebaseSubsequentCommits(
@@ -275,7 +274,7 @@ func (c *Command) retryRebase(stackName string, rebaseState *stack.RebaseState, 
 			"  stack restack --recover")
 	}
 
-	fmt.Printf("✓ Successfully rebased %d commit(s)\n", rebasedCount)
+	ui.Successf("Successfully rebased %d commit(s)", rebasedCount)
 
 	// Update UUID branches
 	if err := c.updateUUIDBranches(stackName); err != nil {
@@ -284,22 +283,22 @@ func (c *Command) retryRebase(stackName string, rebaseState *stack.RebaseState, 
 
 	// Clear rebase state
 	if err := c.Stack.ClearRebaseState(stackName); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to clear rebase state: %v\n", err)
+		ui.Warningf("failed to clear rebase state: %v", err)
 	}
 
-	fmt.Println(ui.RenderSuccessMessage("Rebase completed!"))
+	ui.Success("Rebase completed!")
 	return nil
 }
 
 func (c *Command) restorePreviousState(stackName string, rebaseState *stack.RebaseState, stackCtx *stack.StackContext) error {
-	fmt.Printf("Restoring to previous state (%s)...\n", git.ShortHash(rebaseState.OriginalStackHead))
+	ui.Infof("Restoring to previous state (%s)...", git.ShortHash(rebaseState.OriginalStackHead))
 
 	// Reset stack branch to original head
 	if err := c.Git.ResetHard(rebaseState.OriginalStackHead); err != nil {
 		return fmt.Errorf("failed to reset: %w", err)
 	}
 
-	fmt.Printf("✓ Reset %s to %s (pre-amend state)\n", rebaseState.StackBranch, git.ShortHash(rebaseState.OriginalStackHead))
+	ui.Successf("Reset %s to %s (pre-amend state)", rebaseState.StackBranch, git.ShortHash(rebaseState.OriginalStackHead))
 
 	// Update UUID branches
 	if err := c.updateUUIDBranches(stackName); err != nil {
@@ -308,15 +307,15 @@ func (c *Command) restorePreviousState(stackName string, rebaseState *stack.Reba
 
 	// Clear rebase state
 	if err := c.Stack.ClearRebaseState(stackName); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to clear rebase state: %v\n", err)
+		ui.Warningf("failed to clear rebase state: %v", err)
 	}
 
-	fmt.Println(ui.RenderSuccessMessage("Stack restored. Your amend has been undone."))
+	ui.Success("Stack restored. Your amend has been undone.")
 	return nil
 }
 
 func (c *Command) keepCurrentState(stackName string, stackCtx *stack.StackContext) error {
-	fmt.Println("Keeping current state...")
+	ui.Info("Keeping current state...")
 
 	// Update UUID branches for current state
 	if err := c.updateUUIDBranches(stackName); err != nil {
@@ -325,13 +324,13 @@ func (c *Command) keepCurrentState(stackName string, stackCtx *stack.StackContex
 
 	// Clear rebase state
 	if err := c.Stack.ClearRebaseState(stackName); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to clear rebase state: %w", err)
+		ui.Warningf("failed to clear rebase state: %w", err)
 	}
 
-	fmt.Println("✓ Cleared rebase state")
-	fmt.Println("✓ Updated UUID branches for current state")
-	fmt.Println()
-	fmt.Println(ui.RenderWarningMessage("Warning: Subsequent commits are orphaned. Use git reflog to recover if needed."))
+	ui.Success("Cleared rebase state")
+	ui.Success("Updated UUID branches for current state")
+	ui.Println("")
+	ui.Warning("Subsequent commits are orphaned. Use git reflog to recover if needed.")
 	return nil
 }
 
@@ -342,7 +341,7 @@ func (c *Command) updateUUIDBranches(stackName string) error {
 	}
 
 	if updatedCount > 0 {
-		fmt.Println(ui.RenderSuccessMessagef("Updated %d UUID branch(es)", updatedCount))
+		ui.Successf("Updated %d UUID branch(es)", updatedCount)
 	}
 
 	return nil

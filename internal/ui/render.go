@@ -4,196 +4,74 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // RenderStackList renders a list of all stacks with styling
+// Now uses tree visualization by default via RenderStackListTree
 func RenderStackList(stacks []*stack.Stack, currentStackName string, stackChanges map[string][]stack.Change) string {
-	if len(stacks) == 0 {
-		return RenderPanel(
-			Dim("No stacks found.\n") +
-				Muted("Create a new stack with: ") + Highlight("stack new <name>"),
-		)
-	}
-
-	var output strings.Builder
-
-	output.WriteString(RenderTitle("📚 Available Stacks"))
-	output.WriteString("\n\n")
-
-	for _, s := range stacks {
-		changes := stackChanges[s.Name]
-		open, draft, merged, _, local, needsPush := CountPRsByState(changes)
-		totalPRs := len(changes)
-
-		isCurrent := s.Name == currentStackName
-
-		var panel strings.Builder
-
-		nameStyle := BoldStyle
-		if isCurrent {
-			nameStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(ColorPrimary)
-			panel.WriteString(nameStyle.Render(s.Name))
-			panel.WriteString(" ")
-			panel.WriteString(SuccessStyle.Render("← current"))
-		} else {
-			panel.WriteString(nameStyle.Render(s.Name))
-		}
-		panel.WriteString("\n")
-
-		panel.WriteString(Dim("Branch: "))
-		panel.WriteString(Muted(s.Branch))
-		panel.WriteString("\n")
-		panel.WriteString(Dim("Base:   "))
-		panel.WriteString(Muted(s.Base))
-		panel.WriteString("\n")
-
-		panel.WriteString(Dim("PRs:    "))
-		if totalPRs == 0 {
-			panel.WriteString(Muted("none"))
-		} else {
-			summary := FormatPRSummary(open, draft, merged, local, needsPush)
-			panel.WriteString(summary)
-		}
-
-		boxStyle := BoxStyle
-		if isCurrent {
-			boxStyle = lipgloss.NewStyle().
-				Border(BorderRounded).
-				BorderForeground(ColorPrimary).
-				Padding(0, 1)
-		}
-
-		output.WriteString(boxStyle.Render(panel.String()))
-		output.WriteString("\n\n")
-	}
-
-	// Footer
-	totalStacks := len(stacks)
-	pluralStacks := "stack"
-	if totalStacks != 1 {
-		pluralStacks = "stacks"
-	}
-	footer := Dim(fmt.Sprintf("%d %s total", totalStacks, pluralStacks))
-	output.WriteString(footer)
-	output.WriteString("\n")
-
-	return output.String()
+	// Use the new tree-based visualization
+	return RenderStackListTree(stacks, stackChanges, currentStackName)
 }
 
 // RenderStackDetails renders detailed information about a stack
+// Now uses tree visualization by default via RenderStackTree
 func RenderStackDetails(s *stack.Stack, changes []stack.Change) string {
 	var output strings.Builder
 
-	headerContent := Bold(s.Name) + "\n" +
-		Dim("Branch: ") + Muted(s.Branch) + "\n" +
-		Dim("Base:   ") + Muted(s.Base)
-
-	header := RenderBorderedContent(headerContent, "Stack Details")
-	output.WriteString(header)
+	// Render the tree visualization
+	treeView := RenderStackTree(s, changes)
+	output.WriteString(treeView)
 	output.WriteString("\n\n")
 
-	if len(changes) == 0 {
-		noChanges := RenderPanel(
-			Dim("No PRs in this stack yet.\n") +
-				Muted("Add commits to the stack branch to create PRs."),
-		)
-		output.WriteString(noChanges)
-		return output.String()
-	}
+	// Add summary statistics
+	if len(changes) > 0 {
+		open, draft, merged, closed, local, needsPush := CountPRsByState(changes)
+		totalPRs := len(changes)
 
-	table := NewTable([]Column{
-		{Header: "#", Width: 3, Align: AlignRight},
-		{Header: "Status", MinWidth: 18, MaxWidth: 20, Align: AlignLeft},
-		{Header: "PR", MinWidth: 45, MaxWidth: 70, Align: AlignLeft},
-		{Header: "Title", MinWidth: 30, MaxWidth: 50, Align: AlignLeft},
-		{Header: "Commit", Width: 7, Align: AlignLeft},
-	})
-
-	// Track if we've seen merged changes followed by active changes (for separator)
-	lastWasMerged := false
-	addedSeparator := false
-
-	for i, change := range changes {
-		pos := fmt.Sprintf("%d", change.Position)
-		status := FormatChangeStatus(change)
-		prLabel := FormatPRLabel(change.PR)
-		title := Truncate(change.Title, 40)
-		shortHash := change.CommitHash
-		if len(shortHash) > git.ShortHashLength {
-			shortHash = shortHash[:git.ShortHashLength]
+		var summaryParts []string
+		summaryParts = append(summaryParts, Bold(fmt.Sprintf("%d PR", totalPRs)))
+		if totalPRs != 1 {
+			summaryParts[0] = Bold(fmt.Sprintf("%d PRs", totalPRs))
 		}
-		shortHash = Dim(shortHash)
+		summaryParts = append(summaryParts, Dim("total"))
 
-		// Add visual separator between merged and active changes
-		if i > 0 && !addedSeparator && lastWasMerged && !change.IsMerged {
-			// Add a separator row
-			if err := table.AddRow(Dim("───"), Dim("─────────"), Dim("──────────"), Dim("──────────"), Dim("───────")); err != nil {
-				panic(fmt.Sprintf("BUG: failed to add separator row: %v", err))
+		if open > 0 || draft > 0 || merged > 0 || local > 0 || needsPush > 0 {
+			summaryParts = append(summaryParts, Dim("("))
+			var stateParts []string
+			if open > 0 {
+				stateParts = append(stateParts, StatusOpenStyle.Render(fmt.Sprintf("%d open", open)))
 			}
-			addedSeparator = true
-		}
-
-		// AddRow should never fail here since we're passing exactly 5 cells to a 5-column table
-		// If it does fail, it's a programming bug that should be caught during development
-		if err := table.AddRow(pos, status, prLabel, title, shortHash); err != nil {
-			panic(fmt.Sprintf("BUG: failed to add table row: %v", err))
-		}
-
-		lastWasMerged = change.IsMerged
-	}
-
-	output.WriteString(table.Render())
-	output.WriteString("\n\n")
-
-	open, draft, merged, closed, local, needsPush := CountPRsByState(changes)
-	totalPRs := len(changes)
-
-	var summaryParts []string
-	summaryParts = append(summaryParts, Bold(fmt.Sprintf("%d PR", totalPRs)))
-	if totalPRs != 1 {
-		summaryParts[0] = Bold(fmt.Sprintf("%d PRs", totalPRs))
-	}
-	summaryParts = append(summaryParts, Dim("total"))
-
-	if open > 0 || draft > 0 || merged > 0 || local > 0 || needsPush > 0 {
-		summaryParts = append(summaryParts, Dim("("))
-		var stateParts []string
-		if open > 0 {
-			stateParts = append(stateParts, StatusOpenStyle.Render(fmt.Sprintf("%d open", open)))
-		}
-		if draft > 0 {
-			stateParts = append(stateParts, StatusDraftStyle.Render(fmt.Sprintf("%d draft", draft)))
-		}
-		if merged > 0 {
-			stateParts = append(stateParts, StatusMergedStyle.Render(fmt.Sprintf("%d merged", merged)))
-		}
-		if closed > 0 {
-			stateParts = append(stateParts, StatusClosedStyle.Render(fmt.Sprintf("%d closed", closed)))
-		}
-		if needsPush > 0 {
-			stateParts = append(stateParts, StatusModifiedStyle.Render(fmt.Sprintf("%d modified", needsPush)))
-		}
-		if local > 0 {
-			stateParts = append(stateParts, StatusLocalStyle.Render(fmt.Sprintf("%d local", local)))
-		}
-		for i, part := range stateParts {
-			if i > 0 {
-				summaryParts = append(summaryParts, Dim(", "))
+			if draft > 0 {
+				stateParts = append(stateParts, StatusDraftStyle.Render(fmt.Sprintf("%d draft", draft)))
 			}
-			summaryParts = append(summaryParts, part)
+			if merged > 0 {
+				stateParts = append(stateParts, StatusMergedStyle.Render(fmt.Sprintf("%d merged", merged)))
+			}
+			if closed > 0 {
+				stateParts = append(stateParts, StatusClosedStyle.Render(fmt.Sprintf("%d closed", closed)))
+			}
+			if needsPush > 0 {
+				stateParts = append(stateParts, StatusModifiedStyle.Render(fmt.Sprintf("%d modified", needsPush)))
+			}
+			if local > 0 {
+				stateParts = append(stateParts, StatusLocalStyle.Render(fmt.Sprintf("%d local", local)))
+			}
+			for i, part := range stateParts {
+				if i > 0 {
+					summaryParts = append(summaryParts, Dim(", "))
+				}
+				summaryParts = append(summaryParts, part)
+			}
+			summaryParts = append(summaryParts, Dim(")"))
 		}
-		summaryParts = append(summaryParts, Dim(")"))
+
+		summary := strings.Join(summaryParts, " ")
+		output.WriteString(summary)
+		output.WriteString("\n\n")
 	}
 
-	summary := strings.Join(summaryParts, " ")
-	output.WriteString(summary)
-	output.WriteString("\n\n")
-
+	// Add legend
 	legendContent := FormatStatus("open") + " - PR is open and ready for review\n" +
 		FormatStatus("draft") + " - PR is in draft state\n" +
 		FormatStatus("merged") + " - PR has been merged (tracked in stack metadata)\n" +
@@ -228,17 +106,17 @@ func RenderStackSummary(s *stack.Stack, changes []stack.Change) string {
 
 // RenderSwitchSuccess renders a success message after switching stacks
 func RenderSwitchSuccess(stackName string) string {
-	return RenderSuccessMessage(fmt.Sprintf("Switched to stack: %s", Bold(stackName)))
+	return SuccessStyle.Render("✓ " + fmt.Sprintf("Switched to stack: %s", Bold(stackName)))
 }
 
 // RenderEditSuccess renders a success message after starting to edit a change
 func RenderEditSuccess(position int, title string, branch string) string {
 	var output strings.Builder
-	output.WriteString(RenderSuccessMessage(fmt.Sprintf("Checked out change #%d: %s", position, title)))
+	output.WriteString(SuccessStyle.Render("✓ " + fmt.Sprintf("Checked out change #%d: %s", position, title)))
 	output.WriteString("\n")
-	output.WriteString(RenderSuccessMessage(fmt.Sprintf("Branch: %s", branch)))
+	output.WriteString(SuccessStyle.Render("✓ " + fmt.Sprintf("Branch: %s", branch)))
 	output.WriteString("\n")
-	output.WriteString(RenderInfoMessage("Make your changes and commit"))
+	output.WriteString(InfoStyle.Render("ℹ " + "Make your changes and commit"))
 	output.WriteString("\n")
 	output.WriteString(Dim("  • Use 'git commit --amend' to update this change"))
 	output.WriteString("\n")
@@ -257,12 +135,12 @@ func RenderNoStacksMessage() string {
 
 // RenderNotOnStackMessage renders a message when not on a stack branch
 func RenderNotOnStackMessage() string {
-	return RenderErrorMessage("Not on a stack branch. Use 'stack switch' to switch to a stack.")
+	return ErrorStyle.Render("✗ " + "Not on a stack branch. Use 'stack switch' to switch to a stack.")
 }
 
 // RenderError renders an error message with styling
 func RenderError(err error) string {
-	return RenderErrorMessage(err.Error())
+	return ErrorStyle.Render("✗ " + err.Error())
 }
 
 // RenderPushProgress renders progress for pushing a PR
@@ -291,7 +169,7 @@ func RenderPushSummary(created, updated int) string {
 	var output strings.Builder
 
 	output.WriteString("\n")
-	output.WriteString(RenderSuccessMessage("Push complete!"))
+	output.WriteString(SuccessStyle.Render("✓ " + "Push complete!"))
 	output.WriteString("\n\n")
 
 	var parts []string

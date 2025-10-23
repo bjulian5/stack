@@ -109,7 +109,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Print success message
-	fmt.Println(ui.RenderSuccessMessagef("Opening PR #%d: %s", selectedChange.PR.PRNumber, selectedChange.Title))
+	ui.Successf("Opening PR #%d: %s", selectedChange.PR.PRNumber, selectedChange.Title)
 
 	return nil
 }
