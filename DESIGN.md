@@ -426,7 +426,137 @@ Stack updated. 1 PR remaining.
 
 ---
 
-### 9. Native Git Operations
+### 9. Stack Visualization in PRs
+
+When you push PRs, Stack automatically adds a visualization comment to each PR showing the full stack context:
+
+```markdown
+## 📚 Stack: auth-refactor (3 PRs)
+
+| # | PR | Status | Title |
+|---|-----|---------|---------------------------------------|
+| 1 | #1234 | ✅ Open   | Add JWT authentication |
+| 2 | #1235 | ✅ Open   | Add refresh token handling ← **YOU ARE HERE** |
+| 3 | #1236 | 📝 Draft  | Add cookie security |
+
+**Merge order:** `main → #1234 → #1235 → #1236`
+
+---
+
+💡 **Review tip:** Start from the bottom (#1234) for full context
+
+<!-- stack-visualization: auth-refactor -->
+```
+
+**Features:**
+- Shows full stack context in each PR
+- Highlights current PR position
+- Updates automatically on `stack push`
+- Cached to avoid duplicate comments
+
+---
+
+### 10. Navigation Commands
+
+Stack provides git-like navigation commands to move through your stack:
+
+#### Move to Top
+```bash
+stack top
+```
+Moves to the TOP branch (all commits).
+
+#### Move to Bottom
+```bash
+stack bottom
+```
+Moves to the first change (position 1).
+
+#### Navigate Up/Down
+```bash
+# On UUID branch at position 2
+stack up    # Move to position 3
+stack down  # Move back to position 2
+
+# From TOP branch
+stack down  # Move to N-1 (second-to-last change)
+```
+
+**All navigation commands:**
+- Validate uncommitted changes
+- Sync with GitHub to show merge warnings
+- Create/update UUID branches as needed
+
+---
+
+### 11. Fixup Workflow
+
+Stack provides an interactive fixup command to quickly fix bugs in earlier changes:
+
+```bash
+# On TOP branch, make a fix
+vim src/auth.go
+git add src/auth.go
+
+# Run fixup - opens fuzzy finder to select which change to fix
+stack fixup
+# Select: "2. Add refresh token handling"
+# ✓ Creates fixup commit
+# ✓ Runs autosquash rebase
+# ✓ You remain on TOP branch
+```
+
+**Equivalent to:**
+```bash
+git commit --fixup <commit-hash>
+git rebase -i --autosquash <parent-commit>
+```
+
+But with interactive fuzzy finder for change selection!
+
+---
+
+### 12. Rebase Recovery
+
+If a rebase conflicts or gets aborted, Stack provides recovery tools:
+
+**Scenario 1: Rebase conflicts**
+```bash
+stack restack
+# Conflict! Fix conflicts...
+git add resolved-file.txt
+git rebase --continue
+
+stack restack --recover
+# ✓ Updated stack branch
+# ✓ Updated UUID branches
+# Rebase recovery complete!
+```
+
+**Scenario 2: Aborted rebase**
+```bash
+stack restack
+# Conflicts are too complex, abort
+git rebase --abort
+
+stack restack --recover
+# Options:
+#   1. Retry rebase (recommended)
+#   2. Restore to previous state (undo amend)
+#   3. Keep current state (lose subsequent commits)
+# Choose [1/2/3]: 1
+# ✓ Successfully rebased
+```
+
+**Auto-retry:**
+```bash
+git rebase --abort
+stack restack --recover --retry  # Skips prompts, retries immediately
+```
+
+---
+
+### 13. Native Git Operations
 
 Users can use regular git commands on the stack branch:
 
@@ -443,23 +573,6 @@ git rebase -i origin/main
 # Hooks preserve PR metadata
 ```
 
-#### Use Git Fixup
-```bash
-# On stack branch
-git log --oneline
-# abc1234 Add cookie security
-# def5678 Add refresh tokens
-# ghi9012 Add JWT auth
-
-# Fix bug in JWT auth commit
-vim src/auth.go
-git add src/auth.go
-git fixup ghi9012
-
-# Creates fixup commit and auto-squashes
-# Hook preserves PR-UUID metadata
-```
-
 #### Amend PR Metadata
 ```bash
 git commit --amend
@@ -468,7 +581,7 @@ git commit --amend
 # PR-UUID and PR-Stack preserved automatically
 
 # Then push to update GitHub
-stack push --pr 1
+stack push
 ```
 
 #### View Stack Log
@@ -483,6 +596,22 @@ ghi9012 Add JWT authentication
 ---
 
 ## Commands Reference
+
+### Installation
+
+#### `stack install`
+Install stack hooks and configure git.
+
+```bash
+stack install
+```
+
+**What it does:**
+- Installs git hooks (prepare-commit-msg, post-commit, commit-msg)
+- Configures git settings (core.commentChar=;)
+- Idempotent operation (safe to run multiple times)
+
+---
 
 ### Stack Management
 
@@ -536,20 +665,7 @@ stack switch auth-refactor  # Direct switch
 
 ---
 
-#### `stack delete <name>`
-Delete a stack and its branches.
-
-```bash
-stack delete auth-refactor
-```
-
-**Flags:**
-- `--force`: Delete even if PRs are open
-- `--keep-branches`: Delete stack metadata but keep branches
-
----
-
-### Working with PRs
+### Working with Changes
 
 #### `stack edit [ref]`
 Edit a PR in the stack. Opens interactive selector if no ref provided.
@@ -562,14 +678,66 @@ stack edit abc1234   # Edit by commit hash
 
 ---
 
+#### `stack top`
+Move to the top of the stack (TOP branch).
+
+```bash
+stack top
+```
+
+---
+
+#### `stack bottom`
+Move to the bottom of the stack (first change).
+
+```bash
+stack bottom
+```
+
+---
+
+#### `stack up`
+Move up to the next change in the stack (higher position).
+
+```bash
+stack up    # From position 2 to position 3
+```
+
+---
+
+#### `stack down`
+Move down to the previous change in the stack (lower position).
+
+```bash
+stack down  # From TOP to N-1, or from position 3 to 2
+```
+
+---
+
+#### `stack fixup`
+Create a fixup commit for a selected change and autosquash.
+
+```bash
+git add .
+stack fixup  # Interactive fuzzy finder to select change
+```
+
+**Requirements:**
+- Must have staged changes
+- Must be on TOP branch
+
+---
+
+### GitHub Integration
+
 #### `stack push [options]`
 Push PRs to GitHub.
 
 ```bash
-stack push                # Push all PRs
-stack push --pr 2        # Push only PR #2
-stack push --ready       # Mark all as ready for review
-stack push --dry-run     # Show what would happen
+stack push              # Push all PRs as drafts
+stack push --ready      # Mark all as ready for review
+stack push --dry-run    # Show what would happen
+stack push --force      # Force update stack visualizations
 ```
 
 ---
@@ -581,38 +749,42 @@ Sync with GitHub to detect merged PRs and update stack.
 stack refresh
 ```
 
+**What it does:**
+1. Fetches from remote
+2. Queries GitHub for merge status
+3. Validates bottom-up merging
+4. Saves merged changes to metadata
+5. Rebases remaining commits
+6. Cleans up merged branches
+
 ---
 
-### Utilities
-
-Note: `stack status` is covered in the Stack Management section above. The command shows detailed status of the current or specified stack, including all PRs and their states.
-
----
-
-#### `stack open [ref]`
-Open PR in browser.
+#### `stack restack [options]`
+Rebase the stack on top of the latest base branch.
 
 ```bash
-stack open      # Opens first local PR or prompts
-stack open 2    # Opens PR #2
+stack restack                    # Fetch and rebase on current base
+stack restack --onto develop     # Move stack to different base
+stack restack --onto develop --fetch  # Fetch first, then move
+stack restack --recover          # Recover from failed rebase
+stack restack --recover --retry  # Retry failed rebase
 ```
+
+**Options:**
+- `--onto <branch>`: Rebase onto a different base branch
+- `--fetch`: Fetch from remote before rebasing
+- `--recover`: Recover from a failed or aborted rebase
+- `--retry`: Retry the rebase (only with --recover)
 
 ---
 
-#### `stack config <key> [value]`
-Get or set configuration.
+#### `stack pr open [top]`
+Open a PR in the browser.
 
 ```bash
-stack config username              # Get username
-stack config username johndoe      # Set username
-stack config --list                # List all config
+stack pr open      # Interactive fuzzy finder
+stack pr open top  # Open the top PR
 ```
-
-**Supported configs:**
-- `username`: GitHub username (for branch names)
-- `base`: Default base branch
-- `hooks.enabled`: Enable/disable hooks
-- `hooks.auto-rebase`: Auto-rebase after UUID branch commits
 
 ---
 
@@ -664,520 +836,19 @@ stack hook commit-msg .git/COMMIT_EDITMSG
 
 ---
 
-## Git Hooks Implementation
+## Implementation Status
 
-### Hook Installation
+**Current Status:** Phases 1-5 Complete ✅
 
-When running `stack new`, the tool installs three git hooks as thin bash wrappers that delegate to the `stack` binary:
+The tool has completed all core functionality:
 
-**`.git/hooks/prepare-commit-msg`:**
-```bash
-#!/bin/bash
-# Git calls this with: prepare-commit-msg <COMMIT_MSG_FILE> <source> [<sha>]
-# We pass all arguments to the stack binary
-exec stack hook prepare-commit-msg "$@"
-```
+- ✅ **Phase 1 (Foundation)** - Stack creation, listing, status display
+- ✅ **Phase 2 (Git Hooks)** - Automatic UUID injection, amend/insert operations
+- ✅ **Phase 3 (Editing & Navigation)** - Interactive editing, stack switching, navigation commands
+- ✅ **Phase 4 (GitHub Integration)** - Push to GitHub, PR visualization, PR operations
+- ✅ **Phase 5 (Sync & Refresh)** - Merge detection, stack rebasing, conflict recovery
 
-**`.git/hooks/post-commit`:**
-```bash
-#!/bin/bash
-# Git calls this with no arguments after a commit is created
-exec stack hook post-commit "$@"
-```
-
-**`.git/hooks/commit-msg`:**
-```bash
-#!/bin/bash
-# Git calls this with: commit-msg <COMMIT_MSG_FILE>
-# We pass all arguments to the stack binary
-exec stack hook commit-msg "$@"
-```
-
-**Why thin wrappers?**
-- All hook logic lives in the Go binary (easier to test and maintain)
-- Single binary distribution (no separate hook scripts to manage)
-- Cross-platform compatibility
-
----
-
-### Hook: prepare-commit-msg
-
-**Triggers:** Before commit message editor opens
-
-**Behavior:**
-1. Check if on a stack branch (matches `username/stack-*/TOP`)
-2. If not, exit (do nothing)
-3. Generate new UUID
-4. Check if this is an amend (commit already has PR-UUID)
-   - If amend: preserve existing UUID
-   - If new: use generated UUID
-5. Append trailers to commit message template
-
-**Algorithm:**
-```
-1. Get current branch
-2. If not stack branch, exit
-3. Read commit message file
-4. If already has PR-UUID trailer, exit (amend case)
-5. Generate UUID
-6. Extract stack name from branch
-7. Append trailers:
-   - PR-UUID: <uuid>
-   - PR-Stack: <stack-name>
-8. Write back to file
-```
-
----
-
-### Hook: post-commit
-
-**Triggers:** After commit is created
-
-**Behavior on UUID branch:**
-1. Detect UUID branch (matches `username/stack-<name>/<uuid>`)
-2. Get the commit that was just made
-3. Determine if this is an amend or new commit:
-   - **Amend:** Commit has PR-UUID matching the branch UUID
-   - **New commit:** Commit doesn't have PR-UUID, or UUID doesn't match
-4. Switch to stack branch
-5. **If amend:**
-   - Find commit with matching UUID in stack
-   - Replace that commit (via rebase --onto)
-   - Rebase subsequent commits
-6. **If new commit:**
-   - Generate UUID and add trailers to commit
-   - Find position of commit with branch UUID
-   - Insert new commit after that position
-   - Rebase subsequent commits
-7. Switch back to UUID branch
-
-**Algorithm:**
-```
-1. Get current branch
-2. If not UUID branch, exit
-3. Parse branch: extract stack name and UUID
-4. Get HEAD commit
-5. Check if HEAD has PR-UUID matching branch UUID
-6. Switch to stack branch (username/stack-<name>/TOP)
-
-IF AMEND:
-  7a. Find commit position with matching UUID
-  8a. Use git rebase --onto to replace that commit
-  9a. Rebase commits after position
-
-IF NEW:
-  7b. Add PR-UUID and PR-Stack trailers to commit
-  8b. Find commit position with branch UUID
-  9b. Insert new commit at position + 1
-  10b. Rebase remaining commits
-
-11. Switch back to UUID branch
-12. Print status message
-```
-
----
-
-### Hook: commit-msg
-
-**Triggers:** After commit message is written, before commit is created
-
-**Behavior:**
-1. Check if on stack or UUID branch
-2. If not, exit
-3. Validate commit message:
-   - Has PR-UUID trailer
-   - Has PR-Stack trailer
-   - First line (PR title) is not empty
-4. If validation fails, abort commit with error
-
-**Algorithm:**
-```
-1. Get current branch
-2. If not stack/UUID branch, exit
-3. Read commit message
-4. Parse git trailers
-5. Validate:
-   - PR-UUID exists
-   - PR-Stack exists
-   - First line not empty
-6. If invalid, exit with error code
-```
-
----
-
-## Data Structures
-
-### Stack Config
-
-**Location:** `.git/stack/<stack-name>/config.json`
-
-**Schema:**
-```json
-{
-  "name": "auth-refactor",
-  "branch": "username/stack-auth-refactor/TOP",
-  "base": "main",
-  "created": "2025-10-19T15:00:00Z",
-  "last_synced": "2025-10-19T16:00:00Z"
-}
-```
-
-**Fields:**
-- `name`: Stack name (user-provided)
-- `branch`: Full branch name
-- `base`: Base branch for PRs (e.g., "main")
-- `created`: ISO 8601 timestamp
-- `last_synced`: Last time `stack push` was run
-
----
-
-### PR Tracking
-
-**Location:** `.git/stack/<stack-name>/prs.json`
-
-**Schema:**
-```json
-{
-  "version": 1,
-  "prs": {
-    "550e8400-e29b-41d4-a716": {
-      "pr_number": 1234,
-      "url": "https://github.com/user/repo/pull/1234",
-      "branch": "username/stack-auth-refactor/550e8400",
-      "commit_hash": "abc1234567890abcdef1234567890abcdef12345",
-      "created_at": "2025-10-19T15:00:00Z",
-      "last_pushed": "2025-10-19T16:00:00Z",
-      "state": "open"
-    },
-    "661f9511-e29b-41d4-a716": {
-      "pr_number": 1235,
-      "url": "https://github.com/user/repo/pull/1235",
-      "branch": "username/stack-auth-refactor/661f9511",
-      "commit_hash": "def5678901234567890abcdef1234567890abcde",
-      "created_at": "2025-10-19T15:05:00Z",
-      "last_pushed": "2025-10-19T16:00:00Z",
-      "state": "draft"
-    }
-  }
-}
-```
-
-**Top-level structure (PRData):**
-- `version`: Schema version (currently 1) for future evolution
-- `prs`: Map of UUID to PR information
-
-**PR fields:**
-- Key: Full UUID (16 hex chars)
-- `pr_number`: GitHub PR number
-- `url`: Full PR URL
-- `branch`: Branch name for this PR
-- `commit_hash`: Current commit hash for this PR (tracked for updates)
-- `created_at`: When PR was first created
-- `last_pushed`: Last time this PR was pushed
-- `state`: PR state ("open", "draft", "closed", "merged")
-
----
-
-### Current Stack
-
-**Mechanism:** Branch-based context (no file storage)
-
-**Implementation:** The current stack is determined by examining the current git branch:
-- If on a stack branch (`username/stack-<name>/TOP`), you're working on that stack
-- If on a UUID branch (`username/stack-<name>/<uuid>`), you're editing a change in that stack
-- `GetStackContext()` returns the stack name, loaded metadata, and editing context
-
-This approach is more git-native and eliminates the need for state files.
-
----
-
-## Implementation Plan
-
-### Phase 1: Foundation ✅ COMPLETED
-
-**Goal:** Basic CLI and git operations working
-
-**Status:** Completed with Command interface pattern and dependency injection
-
-**What was implemented:**
-
-1. **Go project setup**
-   - Module: `github.com/username/stack`
-   - CLI framework: `cobra`
-   - Dependencies: cobra, go-git, go-fuzzyfinder, lipgloss, uuid
-   - Command interface pattern for extensible CLI structure
-
-2. **Core git operations** (`internal/git/`)
-   - ✅ `git.Client` struct with dependency injection pattern
-   - ✅ `GetCurrentBranch()` - get current branch name
-   - ✅ `GetCommits()` - get all commits on branch
-   - ✅ `GetCommit()` - get individual commit with message
-   - ✅ `ParseCommitMessage()` - parse title, body, trailers
-   - ✅ `CreateBranch()` / `CheckoutBranch()` - branch operations
-   - ✅ `GetStackBranches()` - find all stack branches
-   - ✅ `IsStackBranch()` / `ParseStackBranch()` - branch name parsing
-
-3. **Stack metadata** (`internal/stack/`)
-   - ✅ `Stack` struct
-   - ✅ `PR` struct and `PRMap` type
-   - ✅ `Change` struct - domain model for commits in stack context
-   - ✅ `StackContext` struct - branch-based context with methods: `IsStack()`, `IsEditing()`, `CurrentChange()`, `FindChange()`
-   - ✅ `stack.Client` for metadata management
-   - ✅ `LoadStack()` - load stack config from disk
-   - ✅ `SaveStack()` - save stack config
-   - ✅ `LoadPRs()` - load PR tracking
-   - ✅ `SavePRs()` - save PR tracking
-   - ✅ `GetStackContext()` - derive stack context from current branch
-   - ✅ `GetStackContextByName()` - load stack context for a specific stack (recommended)
-   - ✅ `SwitchStack()` - checkout stack branch
-
-4. **Basic commands** (each in its own package)
-   - ✅ `cmd/command.go` - Command interface
-   - ✅ `cmd/newcmd/` - `stack new <name>` to create new stack
-   - ✅ `cmd/list/` - `stack list` to list all stacks
-   - ✅ `cmd/status/` - `stack status [name]` to show stack status
-
-5. **Common utilities** (`internal/common/`)
-   - ✅ `GetUsername()` - detect username from git/gh config
-
-**Key architectural decisions implemented:**
-- Commands implement `Command` interface with `Register(parent *cobra.Command)` method
-- Dependency injection: commands receive `*git.Client` and `*stack.Client` at registration
-- Package-per-command structure for better organization
-- Git operations encapsulated in `git.Client` for testability
-
-**Deliverable:** ✅ Can create stacks, list them, and view stack details
-
-**Post-Phase 1 Refactoring:**
-- ✅ Commit message parsing refactored into structured types (`git.Commit` with `Hash` and `Message`, `git.CommitMessage` with `Title`, `Body`, `Trailers`)
-- ✅ Branch helper functions moved from `internal/git/branch.go` to `internal/stack/context.go` for better organization
-- ✅ Git client API simplified by removing unused methods (e.g., `CreateBranch()`, `DeleteBranch()`, `GetLocalBranches()`, `FindCommitByTrailer()`)
-- ✅ `GetStackContextByName()` introduced as the recommended way to load stack details
-- ✅ Deprecated `GetStackDetails()`, `StackDetails` type, and unused PR methods (`GetPR()`, `DeletePR()`, `DeleteStack()`) removed
-
----
-
-### Phase 2: Hooks ✅ COMPLETED
-
-**Goal:** Git hooks for automatic metadata management
-
-**Status:** Completed with full hook implementation for stack operations
-
-**What was implemented:**
-
-1. **Hook installation** (`internal/hooks/install.go`)
-   - ✅ `InstallHooks()` - create wrapper scripts in `.git/hooks/`
-   - ✅ `UninstallHooks()` - remove hooks
-   - ✅ `CheckHooksInstalled()` - verify hooks are present
-   - Thin bash wrappers that delegate to `stack hook` commands
-
-2. **Hook implementations** (`cmd/hook/`)
-   - ✅ `prepare-commit-msg.go` - Parent command structure
-     - Detects stack/UUID branches via `GetStackContext()`
-     - Generates UUID for new commits
-     - Adds PR-UUID and PR-Stack trailers
-     - Preserves UUIDs on amend operations
-
-   - ✅ `post-commit.go` - Stack update operations
-     - Detects UUID branch context
-     - Determines amend vs new commit by comparing UUIDs
-     - Updates stack branch using git rebase operations
-     - Rebases subsequent commits automatically
-     - Updates all UUID branch pointers
-
-   - ✅ `commit-msg.go` - Validation
-     - Validates PR-UUID and PR-Stack trailer presence
-     - Validates non-empty commit title
-     - Aborts commit if validation fails
-
-   - ✅ `operations.go` - Common workflows
-     - `GetStackContext()` - Extract context from branch
-     - `PostUpdateWorkflow()` - Update tracking and branches after stack changes
-     - `updateAllUUIDBranches()` - Update all UUID branch refs to new locations
-
-3. **Git operations for hooks** (`internal/git/rebase.go`)
-   - ✅ `RebaseSubsequentCommits()` - Rebase commits after an update
-   - ✅ Uses `git rebase --onto` for precise stack modifications
-   - ✅ Handles commit replacement and insertion
-
-4. **Stack context system** (`internal/stack/context.go`)
-   - ✅ `StackContext` - Branch-based context instead of file-based
-   - ✅ `GetStackContext()` - Derive stack from current branch
-   - ✅ `InStack()` and `IsEditing()` - Context query methods
-
-**Deliverable:** ✅ Hooks work, can add PRs with `git commit`, can edit and insert via UUID branches
-
----
-
-### Phase 3: Editing & Navigation ✅ COMPLETED
-
-**Goal:** Interactive PR editing and stack switching
-
-**Status:** Completed with fuzzy finder integration and styled terminal output
-
-**What was implemented:**
-
-1. ✅ `stack edit` command (`cmd/edit/edit.go`)
-   - Interactive PR selection using fuzzy finder
-   - Extract UUID from selected commit
-   - Create UUID branch at that commit (with sync if already exists)
-   - Checkout UUID branch
-   - Uncommitted changes validation before editing
-   - Preview window showing change details
-
-2. ✅ `stack switch` command (`cmd/switch/switch.go`)
-   - Integrated fuzzy finder (`go-fuzzyfinder`)
-   - Lists all stacks with change counts and status
-   - Supports filtering by name
-   - Updates current stack (via branch checkout)
-   - Displays full stack details after switching
-   - Supports direct switch: `stack switch <name>`
-   - Uncommitted changes validation before switching
-
-3. ✅ UI system (`internal/ui/`)
-   - Colored status indicators (🟢🟡🟣⚪)
-   - Styled table formatting for `stack status` and `stack list`
-   - Message rendering (success, error, warning, info)
-   - Formatting utilities (truncate, pad, boxes)
-   - lipgloss-based styling for consistency
-   - All commands refactored to use UI system
-
-**Deliverable:** ✅ Can easily navigate between stacks and edit PRs with polished UI
-
----
-
-### Phase 4: GitHub Integration (Week 2-3)
-
-**Goal:** Push to GitHub and sync state
-
-**Tasks:**
-1. GitHub username detection (`internal/config/`)
-   - Parse from git config (`github.user`)
-   - Parse from `gh` CLI config
-   - Allow manual config: `stack config username <name>`
-   - Store in `.git/stack/config.json`
-
-2. `gh` CLI integration (`internal/github/`)
-   - `execGH(args)` - wrapper to execute gh commands
-   - `createPR(title, body, base, head, draft)` - create PR
-   - `updatePR(number, title, body)` - update PR
-   - `getPRState(number)` - get PR state
-   - Parse JSON output from gh CLI
-
-3. `stack push` command (`cmd/push.go`)
-   - Iterate commits in stack
-   - For each commit:
-     - Parse commit message → title, body, UUID
-     - Create branch `username/stack-<name>/<short-uuid>`
-     - Cherry-pick commits from base up to this one
-     - Push branch to origin (force)
-     - Check if PR exists (lookup in prs.json)
-     - Create or update PR via `gh`
-     - Set PR base to previous PR's branch
-     - Save PR number in prs.json
-   - Handle `--pr <n>` flag (push single PR)
-   - Handle `--ready` flag (mark as ready for review)
-   - Handle `--dry-run` flag
-
-4. PR state tracking
-   - Update `prs.json` after push
-   - Store PR numbers, URLs, state
-   - Track last push time
-
-5. Error handling
-   - Handle gh CLI not installed
-   - Handle not authenticated
-   - Handle API rate limits
-   - Handle network errors
-
-**Deliverable:** Can push stacks to GitHub and create/update PRs
-
----
-
-### Phase 5: Sync & Refresh (Week 3)
-
-**Goal:** Handle merged PRs and keep stack updated
-
-**Tasks:**
-1. `stack refresh` command (`cmd/refresh.go`)
-   - Fetch from origin
-   - For each PR in prs.json:
-     - Query state via `gh pr view <number> --json state,mergedAt`
-     - Detect merged PRs
-   - Validate merged PRs are from bottom of stack
-   - Remove merged commits from stack branch
-   - Rebase remaining commits on latest base
-   - Delete merged PR branches (local and remote)
-   - Update prs.json (remove merged PRs)
-   - Display summary
-
-2. `stack rebase` command (`cmd/rebase.go`)
-   - Wrapper around `git rebase`
-   - Fetch latest base branch
-   - Rebase stack branch on base
-   - Validate hooks preserved metadata
-   - Update PR bases if needed
-
-3. Merge detection
-   - Parse merged PR data from GitHub
-   - Match merged commits to stack commits
-   - Handle out-of-order merges (error)
-
-**Deliverable:** Can detect merged PRs and clean up stack automatically
-
----
-
-### Phase 6: Polish & UX (Week 4)
-
-**Goal:** Production-ready tool with great UX
-
-**Tasks:**
-1. Error handling
-   - Graceful failures with helpful messages
-   - Recovery suggestions ("Try: stack refresh")
-   - Validation before destructive operations
-   - Detect dirty working directory
-
-2. Validation & safety
-   - Check for uncommitted changes before operations
-   - Warn before force-push
-   - Confirm before delete
-   - Detect conflicts during rebase
-   - Provide recovery instructions
-
-3. Configuration (`cmd/config.go`)
-   - `stack config list` - show all config
-   - `stack config get <key>` - get value
-   - `stack config set <key> <value>` - set value
-   - Supported configs:
-     - `username` - GitHub username
-     - `base` - Default base branch
-     - `hooks.enabled` - Enable/disable hooks
-     - `hooks.auto-rebase` - Auto-rebase on UUID branch commits
-
-4. Additional commands
-   - `stack status` - show current state
-   - `stack open [ref]` - open PR in browser
-   - `stack delete <name>` - delete stack
-
-5. Help and documentation
-   - Comprehensive help text for all commands
-   - Examples in help output
-   - README with quickstart
-   - User guide (USAGE.md)
-
-6. Testing
-   - Unit tests for core logic
-   - Integration tests with real git repo
-   - Test error conditions
-   - Test hook edge cases
-
-7. Performance
-   - Optimize git operations
-   - Cache PR state locally
-   - Minimize GitHub API calls
-
-**Deliverable:** Polished, production-ready CLI tool
+See CLAUDE.md for detailed implementation information.
 
 ---
 
@@ -1189,66 +860,87 @@ stack/
 ├── go.mod
 ├── go.sum
 ├── README.md                    # Project overview, installation
-├── DESIGN.md                    # This file
+├── DESIGN.md                    # This file (comprehensive user documentation)
 ├── CLAUDE.md                    # Development guidance for AI assistants
-├── USAGE.md                     # User guide (created in Phase 6)
 ├── LICENSE
 │
 ├── cmd/                         # CLI commands
 │   ├── root.go                  # Root command setup with cobra
 │   ├── command.go               # Command interface for registration pattern
-│   ├── list/
-│   │   └── list.go              # stack list command (✅ completed, uses UI system)
-│   ├── status/
-│   │   └── status.go            # stack status command (✅ completed, uses UI system)
+│   ├── install/
+│   │   └── install.go           # stack install command (✅ completed)
 │   ├── newcmd/
-│   │   └── new.go               # stack new command (newcmd to avoid "new" keyword) (✅ completed)
+│   │   └── new.go               # stack new command (✅ completed)
+│   ├── list/
+│   │   └── list.go              # stack list command (✅ completed)
+│   ├── status/
+│   │   └── status.go            # stack status command (✅ completed)
 │   ├── edit/
 │   │   └── edit.go              # stack edit command (✅ completed)
+│   ├── fixup/
+│   │   └── fixup.go             # stack fixup command (✅ completed)
 │   ├── switch/
-│   │   └── switch.go            # stack switch command (package: switchcmd) (✅ completed)
-│   ├── hook/                    # Git hook implementations (✅ completed)
-│   │   ├── hook.go              # Parent hook command
-│   │   ├── prepare_commit_msg.go # prepare-commit-msg hook
-│   │   ├── commit_msg.go        # commit-msg hook
-│   │   ├── post_commit.go       # post-commit hook
-│   │   └── operations.go        # Common hook operations
+│   │   └── switch.go            # stack switch command (✅ completed)
+│   ├── top/
+│   │   └── top.go               # stack top command (✅ completed)
+│   ├── bottom/
+│   │   └── bottom.go            # stack bottom command (✅ completed)
+│   ├── up/
+│   │   └── up.go                # stack up command (✅ completed)
+│   ├── down/
+│   │   └── down.go              # stack down command (✅ completed)
 │   ├── push/
-│   │   └── push.go              # stack push (future)
-│   └── refresh/
-│       └── refresh.go           # stack refresh (future)
+│   │   └── push.go              # stack push command (✅ completed)
+│   ├── refresh/
+│   │   └── refresh.go           # stack refresh command (✅ completed)
+│   ├── restack/
+│   │   └── restack.go           # stack restack command (✅ completed)
+│   ├── pr/
+│   │   ├── pr.go                # Parent PR command (✅ completed)
+│   │   └── open/
+│   │       └── open.go          # stack pr open command (✅ completed)
+│   └── hook/                    # Git hook implementations (✅ completed)
+│       ├── hook.go              # Parent hook command
+│       ├── prepare_commit_msg.go # prepare-commit-msg hook
+│       ├── commit_msg.go        # commit-msg hook
+│       ├── post_commit.go       # post-commit hook
+│       └── operations.go        # Common hook operations
 │
 ├── internal/                    # Internal packages
-│   ├── git/                     # Git operations
-│   │   ├── client.go            # Client struct with git operations (using exec.Command)
-│   │   ├── commit.go            # Commit and CommitMessage types with parsing (✅ refactored)
-│   │   └── rebase.go            # Rebase operations for stack updates (✅ completed)
+│   ├── git/                     # Git operations (✅ completed)
+│   │   ├── client.go            # Client struct with git operations
+│   │   ├── commit.go            # Commit and CommitMessage types with parsing
+│   │   ├── rebase.go            # Rebase operations for stack updates
+│   │   └── template.go          # Commit message templates
 │   │
-│   ├── stack/                   # Stack management
+│   ├── stack/                   # Stack management (✅ completed)
 │   │   ├── client.go            # Stack client for metadata management
 │   │   ├── stack.go             # Stack struct
-│   │   ├── pr.go                # PRData and PR structs with versioning (✅ completed)
-│   │   ├── change.go            # Change domain model (✅ completed)
-│   │   └── context.go           # StackContext for branch-based state and branch helpers (✅ completed)
+│   │   ├── config.go            # Stack configuration
+│   │   ├── pr.go                # PRData and PR structs with versioning
+│   │   ├── change.go            # Change domain model
+│   │   ├── context.go           # StackContext for branch-based state
+│   │   ├── visualization.go     # Stack visualization in PR comments
+│   │   └── rebase_state.go      # Rebase state management for recovery
+│   │
+│   ├── gh/                      # GitHub integration (✅ completed)
+│   │   ├── client.go            # gh CLI wrapper with batch API
+│   │   └── types.go             # GitHub types (PR, PRSpec, PRState, Comment)
 │   │
 │   ├── ui/                      # User interface (✅ completed)
-│   │   ├── format.go            # Formatting utilities (truncate, pad, boxes, etc.)
+│   │   ├── format.go            # Formatting utilities
 │   │   ├── styles.go            # lipgloss style definitions
-│   │   ├── stack.go             # Stack-specific rendering functions
-│   │   └── messages.go          # Success, error, warning, info messages
+│   │   ├── render.go            # Stack rendering functions
+│   │   ├── status.go            # Status rendering
+│   │   ├── select.go            # Interactive fuzzy finder
+│   │   ├── table.go             # Table formatting
+│   │   └── terminal.go          # Terminal utilities
 │   │
 │   ├── hooks/                   # Git hooks (✅ completed)
 │   │   └── install.go           # Hook installation/uninstallation
 │   │
-│   ├── common/                  # Common utilities
-│   │   └── utils.go             # Shared utilities (username detection, UUID generation, etc.)
-│   │
-│   ├── github/                  # GitHub integration (future)
-│   │   ├── client.go            # gh CLI wrapper
-│   │   └── pr.go                # PR operations (create, update, query)
-│   │
-│   └── config/                  # Configuration (future)
-│       └── config.go            # Global config management
+│   └── common/                  # Common utilities
+│       └── utils.go             # Shared utilities (username, UUID, etc.)
 │
 └── test/                        # Integration tests (future)
     ├── fixtures/                # Test git repos
@@ -1257,35 +949,18 @@ stack/
 
 **Key architectural patterns implemented:**
 - **Command interface**: Each command implements `Command` interface with `Register(parent *cobra.Command)` method
-- **Dependency injection**: Commands receive `*git.Client` and `*stack.Client` instances at registration time
+- **Dependency injection**: Commands receive `*git.Client`, `*stack.Client`, and `*gh.Client` instances at registration time
 - **Package-per-command**: Each command lives in its own package for better organization
 - **Git Client abstraction**: All git operations go through `git.Client` for consistency and testability
+- **GitHub Client abstraction**: All GitHub operations use `gh.Client` wrapper around gh CLI
 
 ---
 
 ## Dependencies
 
-### go.mod
-
-```go
-module github.com/username/stack
-
-go 1.21
-
-require (
-    github.com/spf13/cobra v1.8.0              // CLI framework
-    github.com/go-git/go-git/v5 v5.11.0        // Git operations
-    github.com/ktr0731/go-fuzzyfinder v0.7.0   // Fuzzy finder for stack switching
-    github.com/charmbracelet/lipgloss v0.9.1   // Terminal styling and colors
-    github.com/google/uuid v1.5.0              // UUID generation
-)
-```
-
-### External Dependencies
-
-- **gh CLI**: GitHub CLI must be installed and authenticated
-  - Install: https://cli.github.com/
-  - Authenticate: `gh auth login`
+**Required:**
+- **gh CLI** - GitHub operations (install: https://cli.github.com/, authenticate: `gh auth login`)
+- **Go 1.21+** - See `go.mod` for full dependency list
 
 ---
 
@@ -1355,165 +1030,6 @@ require (
 
 ---
 
-## User Stories
-
-### Story 1: Creating a Feature with 3 PRs
-
-**As a developer**, I want to split my feature into 3 dependent PRs.
-
-```bash
-# Start from main
-git checkout main
-git pull
-stack new auth-feature
-
-# PR 1: Database changes
-vim db/models.go
-git add db/models.go
-git commit -m "Add User and Session models
-
-Creates database models for authentication.
-Includes migrations for users and sessions tables.
-"
-
-# PR 2: API endpoints
-vim api/auth.go
-git add api/auth.go
-git commit -m "Add authentication endpoints
-
-Implements /login and /logout endpoints.
-Uses JWT for session management.
-"
-
-# PR 3: Frontend integration
-vim frontend/auth.js
-git add frontend/auth.js
-git commit -m "Add login UI
-
-Creates login form and integrates with auth API.
-Handles token storage and refresh.
-"
-
-# Push to GitHub
-stack push --ready
-# Creates 3 PRs: #1 → #2 → #3
-```
-
-**Result:** 3 PRs on GitHub, each based on the previous one.
-
----
-
-### Story 2: Updating Middle PR After Review
-
-**As a developer**, I want to address review comments on PR #2 without affecting PR #3.
-
-```bash
-# Select PR to edit
-stack edit
-# Choose: 2
-
-# Make changes
-vim api/auth.go
-git add api/auth.go
-git commit --amend
-
-# Automatically rebases PR #3
-# Output: ✓ Updated PR #2 and rebased 1 subsequent PR
-
-# Push updates
-stack push
-# Updates PR #2 and PR #3 on GitHub
-```
-
----
-
-### Story 3: Inserting a New PR in the Middle
-
-**As a developer**, I realize I need a new PR between #1 and #2.
-
-```bash
-# Edit PR #1
-stack edit 1
-
-# Create new change
-vim middleware/validate.go
-git add middleware/validate.go
-git commit -m "Add validation middleware
-
-Middleware to validate request parameters.
-Used by auth endpoints.
-"
-
-# Automatically inserts after PR #1, shifts #2 and #3
-# Output: ✓ Inserted new PR after #1, rebased 2 subsequent PRs
-
-# Return to stack
-git checkout bjulian5/stack-auth-feature/TOP
-
-# Push
-stack push
-# Creates new PR #1235 between #1 and #2
-```
-
-**Result:** Stack now has 4 PRs: #1 → new PR → #2 → #3
-
----
-
-### Story 4: Handling Merged PRs
-
-**As a developer**, I want to clean up after PR #1 merges.
-
-```bash
-# PR #1 merged on GitHub
-stack refresh
-
-# Output:
-# ✓ PR #1234 merged to main
-# ✓ Rebasing remaining PRs on origin/main
-# ✓ Deleted branch bjulian5/stack-auth-feature/550e8400
-
-stack status
-# Now shows:
-# 1. Add authentication endpoints (was #2)
-# 2. Add login UI (was #3)
-
-# Push updates
-stack push
-# Updates PR bases: #1235 now based on main, #1236 based on #1235
-```
-
----
-
-### Story 5: Working Across Multiple Stacks
-
-**As a developer**, I want to work on multiple feature stacks simultaneously.
-
-```bash
-# Create first stack
-stack new feature-a
-# ... make commits ...
-stack push
-
-# Create second stack
-stack new feature-b
-# ... make commits ...
-stack push
-
-# Switch between stacks
-stack switch
-# Interactive fuzzy finder shows both stacks
-
-# Or direct switch
-stack switch feature-a
-
-# View all stacks
-stack list
-# * feature-a  (3 PRs, base: main)
-#   feature-b  (2 PRs, base: main)
-```
-
----
-
 ## Future Enhancements (Post v1.0)
 
 1. **git push hook**: Trigger `stack push` automatically on `git push`
@@ -1554,15 +1070,3 @@ stack list
 ### Q: What if someone else merges a PR out of order?
 
 **A:** The tool will error and suggest manual intervention. Bottom-up merging is enforced for safety.
-
----
-
-## Contributing
-
-(To be added in Phase 6)
-
----
-
-## License
-
-(To be determined)

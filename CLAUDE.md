@@ -79,9 +79,20 @@ go build && ./stack list
 - Centralized terminal styling and formatting using `lipgloss`
 - `format.go` - Reusable formatting utilities (truncate, pad, boxes, panels)
 - `styles.go` - Consistent color scheme and style definitions
-- `stack.go` - Stack-specific rendering (list view, details view, fuzzy finder formatting)
-- `messages.go` - Success, error, warning, and info message formatting
+- `render.go` - Stack rendering (list view, details view, push progress)
+- `status.go` - Status rendering for stack details
+- `select.go` - Fuzzy finder for interactive change selection
+- `table.go` - Table formatting for stack display
+- `terminal.go` - Terminal utilities and width detection
 - All commands use the UI system for consistent output
+
+**GitHub Client** (`internal/gh/client.go`)
+- Wraps `gh` CLI for all GitHub operations
+- `SyncPR()` - Idempotent PR creation/update with auto-recovery
+- `BatchGetPRs()` - Efficient batch PR queries via GraphQL
+- `GetPRState()` - Query individual PR merge status
+- `ListPRComments()` / `CreatePRComment()` / `UpdatePRComment()` - Comment management for stack visualization
+- `OpenPR()` - Open PR in browser
 
 **Branch Naming Conventions**
 - Stack branch: `username/stack-<name>/TOP` (e.g., `bjulian5/stack-auth-refactor/TOP`)
@@ -121,11 +132,23 @@ stack/
 ├── cmd/
 │   ├── root.go                      # Root command setup with cobra
 │   ├── command.go                   # Command interface
+│   ├── install/install.go           # stack install command
+│   ├── newcmd/new.go                # stack new command (newcmd to avoid "new" keyword)
 │   ├── list/list.go                 # stack list command
 │   ├── status/status.go             # stack status command
-│   ├── newcmd/new.go                # stack new command (newcmd to avoid "new" keyword)
 │   ├── edit/edit.go                 # stack edit command
+│   ├── fixup/fixup.go               # stack fixup command
 │   ├── switch/switch.go             # stack switch command (package: switchcmd)
+│   ├── top/top.go                   # stack top command
+│   ├── bottom/bottom.go             # stack bottom command
+│   ├── up/up.go                     # stack up command
+│   ├── down/down.go                 # stack down command
+│   ├── push/push.go                 # stack push command
+│   ├── refresh/refresh.go           # stack refresh command
+│   ├── restack/restack.go           # stack restack command
+│   ├── pr/
+│   │   ├── pr.go                    # Parent PR command
+│   │   └── open/open.go             # stack pr open command
 │   └── hook/
 │       ├── hook.go                  # Parent hook command
 │       ├── prepare_commit_msg.go    # prepare-commit-msg hook implementation
@@ -136,18 +159,28 @@ stack/
 │   ├── git/
 │   │   ├── client.go                # Core git operations wrapper
 │   │   ├── commit.go                # Commit and CommitMessage types with parsing
-│   │   └── rebase.go                # Rebase operations for stack updates
+│   │   ├── rebase.go                # Rebase operations for stack updates
+│   │   └── template.go              # Commit message templates
 │   ├── stack/
 │   │   ├── client.go                # Stack metadata management
 │   │   ├── stack.go                 # Stack struct
+│   │   ├── config.go                # Stack configuration
 │   │   ├── pr.go                    # PRData and PR structs with versioning
 │   │   ├── change.go                # Change domain model
-│   │   └── context.go               # StackContext for branch-based state and branch helpers
+│   │   ├── context.go               # StackContext for branch-based state and branch helpers
+│   │   ├── visualization.go         # Stack visualization in PR comments
+│   │   └── rebase_state.go          # Rebase state management for recovery
+│   ├── gh/
+│   │   ├── client.go                # GitHub client via gh CLI
+│   │   └── types.go                 # GitHub types (PR, PRSpec, PRState, Comment)
 │   ├── ui/
 │   │   ├── format.go                # Formatting utilities and helper functions
 │   │   ├── styles.go                # lipgloss style definitions
-│   │   ├── stack.go                 # Stack-specific rendering functions
-│   │   └── messages.go              # Message rendering functions
+│   │   ├── render.go                # Stack rendering functions
+│   │   ├── status.go                # Status rendering
+│   │   ├── select.go                # Interactive fuzzy finder
+│   │   ├── table.go                 # Table formatting
+│   │   └── terminal.go              # Terminal utilities
 │   ├── hooks/
 │   │   └── install.go               # Hook installation/uninstallation
 │   └── common/
@@ -156,7 +189,7 @@ stack/
 
 ## Implementation Status
 
-The codebase has completed **Phase 1** (Foundation), **Phase 2** (Git Hooks), and **Phase 3** (Editing & Navigation) of development (see DESIGN.md for full roadmap):
+The codebase has completed **Phase 1** (Foundation), **Phase 2** (Git Hooks), **Phase 3** (Editing & Navigation), **Phase 4** (GitHub Integration), and **Phase 5** (Sync & Refresh):
 
 **Phase 1 - Foundation (✅ Completed):**
 - ✅ `stack new <name>` - Create new stack
@@ -175,13 +208,24 @@ The codebase has completed **Phase 1** (Foundation), **Phase 2** (Git Hooks), an
 **Phase 3 - Editing & Navigation (✅ Completed):**
 - ✅ `stack edit` - Interactive PR editing with fuzzy finder
 - ✅ `stack switch [name]` - Stack switching with fuzzy finder
+- ✅ `stack top/bottom/up/down` - Navigate through stack changes
 - ✅ UI system with lipgloss for styled terminal output
 - ✅ Uncommitted changes validation before operations
 
-**Not Yet Implemented:**
-- `stack push` command to push PRs to GitHub
-- `stack refresh` command to handle merged PRs
-- GitHub integration via `gh` CLI
+**Phase 4 - GitHub Integration (✅ Completed):**
+- ✅ `stack push` - Push PRs to GitHub with draft/ready support
+- ✅ `stack install` - Install hooks and configure git
+- ✅ `stack pr open` - Open PRs in browser
+- ✅ GitHub client with batch API queries
+- ✅ Stack visualization in PR comments
+- ✅ Idempotent PR sync (create or update)
+
+**Phase 5 - Sync & Refresh (✅ Completed):**
+- ✅ `stack refresh` - Detect and handle merged PRs
+- ✅ `stack restack` - Rebase on base branch with recovery system
+- ✅ `stack fixup` - Interactive fixup commits with autosquash
+- ✅ Rebase state management for conflict recovery
+- ✅ Bottom-up merge validation
 
 ## Development Patterns
 
