@@ -81,33 +81,32 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("no active changes in stack: all changes are merged")
 	}
 
-	// Get the first change (position 1, index 0)
-	firstChange := &stackCtx.ActiveChanges[0]
-
-	// Check if already at bottom
-	if stackCtx.OnUUIDBranch() {
-		currentChange := stackCtx.CurrentChange()
-		if currentChange != nil && currentChange.Position == 1 {
-			return fmt.Errorf("already at bottom position")
+	bottomActiveChange := &stackCtx.ActiveChanges[0]
+	if bottomActiveChange.UUID == stackCtx.GetCurrentPositionUUID() {
+		if len(stackCtx.ActiveChanges) == 1 {
+			ui.Warning("Only 1 active change in stack")
+		} else {
+			ui.Warning("Already at the bottom active change")
 		}
+		return nil
 	}
 
 	// Validate UUID exists
-	if firstChange.UUID == "" {
+	if bottomActiveChange.UUID == "" {
 		return fmt.Errorf("cannot navigate to change #1: commit missing PR-UUID trailer")
 	}
 
 	// Checkout UUID branch for editing
-	_, err = c.Stack.CheckoutChangeForEditing(stackCtx, firstChange)
+	_, err = c.Stack.CheckoutChangeForEditing(stackCtx, bottomActiveChange)
 	if err != nil {
 		return err
 	}
 
 	// Warn if navigating to a merged change
-	if c.Stack.IsChangeMerged(firstChange) {
+	if c.Stack.IsChangeMerged(bottomActiveChange) {
 		ui.Warningf(
 			"Change #%d has been merged on GitHub - run 'stack refresh' to sync",
-			firstChange.Position,
+			bottomActiveChange.Position,
 		)
 	}
 
@@ -119,7 +118,7 @@ func (c *Command) Run(ctx context.Context) error {
 
 	// Print success message with stack tree
 	ui.Print(ui.RenderNavigationSuccess(ui.NavigationSuccess{
-		Message:     fmt.Sprintf("Moved to change #%d: %s", firstChange.Position, firstChange.Title),
+		Message:     fmt.Sprintf("Moved to change #%d: %s", bottomActiveChange.Position, bottomActiveChange.Title),
 		Stack:       stackCtx.Stack,
 		Changes:     stackCtx.AllChanges,
 		CurrentUUID: stackCtx.GetCurrentPositionUUID(),

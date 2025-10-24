@@ -390,9 +390,19 @@ func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, 
 		}
 	}
 
+	numMergedPRs := 0
+	if prData != nil {
+		for _, pr := range prData.PRs {
+			if pr.IsMerged() {
+				numMergedPRs++
+			}
+		}
+	}
+
 	// Renumber positions for active changes (1-indexed)
 	for i := range activeChanges {
-		activeChanges[i].Position = i + 1
+		activeChanges[i].Position = numMergedPRs + i + 1
+		activeChanges[i].ActivePosition = i + 1
 	}
 
 	// Calculate and set DesiredBase for each change based on stacking order
@@ -438,6 +448,14 @@ func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, 
 		}
 	}
 
+	// Add stale merged changes, skipping any we've already seen
+	for _, change := range staleMergedChanges {
+		if !seenUUIDs[change.UUID] {
+			allChanges = append(allChanges, change)
+			seenUUIDs[change.UUID] = true
+		}
+	}
+
 	// Add active changes, skipping any we've already seen
 	for _, change := range activeChanges {
 		if !seenUUIDs[change.UUID] {
@@ -463,7 +481,6 @@ func (c *Client) commitsToChanges(commits []git.Commit, prData *model.PRData) []
 		}
 
 		changes[i] = model.Change{
-			Position:    i + 1, // 1-indexed by commit order; renumbered later for active changes only
 			Title:       commit.Message.Title,
 			Description: commit.Message.Body,
 			CommitHash:  commit.Hash,
@@ -746,15 +763,9 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 		return nil, fmt.Errorf("failed to save PRs: %w", err)
 	}
 
-	// Reload context to get fresh StaleMergedChanges after updating PR metadata
-	freshCtx, err := c.getStackContextByName(stackCtx.StackName, stackCtx.Stack.Branch)
-	if err != nil {
-		return nil, fmt.Errorf("failed to reload stack context: %w", err)
-	}
-
 	// Calculate all merged changes (for SaveMergedChanges)
 	var mergedChanges []model.Change
-	for _, change := range freshCtx.AllChanges {
+	for _, change := range stackCtx.AllChanges {
 		if change.PR.IsMerged() {
 			mergedChanges = append(mergedChanges, change)
 		}
@@ -765,23 +776,23 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 	for _, change := range mergedChanges {
 		mergedPRNumbers[change.PR.PRNumber] = true
 	}
-	if err := ValidateBottomUpMerges(freshCtx.ActiveChanges, mergedPRNumbers); err != nil {
+	if err := ValidateBottomUpMerges(stackCtx.AllChanges, mergedPRNumbers); err != nil {
 		return nil, err
 	}
 
-	if err := c.SaveMergedChanges(freshCtx.StackName, mergedChanges); err != nil {
+	if err := c.SaveMergedChanges(stackCtx.StackName, mergedChanges); err != nil {
 		return nil, fmt.Errorf("failed to save merged changes: %w", err)
 	}
 
-	if err := c.UpdateSyncMetadata(freshCtx.StackName); err != nil {
+	if err := c.UpdateSyncMetadata(stackCtx.StackName); err != nil {
 		return nil, err
 	}
 
-	remainingCount := len(freshCtx.ActiveChanges) - len(freshCtx.StaleMergedChanges)
+	remainingCount := len(stackCtx.ActiveChanges) - len(stackCtx.StaleMergedChanges)
 	return &RefreshResult{
-		StaleMergedCount:   len(freshCtx.StaleMergedChanges),
+		StaleMergedCount:   len(stackCtx.StaleMergedChanges),
 		RemainingCount:     remainingCount,
-		StaleMergedChanges: freshCtx.StaleMergedChanges,
+		StaleMergedChanges: stackCtx.StaleMergedChanges,
 	}, nil
 }
 
@@ -894,7 +905,6 @@ func (c *Client) SaveMergedChanges(stackName string, merged []model.Change) erro
 		s.MergedChanges = []model.Change{}
 	}
 
-	// Append newly merged changes
 	s.MergedChanges = merged
 
 	// Save stack with updated merged changes
@@ -1049,7 +1059,7 @@ func (c *Client) CheckoutChangeForEditing(stackCtx *StackContext, change *model.
 
 	// If this is the topmost change, checkout the TOP branch instead of staying on UUID branch
 	// This allows users to work on the entire stack when at the top position
-	if change.Position == len(stackCtx.ActiveChanges) {
+	if change.Position == len(stackCtx.AllChanges) {
 		if err := c.git.CheckoutBranch(stackCtx.Stack.Branch); err != nil {
 			return "", fmt.Errorf("failed to checkout TOP branch: %w", err)
 		}

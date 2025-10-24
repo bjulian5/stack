@@ -4,14 +4,15 @@ import "time"
 
 // Change represents a commit in the context of a stack that may become a pull request.
 type Change struct {
-	Position    int
-	Title       string
-	Description string
-	CommitHash  string
-	UUID        string
-	PR          *PR
-	MergedAt    time.Time `json:"merged_at"`
-	DesiredBase string
+	Position       int
+	ActivePosition int
+	Title          string
+	Description    string
+	CommitHash     string
+	UUID           string
+	PR             *PR
+	MergedAt       time.Time `json:"merged_at"`
+	DesiredBase    string
 }
 
 func (c *Change) IsLocal() bool {

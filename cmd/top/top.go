@@ -76,29 +76,40 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to sync with GitHub: %w", err)
 	}
 
-	// Warn if the topmost change (current HEAD) has been merged
-	if len(stackCtx.ActiveChanges) > 0 {
-		topmostChange := &stackCtx.ActiveChanges[len(stackCtx.ActiveChanges)-1]
-		if c.Stack.IsChangeMerged(topmostChange) {
-			ui.Warningf(
-				"Change #%d has been merged on GitHub - run 'stack refresh' to sync",
-				topmostChange.Position,
-			)
+	// Validate stack has active changes
+	if len(stackCtx.ActiveChanges) == 0 {
+		return fmt.Errorf("no active changes in stack: all changes are merged")
+	}
+
+	topActiveChange := &stackCtx.ActiveChanges[len(stackCtx.ActiveChanges)-1]
+	if topActiveChange.UUID == stackCtx.GetCurrentPositionUUID() {
+		if len(stackCtx.ActiveChanges) == 1 {
+			ui.Warning("Only 1 active change in stack")
+		} else {
+			ui.Warning("Already at top active change")
 		}
+		return nil
 	}
 
-	// Check if already on TOP branch
-	if !stackCtx.OnUUIDBranch() {
-		return fmt.Errorf("already at top of stack")
+	// Validate UUID exists
+	if topActiveChange.UUID == "" {
+		return fmt.Errorf("cannot navigate to change: commit missing PR-UUID trailer")
 	}
 
-	// Checkout the TOP branch
-	topBranch := stackCtx.Stack.Branch
-	if err := c.Git.CheckoutBranch(topBranch); err != nil {
-		return fmt.Errorf("failed to checkout top branch: %w", err)
+	// Checkout UUID branch for editing
+	_, err = c.Stack.CheckoutChangeForEditing(stackCtx, topActiveChange)
+	if err != nil {
+		return err
 	}
 
-	// Get updated context (now on TOP branch)
+	// Warn if navigating to a merged change
+	if c.Stack.IsChangeMerged(topActiveChange) {
+		ui.Warningf(
+			"Change #%d has been merged on GitHub - run 'stack refresh' to sync",
+			topActiveChange.Position,
+		)
+	}
+
 	stackCtx, err = c.Stack.GetStackContext()
 	if err != nil {
 		return fmt.Errorf("failed to get updated stack context: %w", err)
@@ -106,7 +117,7 @@ func (c *Command) Run(ctx context.Context) error {
 
 	// Print success message with stack tree
 	ui.Print(ui.RenderNavigationSuccess(ui.NavigationSuccess{
-		Message:     fmt.Sprintf("Moved to top of stack: %s", topBranch),
+		Message:     fmt.Sprintf("Moved to top of stack: %s", topActiveChange.Title),
 		Stack:       stackCtx.Stack,
 		Changes:     stackCtx.AllChanges,
 		CurrentUUID: stackCtx.GetCurrentPositionUUID(),

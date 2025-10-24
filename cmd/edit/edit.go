@@ -125,10 +125,5 @@ func (c *Command) Run(ctx context.Context) error {
 		CurrentUUID: stackCtx.GetCurrentPositionUUID(),
 		IsEditing:   true,
 	}))
-
-	// TODO: Add cleanup mechanism for stale UUID branches after changes are merged/deleted.
-	// Over time, users will accumulate many UUID branches that should be cleaned up.
-	// Consider implementing: stack clean [--stack <name>] [--merged] [--all]
-
 	return nil
 }

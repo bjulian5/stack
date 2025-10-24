@@ -165,10 +165,7 @@ func (c *Command) Run(ctx context.Context) error {
 
 	var created, updated, skipped int
 
-	for i, change := range stackCtx.ActiveChanges {
-		position := i + 1
-		total := len(stackCtx.ActiveChanges)
-
+	for _, change := range stackCtx.ActiveChanges {
 		prBranch := stackCtx.FormatUUIDBranch(username, change.UUID)
 
 		existingPRNumber := 0
@@ -193,8 +190,8 @@ func (c *Command) Run(ctx context.Context) error {
 		if existingPR != nil && existingPR.State == "closed" {
 			skipped++
 			ui.Print(ui.RenderPushProgress(ui.PushProgress{
-				Position: position,
-				Total:    total,
+				Position: change.Position,
+				Total:    len(stackCtx.AllChanges),
 				Title:    change.Title,
 				PRNumber: existingPR.PRNumber,
 				URL:      existingPR.URL,
@@ -211,8 +208,8 @@ func (c *Command) Run(ctx context.Context) error {
 			if !syncStatus.NeedsSync {
 				skipped++
 				ui.Print(ui.RenderPushProgress(ui.PushProgress{
-					Position: position,
-					Total:    total,
+					Position: change.Position,
+					Total:    len(stackCtx.AllChanges),
 					Title:    change.Title,
 					PRNumber: existingPR.PRNumber,
 					URL:      existingPR.URL,
@@ -239,8 +236,8 @@ func (c *Command) Run(ctx context.Context) error {
 		}
 
 		ui.Print(ui.RenderPushProgress(ui.PushProgress{
-			Position: position,
-			Total:    total,
+			Position: change.Position,
+			Total:    len(stackCtx.AllChanges),
 			Title:    change.Title,
 			PRNumber: prNumber,
 			URL:      prURL,

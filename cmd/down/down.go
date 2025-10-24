@@ -82,32 +82,24 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("no active changes in stack: all changes are merged")
 	}
 
-	// Determine target position based on current state
-	var targetPosition int
-
-	if stackCtx.OnUUIDBranch() {
-		// On UUID branch - move down from current position
-		currentChange := stackCtx.CurrentChange()
-		if currentChange == nil {
-			return fmt.Errorf("failed to determine current change")
-		}
-		targetPosition = currentChange.Position - 1
-
-		// Check if already at bottom
-		if targetPosition < 1 {
-			return fmt.Errorf("already at bottom position")
-		}
-	} else {
-		// On TOP branch - move to N-1
-		targetPosition = len(stackCtx.ActiveChanges) - 1
-
-		// Check if stack has at least 2 changes
-		if targetPosition < 1 {
-			return fmt.Errorf("stack only has one change: already at bottom")
-		}
+	currentChange := stackCtx.FindChange(stackCtx.GetCurrentPositionUUID())
+	if currentChange == nil {
+		return fmt.Errorf("current change is not a valid change in the stack")
 	}
 
-	// Get target change by index (Position is 1-indexed)
+	if currentChange.ActivePosition == 1 {
+		if len(stackCtx.ActiveChanges) == 1 {
+			ui.Warning("Only 1 active change in stack")
+		} else {
+			ui.Warning("Already at the bottom active change")
+		}
+		return nil
+	}
+
+	currentActivePosition := currentChange.ActivePosition
+
+	// Calculate target position (move down by 1)
+	targetPosition := currentActivePosition - 1
 	targetChange := &stackCtx.ActiveChanges[targetPosition-1]
 
 	// Validate UUID exists
