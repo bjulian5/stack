@@ -84,9 +84,9 @@ func (c *Command) Run(ctx context.Context) error {
 		}
 
 		if result.SyncedToGitHub {
-			ui.Successf("✓ Marked as ready on GitHub: %s (PR #%d)", change.Title, result.PRNumber)
+			ui.Successf("Marked as ready on GitHub: %s (PR #%d)", change.Title, result.PRNumber)
 		} else {
-			ui.Successf("✓ Marked as ready locally: %s", change.Title)
+			ui.Successf("Marked as ready locally: %s", change.Title)
 			hasUnpushedChanges = true
 		}
 	}
