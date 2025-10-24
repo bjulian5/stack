@@ -65,7 +65,7 @@ func (c *Client) getStacksRootDir() string {
 	return filepath.Join(c.gitRoot, ".git", "stack")
 }
 
-func (c *Client) LoadStack(name string) (*Stack, error) {
+func (c *Client) LoadStack(name string) (*model.Stack, error) {
 	stackDir := c.getStackDir(name)
 	configPath := filepath.Join(stackDir, "config.json")
 
@@ -74,7 +74,7 @@ func (c *Client) LoadStack(name string) (*Stack, error) {
 		return nil, fmt.Errorf("failed to read stack config: %w", err)
 	}
 
-	var stack Stack
+	var stack model.Stack
 	if err := json.Unmarshal(data, &stack); err != nil {
 		return nil, fmt.Errorf("failed to parse stack config: %w", err)
 	}
@@ -90,7 +90,7 @@ func (c *Client) LoadStack(name string) (*Stack, error) {
 	return &stack, nil
 }
 
-func (c *Client) SaveStack(stack *Stack) error {
+func (c *Client) SaveStack(stack *model.Stack) error {
 	stackDir := c.getStackDir(stack.Name)
 
 	if err := os.MkdirAll(stackDir, 0755); err != nil {
@@ -164,11 +164,11 @@ func (c *Client) StackExists(name string) bool {
 	return err == nil
 }
 
-func (c *Client) ListStacks() ([]*Stack, error) {
+func (c *Client) ListStacks() ([]*model.Stack, error) {
 	stacksRoot := c.getStacksRootDir()
 
 	if _, err := os.Stat(stacksRoot); os.IsNotExist(err) {
-		return []*Stack{}, nil
+		return []*model.Stack{}, nil
 	}
 
 	entries, err := os.ReadDir(stacksRoot)
@@ -176,7 +176,7 @@ func (c *Client) ListStacks() ([]*Stack, error) {
 		return nil, fmt.Errorf("failed to read stacks directory: %w", err)
 	}
 
-	var stacks []*Stack
+	var stacks []*model.Stack
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -278,7 +278,7 @@ func (c *Client) SwitchStack(name string) error {
 }
 
 // CreateStack creates a new stack with the given name and base branch
-func (c *Client) CreateStack(name string, baseBranch string) (*Stack, error) {
+func (c *Client) CreateStack(name string, baseBranch string) (*model.Stack, error) {
 	// Check if stack already exists
 	if c.StackExists(name) {
 		return nil, fmt.Errorf("stack '%s' already exists", name)
@@ -319,7 +319,7 @@ func (c *Client) CreateStack(name string, baseBranch string) (*Stack, error) {
 	}
 
 	// Create stack metadata
-	s := &Stack{
+	s := &model.Stack{
 		Name:     name,
 		Branch:   branchName,
 		Base:     baseBranch,
@@ -338,7 +338,7 @@ func (c *Client) CreateStack(name string, baseBranch string) (*Stack, error) {
 // getChangesForStack loads all changes for a stack (shared logic)
 // getChangesForStack returns both AllChanges and ActiveChanges for a stack.
 // AllChanges includes merged + active changes. ActiveChanges includes only unmerged changes.
-func (c *Client) getChangesForStack(s *Stack) (allChanges []model.Change, activeChanges []model.Change, err error) {
+func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, activeChanges []model.Change, err error) {
 	// Load PR tracking data
 	prData, err := c.LoadPRs(s.Name)
 	if err != nil {
@@ -607,8 +607,8 @@ func (c *Client) SyncPRFromGitHub(data model.PRSyncData) error {
 
 // RefreshResult contains the results of a refresh operation
 type RefreshResult struct {
-	MergedCount    int                // Number of PRs that were merged
-	RemainingCount int                // Number of PRs still active
+	MergedCount    int            // Number of PRs that were merged
+	RemainingCount int            // Number of PRs still active
 	MergedChanges  []model.Change // The changes that were merged
 }
 
@@ -1194,7 +1194,7 @@ func (c *Client) DeleteStack(stackName string, skipConfirm bool) error {
 	return nil
 }
 
-func (c *Client) checkoutBaseBranchIfNeeded(stack *Stack, branches []string) error {
+func (c *Client) checkoutBaseBranchIfNeeded(stack *model.Stack, branches []string) error {
 	currentBranch, err := c.git.GetCurrentBranch()
 	if err != nil {
 		return fmt.Errorf("failed to get current branch: %w", err)
@@ -1242,7 +1242,7 @@ func (c *Client) deleteBranches(branches []string) {
 }
 
 type CleanupCandidate struct {
-	Stack       *Stack
+	Stack       *model.Stack
 	Reason      string
 	ChangeCount int
 }

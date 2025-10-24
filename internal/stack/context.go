@@ -10,7 +10,7 @@ import (
 // StackContext represents a snapshot of stack state for the current branch or a stack loaded by name.
 type StackContext struct {
 	StackName     string
-	Stack         *Stack
+	Stack         *model.Stack
 	AllChanges    []model.Change // Complete history (merged + active)
 	ActiveChanges []model.Change // Only unmerged changes from TOP branch
 	currentUUID   string         // UUID where we are positioned

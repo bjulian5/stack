@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/bjulian5/stack/internal/model"
-	"github.com/bjulian5/stack/internal/stack"
 	"github.com/charmbracelet/lipgloss/tree"
 )
 
@@ -17,7 +16,7 @@ import (
 //	  ├─● #123 Add JWT auth (a1b2c3d)
 //	  ├─◐ #124 Refresh tokens (b2c3d4e)
 //	  ╰─◯ Unit tests (c3d4e5f) [local]
-func RenderStackTree(s *stack.Stack, changes []model.Change, currentUUID string) string {
+func RenderStackTree(s *model.Stack, changes []model.Change, currentUUID string) string {
 	if len(changes) == 0 {
 		return TreeRootStyle.Render(s.Name) + "\n" + Dim("  No changes yet")
 	}
@@ -52,7 +51,7 @@ func RenderStackTree(s *stack.Stack, changes []model.Change, currentUUID string)
 //	├─● #123 Add JWT auth (a1b2c3d)
 //	├─◐ #124 Refresh tokens (b2c3d4e)
 //	╰─◯ Unit tests (c3d4e5f) [local]
-func RenderStackTreeCompact(s *stack.Stack, changes []model.Change, currentUUID string) string {
+func RenderStackTreeCompact(s *model.Stack, changes []model.Change, currentUUID string) string {
 	if len(changes) == 0 {
 		return TreeRootStyle.Render(s.Name) + "\n" + Dim("  No changes yet")
 	}
@@ -87,7 +86,7 @@ func RenderStackTreeCompact(s *stack.Stack, changes []model.Change, currentUUID 
 //	╰─ ui-improvements
 //	   ├─ 5 local
 //	   ╰─ bjulian5/stack-ui-improvements/TOP → main
-func RenderStackListTree(stacks []*stack.Stack, allChanges map[string][]model.Change, currentStackName string) string {
+func RenderStackListTree(stacks []*model.Stack, allChanges map[string][]model.Change, currentStackName string) string {
 	if len(stacks) == 0 {
 		return Dim("No stacks yet. Create one with: ") + Highlight("stack new <name>")
 	}

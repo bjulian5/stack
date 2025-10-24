@@ -86,7 +86,7 @@ func (c *Command) Run(ctx context.Context) error {
 		currentStackName = currentStackCtx.StackName
 	}
 
-	var selectedStack *stack.Stack
+	var selectedStack *model.Stack
 
 	if c.StackName != "" {
 		found := false
