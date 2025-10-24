@@ -9,6 +9,7 @@ import (
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/hooks"
 	"github.com/bjulian5/stack/internal/stack"
+	"github.com/bjulian5/stack/internal/ui"
 )
 
 // Command installs stack hooks and configuration
@@ -58,30 +59,33 @@ func (c *Command) Run(cmd *cobra.Command, args []string) error {
 	}
 
 	if installed {
-		fmt.Println("Stack is already installed in this repository.")
-		fmt.Println("Reinstalling...")
+		ui.Info("Stack is already installed in this repository.")
+		ui.Info("Reinstalling...")
 	}
 
 	// Install git hooks
 	if err := hooks.InstallHooks(c.Git.GitRoot()); err != nil {
 		return fmt.Errorf("failed to install git hooks: %w", err)
 	}
-	fmt.Println("✓ Git hooks installed")
+	ui.Success("Git hooks installed")
 
 	// Configure git settings
 	// Use ';' as comment character to avoid conflicts with markdown headers
 	if err := c.Git.SetConfig("core.commentChar", ";"); err != nil {
 		return fmt.Errorf("failed to configure git: %w", err)
 	}
-	fmt.Println("✓ Git configured (core.commentChar=';')")
+	ui.Success("Git configured (core.commentChar=';')")
 
 	// Mark as installed
 	if err := c.Stack.MarkInstalled(); err != nil {
 		return fmt.Errorf("failed to save installation state: %w", err)
 	}
 
-	fmt.Println("\nStack is ready to use! Create your first stack with:")
-	fmt.Println("  stack new <stack-name>")
+	ui.Print("")
+	ui.Success("Installation complete!")
+	ui.Print("")
+	ui.Print("Get started by creating your first stack:")
+	ui.Print("  " + ui.Highlight("stack new <stack-name>"))
 
 	return nil
 }
