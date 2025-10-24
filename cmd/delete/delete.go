@@ -122,7 +122,7 @@ func (c *Command) resolveStackName() (string, error) {
 func (c *Command) showDeletionSummary(stackCtx *stack.StackContext, branches []string) {
 	openCount, mergedCount := 0, 0
 	for _, change := range stackCtx.AllChanges {
-		if change.IsMerged {
+		if change.PR.IsMerged() {
 			mergedCount++
 		} else {
 			openCount++

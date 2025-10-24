@@ -33,6 +33,13 @@ type PR struct {
 	RemoteDraftStatus bool `json:"remote_draft_status"`
 }
 
+func (p *PR) IsMerged() bool {
+	if p == nil {
+		return false
+	}
+	return p.State == "merged"
+}
+
 // PRSyncData contains all data needed to sync a PR to local storage
 type PRSyncData struct {
 	StackName         string

@@ -9,13 +9,14 @@ import (
 
 // StackContext represents a snapshot of stack state for the current branch or a stack loaded by name.
 type StackContext struct {
-	StackName     string
-	Stack         *model.Stack
-	AllChanges    []model.Change // Complete history (merged + active)
-	ActiveChanges []model.Change // Only unmerged changes from TOP branch
-	currentUUID   string         // UUID where we are positioned
-	onUUIDBranch  bool           // true if on UUID branch (editing specific change)
-	stackActive   bool           // true if this stack is currently active in repo
+	StackName          string
+	Stack              *model.Stack
+	AllChanges         []model.Change // Complete history (merged + active)
+	ActiveChanges      []model.Change // Only unmerged changes from TOP branch
+	StaleMergedChanges []model.Change // Active changes that are merged on GitHub but still on TOP branch (need restack)
+	currentUUID        string         // UUID where we are positioned
+	onUUIDBranch       bool           // true if on UUID branch (editing specific change)
+	stackActive        bool           // true if this stack is currently active in repo
 }
 
 func (s *StackContext) IsStack() bool {
@@ -41,6 +42,15 @@ func (s *StackContext) FindChange(uuid string) *model.Change {
 	for i := range s.AllChanges {
 		if s.AllChanges[i].UUID == uuid {
 			return &s.AllChanges[i]
+		}
+	}
+	return nil
+}
+
+func (s *StackContext) FindChangeInActive(uuid string) *model.Change {
+	for i := range s.ActiveChanges {
+		if s.ActiveChanges[i].UUID == uuid {
+			return &s.ActiveChanges[i]
 		}
 	}
 	return nil

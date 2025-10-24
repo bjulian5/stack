@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bjulian5/stack/internal/model"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/bjulian5/stack/internal/model"
 )
 
 // Status icons use Unicode geometric shapes for cross-platform compatibility.
@@ -101,10 +102,6 @@ func GetChangeStatus(change model.Change) Status {
 			return GetStatus("draft")
 		}
 		return GetStatus("local")
-	}
-
-	if change.NeedsSyncToGitHub().NeedsSync {
-		return GetStatus("needs-push")
 	}
 
 	if change.GetDraftStatus() {

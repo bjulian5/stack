@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bjulian5/stack/internal/model"
 	"github.com/charmbracelet/lipgloss/tree"
+
+	"github.com/bjulian5/stack/internal/model"
 )
 
 // RenderStackTree renders a single stack as a tree with its changes
@@ -158,6 +159,10 @@ func RenderChangeListTree(changes []model.Change) string {
 func formatChangeForTree(change model.Change, currentUUID string) string {
 	status := GetChangeStatus(change)
 	icon := status.RenderCompact()
+
+	if change.NeedsSyncToGitHub().NeedsSync {
+		icon = fmt.Sprintf("%s%s", icon, GetStatus("needs-push").RenderCompact())
+	}
 
 	// Format PR label
 	var prLabel string

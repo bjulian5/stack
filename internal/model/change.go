@@ -10,7 +10,6 @@ type Change struct {
 	CommitHash  string
 	UUID        string
 	PR          *PR
-	IsMerged    bool
 	MergedAt    time.Time `json:"merged_at"`
 	DesiredBase string
 }
@@ -36,7 +35,7 @@ func (c *Change) NeedsSyncToGitHub() ChangeSyncStatus {
 		return ChangeSyncStatus{NeedsSync: true, Reason: "new change"}
 	}
 
-	if c.PR.Title == "" || c.PR.Body == "" || c.PR.Base == "" {
+	if c.PR.Title == "" || c.PR.Base == "" {
 		return ChangeSyncStatus{NeedsSync: true, Reason: "metadata not cached"}
 	}
 

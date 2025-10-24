@@ -227,17 +227,18 @@ func (c *Client) getStackContextByName(name string, currentBranch string) (*Stac
 		return nil, fmt.Errorf("failed to load stack '%s': %w", name, err)
 	}
 
-	// Load all changes (merged + active)
-	allChanges, activeChanges, err := c.getChangesForStack(stack)
+	// Load all changes (merged + active + stale merged)
+	allChanges, activeChanges, staleMergedChanges, err := c.getChangesForStack(stack)
 	if err != nil {
 		return nil, err
 	}
 
 	res := &StackContext{
-		StackName:     name,
-		Stack:         stack,
-		AllChanges:    allChanges,
-		ActiveChanges: activeChanges,
+		StackName:          name,
+		Stack:              stack,
+		AllChanges:         allChanges,
+		ActiveChanges:      activeChanges,
+		StaleMergedChanges: staleMergedChanges,
 	}
 
 	if IsUUIDBranch(currentBranch) {
@@ -337,13 +338,14 @@ func (c *Client) CreateStack(name string, baseBranch string) (*model.Stack, erro
 }
 
 // getChangesForStack loads all changes for a stack (shared logic)
-// getChangesForStack returns both AllChanges and ActiveChanges for a stack.
+// getChangesForStack returns AllChanges, ActiveChanges, and StaleMergedChanges for a stack.
 // AllChanges includes merged + active changes. ActiveChanges includes only unmerged changes.
-func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, activeChanges []model.Change, err error) {
+// StaleMergedChanges are active changes that are merged on GitHub but still on TOP branch (need refresh).
+func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, activeChanges []model.Change, staleMergedChanges []model.Change, err error) {
 	// Load PR tracking data
 	prData, err := c.LoadPRs(s.Name)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load PRs: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to load PRs: %w", err)
 	}
 
 	// Get merged changes from stack metadata (not from a git branch)
@@ -352,10 +354,20 @@ func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, 
 		mergedChanges = []model.Change{}
 	}
 
+	// Update merged changes with current PR state from prData
+	// This ensures merged changes reflect the latest PR information
+	for i := range mergedChanges {
+		if mergedChanges[i].UUID != "" {
+			if pr, ok := prData.PRs[mergedChanges[i].UUID]; ok {
+				mergedChanges[i].PR = pr
+			}
+		}
+	}
+
 	// Load active changes from TOP branch
 	activeCommits, err := c.git.GetCommits(s.Branch, s.Base)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get active commits: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to get active commits: %w", err)
 	}
 
 	// Filter commits to only include those belonging to this stack
@@ -367,8 +379,16 @@ func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, 
 		}
 	}
 
-	// Convert to changes with IsMerged = false
-	activeChanges = c.commitsToChanges(filteredCommits, prData, false)
+	for _, change := range c.commitsToChanges(filteredCommits, prData) {
+		if change.UUID == "" {
+			continue
+		}
+		if change.PR.IsMerged() {
+			staleMergedChanges = append(staleMergedChanges, change)
+		} else {
+			activeChanges = append(activeChanges, change)
+		}
+	}
 
 	// Renumber positions for active changes (1-indexed)
 	for i := range activeChanges {
@@ -378,31 +398,59 @@ func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, 
 	// Calculate and set DesiredBase for each change based on stacking order
 	username, err := common.GetUsername()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get username: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to get username: %w", err)
 	}
 
 	for i := range activeChanges {
+		// Determine the correct base for this change by looking at what comes before it
+		var desiredBase string
+
 		if i == 0 {
-			// First change targets the stack's base branch
-			activeChanges[i].DesiredBase = s.Base
+			// First active change: check if there are merged changes before it
+			if len(mergedChanges) > 0 {
+				// Merged changes exist, so base off the stack's base branch
+				// (the merged PRs have already been merged into the base)
+				desiredBase = s.Base
+			} else {
+				// No merged changes, base off the stack's base
+				desiredBase = s.Base
+			}
 		} else {
-			// Subsequent changes target the previous change's PR branch
+			// Subsequent active changes: base off the previous active change's PR branch
 			prevChange := &activeChanges[i-1]
-			prevBranch := fmt.Sprintf("%s/stack-%s/%s", username, s.Name, prevChange.UUID)
-			activeChanges[i].DesiredBase = prevBranch
+			desiredBase = fmt.Sprintf("%s/stack-%s/%s", username, s.Name, prevChange.UUID)
 		}
+
+		activeChanges[i].DesiredBase = desiredBase
 	}
 
 	// Build AllChanges (merged first, then active)
+	// Deduplicate by UUID to avoid showing the same PR twice if it appears in both
+	// merged changes and active commits on the TOP branch
 	allChanges = make([]model.Change, 0, len(mergedChanges)+len(activeChanges))
-	allChanges = append(allChanges, mergedChanges...)
-	allChanges = append(allChanges, activeChanges...)
+	seenUUIDs := make(map[string]bool)
 
-	return allChanges, activeChanges, nil
+	// Add merged changes first
+	for _, change := range mergedChanges {
+		if !seenUUIDs[change.UUID] {
+			allChanges = append(allChanges, change)
+			seenUUIDs[change.UUID] = true
+		}
+	}
+
+	// Add active changes, skipping any we've already seen
+	for _, change := range activeChanges {
+		if !seenUUIDs[change.UUID] {
+			allChanges = append(allChanges, change)
+			seenUUIDs[change.UUID] = true
+		}
+	}
+
+	return allChanges, activeChanges, staleMergedChanges, nil
 }
 
 // commitsToChanges converts git commits to Changes with the specified merged status
-func (c *Client) commitsToChanges(commits []git.Commit, prData *model.PRData, isMerged bool) []model.Change {
+func (c *Client) commitsToChanges(commits []git.Commit, prData *model.PRData) []model.Change {
 	changes := make([]model.Change, len(commits))
 	for i, commit := range commits {
 		uuid := commit.Message.Trailers["PR-UUID"]
@@ -421,7 +469,6 @@ func (c *Client) commitsToChanges(commits []git.Commit, prData *model.PRData, is
 			CommitHash:  commit.Hash,
 			UUID:        uuid,
 			PR:          pr,
-			IsMerged:    isMerged,
 		}
 	}
 
@@ -617,9 +664,9 @@ func (c *Client) SyncPRFromGitHub(data model.PRSyncData) error {
 
 // RefreshResult contains the results of a refresh operation
 type RefreshResult struct {
-	MergedCount    int            // Number of PRs that were merged
-	RemainingCount int            // Number of PRs still active
-	MergedChanges  []model.Change // The changes that were merged
+	StaleMergedCount   int            // Number of PRs that were merged on GitHub but still on TOP (stale)
+	RemainingCount     int            // Number of PRs still active
+	StaleMergedChanges []model.Change // The changes that were merged on GitHub but still on TOP (stale)
 }
 
 // SyncPRMetadata queries GitHub and updates local metadata without modifying git state.
@@ -631,9 +678,9 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 			return nil, err
 		}
 		return &RefreshResult{
-			MergedCount:    0,
-			RemainingCount: 0,
-			MergedChanges:  nil,
+			StaleMergedCount:   0,
+			RemainingCount:     0,
+			StaleMergedChanges: nil,
 		}, nil
 	}
 
@@ -649,9 +696,9 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 			return nil, err
 		}
 		return &RefreshResult{
-			MergedCount:    0,
-			RemainingCount: len(stackCtx.ActiveChanges),
-			MergedChanges:  nil,
+			StaleMergedCount:   0,
+			RemainingCount:     len(stackCtx.ActiveChanges),
+			StaleMergedChanges: nil,
 		}, nil
 	}
 
@@ -681,56 +728,60 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 		// Update the PR metadata in prData
 		pr := prData.PRs[change.UUID]
 		if pr != nil {
-			pr.State = strings.ToLower(prState.State)
+			// Normalize state based on IsMerged flag
+			// GitHub's state field returns "CLOSED" for merged PRs, but we need to distinguish
+			// merged from closed. Use the IsMerged flag to set the canonical state.
+			if prState.IsMerged {
+				pr.State = "merged"
+			} else {
+				pr.State = strings.ToLower(prState.State)
+			}
 			pr.RemoteDraftStatus = prState.IsDraft
 			// Preserve pr.LocalDraftStatus - don't overwrite user's preference!
 		}
+		change.PR = pr
 	}
 
 	if err := c.SavePRs(stackCtx.StackName, prData); err != nil {
 		return nil, fmt.Errorf("failed to save PRs: %w", err)
 	}
 
-	var newlyMerged []model.Change
-	for _, change := range stackCtx.AllChanges {
-		if change.IsLocal() {
-			continue
-		}
+	// Reload context to get fresh StaleMergedChanges after updating PR metadata
+	freshCtx, err := c.getStackContextByName(stackCtx.StackName, stackCtx.Stack.Branch)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload stack context: %w", err)
+	}
 
-		prState, found := result.PRStates[change.PR.PRNumber]
-		if !found {
-			continue
-		}
-
-		if prState.IsMerged && !c.IsChangeMerged(&change) {
-			mergedChange := change
-			mergedChange.IsMerged = true
-			mergedChange.MergedAt = prState.MergedAt
-			newlyMerged = append(newlyMerged, mergedChange)
+	// Calculate all merged changes (for SaveMergedChanges)
+	var mergedChanges []model.Change
+	for _, change := range freshCtx.AllChanges {
+		if change.PR.IsMerged() {
+			mergedChanges = append(mergedChanges, change)
 		}
 	}
 
+	// Validate bottom-up merges using stale merged changes
 	mergedPRNumbers := make(map[int]bool)
-	for _, change := range newlyMerged {
+	for _, change := range mergedChanges {
 		mergedPRNumbers[change.PR.PRNumber] = true
 	}
-	if err := ValidateBottomUpMerges(stackCtx.ActiveChanges, mergedPRNumbers); err != nil {
+	if err := ValidateBottomUpMerges(freshCtx.ActiveChanges, mergedPRNumbers); err != nil {
 		return nil, err
 	}
 
-	if err := c.SaveMergedChanges(stackCtx.StackName, newlyMerged); err != nil {
+	if err := c.SaveMergedChanges(freshCtx.StackName, mergedChanges); err != nil {
 		return nil, fmt.Errorf("failed to save merged changes: %w", err)
 	}
 
-	if err := c.UpdateSyncMetadata(stackCtx.StackName); err != nil {
+	if err := c.UpdateSyncMetadata(freshCtx.StackName); err != nil {
 		return nil, err
 	}
 
-	remainingCount := len(stackCtx.ActiveChanges) - len(newlyMerged)
+	remainingCount := len(freshCtx.ActiveChanges) - len(freshCtx.StaleMergedChanges)
 	return &RefreshResult{
-		MergedCount:    len(newlyMerged),
-		RemainingCount: remainingCount,
-		MergedChanges:  newlyMerged,
+		StaleMergedCount:   len(freshCtx.StaleMergedChanges),
+		RemainingCount:     remainingCount,
+		StaleMergedChanges: freshCtx.StaleMergedChanges,
 	}, nil
 }
 
@@ -760,9 +811,6 @@ func (c *Client) ApplyRefresh(stackCtx *StackContext, merged []model.Change) err
 	}); err != nil {
 		return fmt.Errorf("failed to rebase TOP: %w", err)
 	}
-
-	// Clean up UUID branches for merged PRs (non-fatal errors)
-	_ = c.CleanupMergedBranches(stackCtx, merged)
 
 	return nil
 }
@@ -834,7 +882,7 @@ func (c *Client) fetchRemote() error {
 }
 
 // SaveMergedChanges appends newly merged changes to the stack metadata
-func (c *Client) SaveMergedChanges(stackName string, newlyMerged []model.Change) error {
+func (c *Client) SaveMergedChanges(stackName string, merged []model.Change) error {
 	// Load current stack
 	s, err := c.LoadStack(stackName)
 	if err != nil {
@@ -847,34 +895,11 @@ func (c *Client) SaveMergedChanges(stackName string, newlyMerged []model.Change)
 	}
 
 	// Append newly merged changes
-	s.MergedChanges = append(s.MergedChanges, newlyMerged...)
+	s.MergedChanges = merged
 
 	// Save stack with updated merged changes
 	if err := c.SaveStack(s); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-// CleanupMergedBranches deletes UUID branches for merged PRs
-// Errors are non-fatal and just printed as warnings
-func (c *Client) CleanupMergedBranches(stackCtx *StackContext, merged []model.Change) error {
-	username, err := common.GetUsername()
-	if err != nil {
-		return err
-	}
-
-	for _, change := range merged {
-		branchName := stackCtx.FormatUUIDBranch(username, change.UUID)
-
-		// Delete local branch if it exists
-		if c.git.BranchExists(branchName) {
-			_ = c.git.DeleteBranch(branchName, true) // Ignore errors
-		}
-
-		// Delete remote branch if it exists
-		_ = c.git.DeleteRemoteBranch(branchName) // Ignore errors
 	}
 
 	return nil

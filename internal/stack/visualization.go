@@ -10,11 +10,11 @@ import (
 func GenerateStackVisualization(stackCtx *StackContext, currentPRNumber int) string {
 	var sb strings.Builder
 
-	totalPRs := len(stackCtx.ActiveChanges)
+	totalPRs := len(stackCtx.AllChanges)
 	sb.WriteString(fmt.Sprintf("## 📚 Stack: %s (%d PRs)\n\n", stackCtx.StackName, totalPRs))
 
 	currentPosition := 0
-	for _, change := range stackCtx.ActiveChanges {
+	for _, change := range stackCtx.AllChanges {
 		if !change.IsLocal() && change.PR.PRNumber == currentPRNumber {
 			currentPosition = change.Position
 			break
@@ -24,7 +24,7 @@ func GenerateStackVisualization(stackCtx *StackContext, currentPRNumber int) str
 	sb.WriteString("| # | PR | Status | Title |\n")
 	sb.WriteString("|---|-----|---------|---------------------------------------|\n")
 
-	for _, change := range stackCtx.ActiveChanges {
+	for _, change := range stackCtx.AllChanges {
 		prLabel := "-"
 		if !change.IsLocal() {
 			prLabel = change.PR.URL
@@ -47,7 +47,7 @@ func GenerateStackVisualization(stackCtx *StackContext, currentPRNumber int) str
 	}
 
 	sb.WriteString("\n**Merge order:** `" + stackCtx.Stack.Base)
-	for _, change := range stackCtx.ActiveChanges {
+	for _, change := range stackCtx.AllChanges {
 		if !change.IsLocal() {
 			sb.WriteString(fmt.Sprintf(" → #%d", change.PR.PRNumber))
 		}
@@ -55,8 +55,8 @@ func GenerateStackVisualization(stackCtx *StackContext, currentPRNumber int) str
 	sb.WriteString("`\n\n---\n\n")
 
 	sb.WriteString("💡 **Review tip:** Start from the bottom (")
-	if len(stackCtx.ActiveChanges) > 0 {
-		firstChange := stackCtx.ActiveChanges[0]
+	if len(stackCtx.AllChanges) > 0 {
+		firstChange := stackCtx.AllChanges[0]
 		if !firstChange.IsLocal() {
 			sb.WriteString(fmt.Sprintf("[#%d](%s)", firstChange.PR.PRNumber, firstChange.PR.URL))
 		}
@@ -84,7 +84,7 @@ func getStatusDisplay(status string) (emoji, text string) {
 }
 
 func (c *Client) SyncVisualizationComments(stackCtx *StackContext) error {
-	for _, change := range stackCtx.ActiveChanges {
+	for _, change := range stackCtx.AllChanges {
 		if change.IsLocal() {
 			continue
 		}

@@ -88,25 +88,25 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Display results if no merges
-	if result.MergedCount == 0 {
+	if result.StaleMergedCount == 0 {
 		ui.Success("No merged PRs found. Stack is up to date.")
 		return nil
 	}
 
 	// Apply refresh (fetch + rebase)
 	ui.Info("Fetching from remote and rebasing TOP branch...")
-	if err := c.Stack.ApplyRefresh(stackCtx, result.MergedChanges); err != nil {
+	if err := c.Stack.ApplyRefresh(stackCtx, result.StaleMergedChanges); err != nil {
 		return err
 	}
 
 	// Display what was merged in table format
 	ui.Println("")
-	ui.Print(ui.RenderTitlef("Merged PRs (%d detected)", result.MergedCount))
-	ui.Print(ui.RenderMergedPRsTable(result.MergedChanges))
+	ui.Print(ui.RenderTitlef("Merged PRs (%d detected)", result.StaleMergedCount))
+	ui.Print(ui.RenderMergedPRsTable(result.StaleMergedChanges))
 
 	// Display summary
 	ui.Println("")
-	ui.Successf("Stack refreshed: %d merged, %d remaining", result.MergedCount, result.RemainingCount)
+	ui.Successf("Stack refreshed: %d merged, %d remaining", result.StaleMergedCount, result.RemainingCount)
 
 	return nil
 }

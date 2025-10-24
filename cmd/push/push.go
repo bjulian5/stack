@@ -140,7 +140,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to sync with GitHub: %w", err)
 	}
 
-	if res.MergedCount > 0 {
+	if res.StaleMergedCount > 0 {
 		ui.Println("")
 		ui.Warning("One or more PRs have been merged on GitHub.")
 		ui.Print("Please run 'stack refresh' to sync your stack before pushing.")
@@ -185,6 +185,22 @@ func (c *Command) Run(ctx context.Context) error {
 			} else {
 				ui.Printf("Would create PR: %s\n", change.Title)
 			}
+			continue
+		}
+
+		// Skip PRs that are closed on GitHub (not merged)
+		// GitHub doesn't allow updating the base branch of closed PRs
+		if existingPR != nil && existingPR.State == "closed" {
+			skipped++
+			ui.Print(ui.RenderPushProgress(ui.PushProgress{
+				Position: position,
+				Total:    total,
+				Title:    change.Title,
+				PRNumber: existingPR.PRNumber,
+				URL:      existingPR.URL,
+				Action:   "skipped",
+				Reason:   "PR is closed on GitHub - reopen it or remove the commit from the stack",
+			}))
 			continue
 		}
 
