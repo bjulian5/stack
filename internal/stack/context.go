@@ -38,22 +38,6 @@ func (s *StackContext) GetCurrentPositionUUID() string {
 	return s.currentUUID
 }
 
-// GetCurrentPosition returns the current position in the stack.
-// - If on a UUID branch (editing a specific change), returns that change's position
-// - If on TOP branch, returns the highest position (len(ActiveChanges))
-// Returns an error if the position cannot be determined.
-func (s *StackContext) GetCurrentPosition() (int, error) {
-	if s.onUUIDBranch {
-		currentChange := s.CurrentChange()
-		if currentChange == nil {
-			return 0, fmt.Errorf("failed to determine current position")
-		}
-		return currentChange.Position, nil
-	}
-	// On TOP branch means we're at the highest position
-	return len(s.AllChanges), nil
-}
-
 func (s *StackContext) FindChange(uuid string) *model.Change {
 	for i := range s.AllChanges {
 		if s.AllChanges[i].UUID == uuid {

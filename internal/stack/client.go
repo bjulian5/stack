@@ -399,6 +399,17 @@ func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, 
 		}
 	}
 
+	// Enumerate positions for merged changes (1-indexed)
+	for i := range mergedChanges {
+		mergedChanges[i].Position = i + 1
+	}
+
+	// Stale merged changes get sequential positions after non-deduplicated mergedChanges
+	// Ones that overlap with mergedChanges will get deduplicated anyway
+	for i := range staleMergedChanges {
+		staleMergedChanges[i].Position = len(mergedChanges) + i + 1
+	}
+
 	// Renumber positions for active changes (1-indexed)
 	for i := range activeChanges {
 		activeChanges[i].Position = numMergedPRs + i + 1

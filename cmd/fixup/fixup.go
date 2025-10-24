@@ -100,7 +100,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Use fuzzy finder to select a change to fixup
-	selectedChange, err := ui.SelectChange(stackCtx.AllChanges)
+	selectedChange, err := ui.SelectChange(stackCtx.ActiveChanges)
 	if err != nil {
 		return err
 	}

@@ -82,14 +82,6 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	bottomActiveChange := &stackCtx.ActiveChanges[0]
-	if bottomActiveChange.UUID == stackCtx.GetCurrentPositionUUID() {
-		if len(stackCtx.ActiveChanges) == 1 {
-			ui.Warning("Only 1 active change in stack")
-		} else {
-			ui.Warning("Already at the bottom active change")
-		}
-		return nil
-	}
 
 	// Validate UUID exists
 	if bottomActiveChange.UUID == "" {

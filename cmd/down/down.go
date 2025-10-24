@@ -91,7 +91,7 @@ func (c *Command) Run(ctx context.Context) error {
 		if len(stackCtx.ActiveChanges) == 1 {
 			ui.Warning("Only 1 active change in stack")
 		} else {
-			ui.Warning("Already at the bottom active change")
+			ui.Warning("Already at the bottommost active change.")
 		}
 		return nil
 	}
