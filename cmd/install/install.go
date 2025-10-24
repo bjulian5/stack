@@ -12,14 +12,11 @@ import (
 	"github.com/bjulian5/stack/internal/ui"
 )
 
-// Command installs stack hooks and configuration
 type Command struct {
-	// Clients (can be mocked in tests)
 	Git   *git.Client
 	Stack *stack.Client
 }
 
-// Register registers the command with cobra
 func (c *Command) Register(parent *cobra.Command) {
 	var err error
 	c.Git, err = git.NewClient()
@@ -50,9 +47,7 @@ Example:
 	parent.AddCommand(cmd)
 }
 
-// Run executes the install command
 func (c *Command) Run(cmd *cobra.Command, args []string) error {
-	// Check if already installed
 	installed, err := c.Stack.IsInstalled()
 	if err != nil {
 		return fmt.Errorf("failed to check installation status: %w", err)
@@ -63,20 +58,16 @@ func (c *Command) Run(cmd *cobra.Command, args []string) error {
 		ui.Info("Reinstalling...")
 	}
 
-	// Install git hooks
 	if err := hooks.InstallHooks(c.Git.GitRoot()); err != nil {
 		return fmt.Errorf("failed to install git hooks: %w", err)
 	}
 	ui.Success("Git hooks installed")
 
-	// Configure git settings
-	// Use ';' as comment character to avoid conflicts with markdown headers
 	if err := c.Git.SetConfig("core.commentChar", ";"); err != nil {
 		return fmt.Errorf("failed to configure git: %w", err)
 	}
 	ui.Success("Git configured (core.commentChar=';')")
 
-	// Mark as installed
 	if err := c.Stack.MarkInstalled(); err != nil {
 		return fmt.Errorf("failed to save installation state: %w", err)
 	}

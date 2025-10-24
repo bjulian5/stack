@@ -9,7 +9,6 @@ import (
 )
 
 // GetUsername returns the username for branch naming
-// TODO: Add config support for username override
 func GetUsername() (string, error) {
 	currentUser, err := user.Current()
 	if err != nil {
@@ -21,7 +20,6 @@ func GetUsername() (string, error) {
 // GenerateUUID generates a 16-character hex UUID for PR identification
 func GenerateUUID() string {
 	u := uuid.New()
-	// Convert to hex string and take first 16 characters
 	hexStr := strings.ReplaceAll(u.String(), "-", "")
 	return hexStr[:16]
 }

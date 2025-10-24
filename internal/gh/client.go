@@ -9,15 +9,12 @@ import (
 	"time"
 )
 
-// Client provides GitHub operations via gh CLI
 type Client struct{}
 
-// NewClient creates a new GitHub client
 func NewClient() *Client {
 	return &Client{}
 }
 
-// SyncPR creates or updates a PR on GitHub idempotently
 func (c *Client) SyncPR(spec PRSpec) (*PR, error) {
 	var existingPR *PR
 	var err error
@@ -49,7 +46,6 @@ func (c *Client) SyncPR(spec PRSpec) (*PR, error) {
 	return c.updatePR(spec, existingPR)
 }
 
-// createPR creates a new PR on GitHub
 func (c *Client) createPR(spec PRSpec) (*PR, error) {
 	args := []string{
 		"pr", "create",
@@ -68,14 +64,11 @@ func (c *Client) createPR(spec PRSpec) (*PR, error) {
 		return nil, fmt.Errorf("failed to create PR: %w", err)
 	}
 
-	// gh pr create outputs the PR URL (e.g., https://github.com/owner/repo/pull/123)
-	// Use regex to extract PR number from the output
 	prNumber, err := extractPRNumber(string(output))
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract PR number from output: %w", err)
 	}
 
-	// Fetch the full PR details using the PR number
 	pr, err := c.getPRByNumber(prNumber)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch created PR details: %w", err)
@@ -84,9 +77,7 @@ func (c *Client) createPR(spec PRSpec) (*PR, error) {
 	return pr, nil
 }
 
-// extractPRNumber extracts the PR number from gh pr create output using regex
 func extractPRNumber(output string) (int, error) {
-	// Match GitHub PR URL pattern: https://github.com/owner/repo/pull/123
 	re := regexp.MustCompile(`https://github\.com/[^/]+/[^/]+/pull/(\d+)`)
 	matches := re.FindStringSubmatch(output)
 
@@ -102,7 +93,6 @@ func extractPRNumber(output string) (int, error) {
 	return prNumber, nil
 }
 
-// updatePR updates an existing PR and constructs result without additional fetch
 func (c *Client) updatePR(spec PRSpec, currentPR *PR) (*PR, error) {
 	prNumber := fmt.Sprintf("%d", spec.Number)
 

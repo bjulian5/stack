@@ -31,29 +31,10 @@ func Truncate(text string, maxLen int) string {
 	return lipgloss.NewStyle().MaxWidth(maxLen-3).Render(text) + "..."
 }
 
-// Pad pads text to the specified width with given alignment
-// Uses lipgloss PlaceHorizontal for proper rendering
 func Pad(text string, width int, align lipgloss.Position) string {
 	return lipgloss.PlaceHorizontal(width, align, text)
 }
 
-// PadLeft pads text to the left (deprecated - use Pad with lipgloss.Right)
-func PadLeft(text string, width int) string {
-	return Pad(text, width, lipgloss.Right)
-}
-
-// PadRight pads text to the right (deprecated - use Pad with lipgloss.Left)
-func PadRight(text string, width int) string {
-	return Pad(text, width, lipgloss.Left)
-}
-
-// Center centers text within a given width (deprecated - use Pad with lipgloss.Center)
-func Center(text string, width int) string {
-	return Pad(text, width, lipgloss.Center)
-}
-
-// RenderBox renders content in a styled box with optional title
-// Uses lipgloss JoinVertical for proper composition
 func RenderBox(title string, content string) string {
 	style := BoxStyle
 	if title != "" {
@@ -63,40 +44,28 @@ func RenderBox(title string, content string) string {
 			Bold(true).
 			Render(title)
 
-		// Use lipgloss JoinVertical for proper layout
 		combined := lipgloss.JoinVertical(lipgloss.Left, titleStyled, "", content)
 		return style.Render(combined)
 	}
 	return style.Render(content)
 }
 
-// RenderBorderedContent renders content with a border and optional title
-// This is an alias for RenderBox for backward compatibility
-func RenderBorderedContent(content string, title string) string {
-	return RenderBox(title, content)
-}
-
-// RenderPanel renders content in a styled panel
 func RenderPanel(content string) string {
 	return PanelStyle.Render(content)
 }
 
-// RenderHeader renders a section header
 func RenderHeader(text string) string {
 	return HeaderStyle.Render(text)
 }
 
-// RenderTitle renders a prominent title
 func RenderTitle(text string) string {
 	return TitleStyle.Render(text)
 }
 
-// RenderTitlef renders a formatted prominent title
 func RenderTitlef(format string, args ...interface{}) string {
 	return RenderTitle(fmt.Sprintf(format, args...))
 }
 
-// RenderSubtitle renders a subtitle
 func RenderSubtitle(text string) string {
 	return SubtitleStyle.Render(text)
 }
@@ -131,17 +100,14 @@ func RenderSeparator(width int) string {
 	return DimStyle.Render(strings.Repeat("─", width))
 }
 
-// RenderKeyValue renders a key-value pair
 func RenderKeyValue(key string, value string) string {
 	keyStyled := DimStyle.Render(key + ":")
 	return fmt.Sprintf("%s %s", keyStyled, value)
 }
 
-// RenderKeyValueList renders multiple key-value pairs with aligned keys
 func RenderKeyValueList(pairs map[string]string, keys []string) string {
 	var lines []string
 
-	// Calculate max key length using lipgloss.Width for ANSI-aware measurement
 	maxKeyLen := 0
 	for _, key := range keys {
 		keyLen := lipgloss.Width(key)
@@ -150,7 +116,6 @@ func RenderKeyValueList(pairs map[string]string, keys []string) string {
 		}
 	}
 
-	// Build aligned key-value pairs
 	for _, key := range keys {
 		// Pad key to max width
 		paddedKey := Pad(key, maxKeyLen, lipgloss.Left)

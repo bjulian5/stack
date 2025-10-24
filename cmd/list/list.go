@@ -12,18 +12,13 @@ import (
 	"github.com/bjulian5/stack/internal/ui"
 )
 
-// Command lists all stacks
 type Command struct {
-	// Flags
 	Table bool
-
-	// Clients (can be mocked in tests)
 	Git   *git.Client
 	Stack *stack.Client
 	GH    *gh.Client
 }
 
-// Register registers the command with cobra
 func (c *Command) Register(parent *cobra.Command) {
 	var err error
 	c.Git, err = git.NewClient()
@@ -54,22 +49,18 @@ Example:
 	parent.AddCommand(cmd)
 }
 
-// Run executes the command
 func (c *Command) Run(ctx context.Context) error {
-	// Get all stacks
 	stacks, err := c.Stack.ListStacks()
 	if err != nil {
 		return fmt.Errorf("failed to list stacks: %w", err)
 	}
 
-	// Get current stack from working context
 	var currentStack string
 	stackCtx, err := c.Stack.GetStackContext()
 	if err == nil && stackCtx.IsStack() {
 		currentStack = stackCtx.StackName
 	}
 
-	// Load changes for all stacks
 	stackChanges := make(map[string][]stack.Change)
 	for _, s := range stacks {
 		ctx, err := c.Stack.GetStackContextByName(s.Name)
@@ -78,19 +69,16 @@ func (c *Command) Run(ctx context.Context) error {
 			continue
 		}
 
-		// Sync metadata if stale (respects staleness threshold)
 		if s.Name == currentStack {
 			ctx, err = c.Stack.MaybeRefreshStackMetadata(ctx)
 			if err != nil {
 				ui.Warningf("failed to refresh stack %s: %v", s.Name, err)
-				// Continue with cached data rather than failing
 			}
 		}
 
 		stackChanges[s.Name] = ctx.AllChanges
 	}
 
-	// Render using table or tree view based on flag
 	var output string
 	if c.Table {
 		output = ui.RenderStackListTable(stacks, stackChanges, currentStack)

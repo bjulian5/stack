@@ -18,15 +18,12 @@ type Commit struct {
 	Message CommitMessage
 }
 
-// ShortHashLength is git's default abbreviated commit hash length
 const ShortHashLength = 7
 
-// ShortHash returns the abbreviated commit hash (first 7 characters)
 func (c *Commit) ShortHash() string {
 	return ShortHash(c.Hash)
 }
 
-// ShortHash returns the abbreviated form of a commit hash string (first 7 characters)
 func ShortHash(hash string) string {
 	if len(hash) <= ShortHashLength {
 		return hash
@@ -46,10 +43,9 @@ func ParseCommitMessage(message string) CommitMessage {
 		return commitMsg
 	}
 
-	// First line is the title
 	commitMsg.Title = strings.TrimSpace(lines[0])
 
-	// Find where trailers start (last non-empty block with Key: Value format)
+	// Find where trailers start
 	trailerStart := len(lines)
 	inTrailers := false
 
@@ -63,7 +59,6 @@ func ParseCommitMessage(message string) CommitMessage {
 			continue
 		}
 
-		// Check if this line looks like a trailer
 		if strings.Contains(line, ":") {
 			parts := strings.SplitN(line, ":", 2)
 			if len(parts) == 2 && !strings.Contains(parts[0], " ") {
@@ -72,14 +67,12 @@ func ParseCommitMessage(message string) CommitMessage {
 			}
 		}
 
-		// If we hit a non-trailer line while in trailers, we're done
 		if inTrailers {
 			trailerStart = i + 1
 			break
 		}
 	}
 
-	// Parse trailers
 	for i := trailerStart; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {
@@ -94,13 +87,11 @@ func ParseCommitMessage(message string) CommitMessage {
 		}
 	}
 
-	// Body is everything between title and trailers
 	bodyLines := []string{}
 	for i := 1; i < trailerStart; i++ {
 		bodyLines = append(bodyLines, lines[i])
 	}
 
-	// Trim leading and trailing empty lines from body
 	body := strings.Join(bodyLines, "\n")
 	commitMsg.Body = strings.TrimSpace(body)
 
@@ -116,18 +107,15 @@ func (c *CommitMessage) AddTrailer(key string, value string) {
 func (c *CommitMessage) String() string {
 	var result strings.Builder
 
-	// Title (first line)
 	result.WriteString(c.Title)
 	result.WriteString("\n")
 
-	// Body (if present)
 	if c.Body != "" {
 		result.WriteString("\n")
 		result.WriteString(c.Body)
 		result.WriteString("\n")
 	}
 
-	// Trailers (if present)
 	if len(c.Trailers) > 0 {
 		result.WriteString("\n")
 		for key, value := range c.Trailers {

@@ -12,21 +12,14 @@ import (
 	"github.com/bjulian5/stack/internal/ui"
 )
 
-// Command shows details of a stack
 type Command struct {
-	// Arguments
 	StackName string
-
-	// Flags
-	Table bool
-
-	// Clients (can be mocked in tests)
-	Git   *git.Client
-	Stack *stack.Client
-	GH    *gh.Client
+	Table     bool
+	Git       *git.Client
+	Stack     *stack.Client
+	GH        *gh.Client
 }
 
-// Register registers the command with cobra
 func (c *Command) Register(parent *cobra.Command) {
 	var err error
 	c.Git, err = git.NewClient()
@@ -61,21 +54,16 @@ Example:
 	parent.AddCommand(cmd)
 }
 
-// Run executes the command
 func (c *Command) Run(ctx context.Context) error {
 	var stackCtx *stack.StackContext
 	var err error
 
-	// If no stack name provided, use current branch context
-	// If stack name provided, load by name (won't show arrow unless we're on that stack)
 	if c.StackName == "" {
-		// Get context from current branch (includes position)
 		stackCtx, err = c.Stack.GetStackContext()
 		if err != nil || !stackCtx.IsStack() {
 			return fmt.Errorf("not on a stack branch: use 'stack status <name>'")
 		}
 	} else {
-		// Load stack by name
 		stackCtx, err = c.Stack.GetStackContextByName(c.StackName)
 		if err != nil {
 			return err
@@ -86,16 +74,13 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("stack '%s' does not exist", stackCtx.StackName)
 	}
 
-	// Sync metadata if stale (respects staleness threshold)
 	stackCtx, err = c.Stack.MaybeRefreshStackMetadata(stackCtx)
 	if err != nil {
 		return fmt.Errorf("failed to sync with GitHub: %w", err)
 	}
 
-	// Get current position for arrow indicator (empty if not on this stack)
 	currentUUID := stackCtx.GetCurrentPositionUUID()
 
-	// Render using table or tree view based on flag
 	var output string
 	if c.Table {
 		output = ui.RenderStackDetailsTable(stackCtx.Stack, stackCtx.AllChanges, currentUUID)

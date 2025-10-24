@@ -27,7 +27,6 @@ func (c *Client) GitRoot() string {
 	return c.gitRoot
 }
 
-// GetCurrentBranch returns the name of the current git branch
 func (c *Client) GetCurrentBranch() (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
 	output, err := cmd.Output()
@@ -37,7 +36,6 @@ func (c *Client) GetCurrentBranch() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// CheckoutBranch checks out the specified branch
 func (c *Client) CheckoutBranch(name string) error {
 	cmd := exec.Command("git", "checkout", name)
 	if err := cmd.Run(); err != nil {
@@ -46,7 +44,6 @@ func (c *Client) CheckoutBranch(name string) error {
 	return nil
 }
 
-// CreateAndCheckoutBranch creates a new branch and checks it out
 func (c *Client) CreateAndCheckoutBranch(name string) error {
 	cmd := exec.Command("git", "checkout", "-b", name)
 	if err := cmd.Run(); err != nil {
@@ -72,13 +69,11 @@ func (c *Client) CreateAndCheckoutBranchAt(name string, commitHash string) error
 	return nil
 }
 
-// BranchExists checks if a branch exists
 func (c *Client) BranchExists(name string) bool {
 	cmd := exec.Command("git", "rev-parse", "--verify", name)
 	return cmd.Run() == nil
 }
 
-// GetCommitHash returns the commit hash for a given ref
 func (c *Client) GetCommitHash(ref string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", ref)
 	output, err := cmd.Output()
@@ -88,9 +83,7 @@ func (c *Client) GetCommitHash(ref string) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// GetCommits returns all commits on the given branch that are not on the base branch
 func (c *Client) GetCommits(branch string, base string) ([]Commit, error) {
-	// Get commit hashes
 	cmd := exec.Command("git", "rev-list", "--reverse", fmt.Sprintf("%s..%s", base, branch))
 	output, err := cmd.Output()
 	if err != nil {
@@ -114,15 +107,12 @@ func (c *Client) GetCommits(branch string, base string) ([]Commit, error) {
 	return commits, nil
 }
 
-// GetCommit returns a commit by hash
 func (c *Client) GetCommit(hash string) (Commit, error) {
-	// Resolve the hash to an actual SHA (in case it's "HEAD" or another ref)
 	actualHash, err := c.GetCommitHash(hash)
 	if err != nil {
 		return Commit{}, fmt.Errorf("failed to resolve %s: %w", hash, err)
 	}
 
-	// Get commit message
 	cmd := exec.Command("git", "log", "--format=%B", "-n", "1", actualHash)
 	output, err := cmd.Output()
 	if err != nil {
@@ -146,7 +136,6 @@ func getGitRoot() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// CherryPick cherry-picks a commit
 func (c *Client) CherryPick(commitHash string) error {
 	cmd := exec.Command("git", "cherry-pick", commitHash)
 	if err := cmd.Run(); err != nil {
@@ -155,7 +144,6 @@ func (c *Client) CherryPick(commitHash string) error {
 	return nil
 }
 
-// ResetHard resets the current branch to a specific ref
 func (c *Client) ResetHard(ref string) error {
 	cmd := exec.Command("git", "reset", "--hard", ref)
 	if err := cmd.Run(); err != nil {
@@ -164,7 +152,6 @@ func (c *Client) ResetHard(ref string) error {
 	return nil
 }
 
-// AmendCommitMessage amends the HEAD commit with a new message
 func (c *Client) AmendCommitMessage(message string) error {
 	cmd := exec.Command("git", "commit", "--amend", "-m", message)
 	if err := cmd.Run(); err != nil {
@@ -173,7 +160,6 @@ func (c *Client) AmendCommitMessage(message string) error {
 	return nil
 }
 
-// RebaseOnto performs a rebase with --onto
 func (c *Client) RebaseOnto(newBase string, upstream string, branch string) error {
 	cmd := exec.Command("git", "rebase", "--onto", newBase, upstream, branch)
 	output, err := cmd.CombinedOutput()
@@ -183,7 +169,6 @@ func (c *Client) RebaseOnto(newBase string, upstream string, branch string) erro
 	return nil
 }
 
-// GetParentCommit returns the parent commit hash
 func (c *Client) GetParentCommit(commitHash string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", commitHash+"^")
 	output, err := cmd.Output()
@@ -193,7 +178,6 @@ func (c *Client) GetParentCommit(commitHash string) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// GetCommitTree returns the tree hash for a commit
 func (c *Client) GetCommitTree(commitHash string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", commitHash+"^{tree}")
 	output, err := cmd.Output()
@@ -203,7 +187,6 @@ func (c *Client) GetCommitTree(commitHash string) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// CommitTree creates a commit from a tree with a specific message and parent
 func (c *Client) CommitTree(treeHash string, parentHash string, message string) (string, error) {
 	cmd := exec.Command("git", "commit-tree", treeHash, "-p", parentHash, "-m", message)
 	output, err := cmd.Output()
@@ -213,12 +196,10 @@ func (c *Client) CommitTree(treeHash string, parentHash string, message string) 
 	return strings.TrimSpace(string(output)), nil
 }
 
-// IsRebaseInProgress checks if a rebase is currently in progress
 func (c *Client) IsRebaseInProgress() bool {
 	rebaseMerge := filepath.Join(c.gitRoot, ".git", "rebase-merge")
 	rebaseApply := filepath.Join(c.gitRoot, ".git", "rebase-apply")
 
-	// Check if either rebase directory exists
 	if _, err := os.Stat(rebaseMerge); err == nil {
 		return true
 	}
@@ -229,9 +210,7 @@ func (c *Client) IsRebaseInProgress() bool {
 	return false
 }
 
-// UpdateRef updates a branch reference to point to a specific commit
 func (c *Client) UpdateRef(branchName string, commitHash string) error {
-	// Use git update-ref to update the branch without checking it out
 	cmd := exec.Command("git", "update-ref", "refs/heads/"+branchName, commitHash)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to update ref %s to %s: %w", branchName, commitHash, err)
@@ -239,7 +218,6 @@ func (c *Client) UpdateRef(branchName string, commitHash string) error {
 	return nil
 }
 
-// HasUncommittedChanges checks if there are any uncommitted changes in the working directory
 func (c *Client) HasUncommittedChanges() (bool, error) {
 	cmd := exec.Command("git", "status", "--porcelain")
 	output, err := cmd.Output()
@@ -249,23 +227,18 @@ func (c *Client) HasUncommittedChanges() (bool, error) {
 	return len(strings.TrimSpace(string(output))) > 0, nil
 }
 
-// HasStagedChanges checks if there are any staged changes ready to be committed
 func (c *Client) HasStagedChanges() (bool, error) {
-	// git diff --cached --quiet returns exit code 0 if no changes, 1 if changes exist
 	cmd := exec.Command("git", "diff", "--cached", "--quiet")
 	err := cmd.Run()
 	if err != nil {
-		// Exit code 1 means there are staged changes
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
 			return true, nil
 		}
 		return false, fmt.Errorf("failed to check staged changes: %w", err)
 	}
-	// Exit code 0 means no staged changes
 	return false, nil
 }
 
-// CommitFixup creates a fixup commit targeting the specified commit
 func (c *Client) CommitFixup(commitHash string) error {
 	cmd := exec.Command("git", "commit", "--fixup", commitHash)
 	output, err := cmd.CombinedOutput()
@@ -275,11 +248,10 @@ func (c *Client) CommitFixup(commitHash string) error {
 	return nil
 }
 
-// RebaseInteractiveAutosquash runs an interactive rebase with autosquash from the specified commit
-// It uses GIT_SEQUENCE_EDITOR=true to automatically apply the autosquash without user interaction
+// RebaseInteractiveAutosquash runs an interactive rebase with autosquash from the specified commit.
+// Uses GIT_SEQUENCE_EDITOR=true to automatically apply the rebase plan without user interaction.
 func (c *Client) RebaseInteractiveAutosquash(fromCommit string) error {
 	cmd := exec.Command("git", "rebase", "-i", "--autosquash", fromCommit)
-	// Set GIT_SEQUENCE_EDITOR=true to automatically accept the rebase plan
 	cmd.Env = append(os.Environ(), "GIT_SEQUENCE_EDITOR=true")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -288,11 +260,9 @@ func (c *Client) RebaseInteractiveAutosquash(fromCommit string) error {
 	return nil
 }
 
-// Push pushes a branch to the remote repository
 func (c *Client) Push(branch string, force bool) error {
 	args := []string{"push"}
 
-	// Get remote name
 	remote, err := c.GetRemoteName()
 	if err != nil {
 		return err
@@ -311,7 +281,6 @@ func (c *Client) Push(branch string, force bool) error {
 	return nil
 }
 
-// GetRemoteName returns the default remote name (usually "origin")
 func (c *Client) GetRemoteName() (string, error) {
 	cmd := exec.Command("git", "remote")
 	output, err := cmd.Output()
@@ -324,11 +293,9 @@ func (c *Client) GetRemoteName() (string, error) {
 		return "", fmt.Errorf("no git remote configured")
 	}
 
-	// Return the first remote (usually "origin")
 	return remotes[0], nil
 }
 
-// Fetch fetches from a remote repository
 func (c *Client) Fetch(remote string) error {
 	cmd := exec.Command("git", "fetch", remote)
 	output, err := cmd.CombinedOutput()
@@ -338,7 +305,6 @@ func (c *Client) Fetch(remote string) error {
 	return nil
 }
 
-// CreateBranchAt creates a new branch at a specific commit or ref
 func (c *Client) CreateBranchAt(branchName string, ref string) error {
 	cmd := exec.Command("git", "branch", branchName, ref)
 	output, err := cmd.CombinedOutput()
@@ -348,7 +314,6 @@ func (c *Client) CreateBranchAt(branchName string, ref string) error {
 	return nil
 }
 
-// Rebase rebases current branch on top of another branch
 func (c *Client) Rebase(onto string) error {
 	cmd := exec.Command("git", "rebase", onto)
 	output, err := cmd.CombinedOutput()
@@ -358,7 +323,6 @@ func (c *Client) Rebase(onto string) error {
 	return nil
 }
 
-// DeleteBranch deletes a local branch
 func (c *Client) DeleteBranch(branchName string, force bool) error {
 	args := []string{"branch"}
 	if force {
@@ -376,7 +340,6 @@ func (c *Client) DeleteBranch(branchName string, force bool) error {
 	return nil
 }
 
-// DeleteRemoteBranch deletes a branch on the remote repository
 func (c *Client) DeleteRemoteBranch(branchName string) error {
 	remote, err := c.GetRemoteName()
 	if err != nil {
@@ -386,7 +349,6 @@ func (c *Client) DeleteRemoteBranch(branchName string) error {
 	cmd := exec.Command("git", "push", remote, "--delete", branchName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		// Check if branch doesn't exist on remote (not an error)
 		if strings.Contains(string(output), "remote ref does not exist") {
 			return nil
 		}
@@ -395,7 +357,6 @@ func (c *Client) DeleteRemoteBranch(branchName string) error {
 	return nil
 }
 
-// SetConfig sets a git config value
 func (c *Client) SetConfig(key string, value string) error {
 	cmd := exec.Command("git", "config", key, value)
 	if err := cmd.Run(); err != nil {
@@ -404,8 +365,8 @@ func (c *Client) SetConfig(key string, value string) error {
 	return nil
 }
 
-// StripComments removes git comment lines from a message using git stripspace
-// This respects the configured comment character (core.commentChar)
+// StripComments removes git comment lines from a message using git stripspace.
+// Respects the configured comment character (core.commentChar).
 func (c *Client) StripComments(message string) (string, error) {
 	cmd := exec.Command("git", "stripspace", "--strip-comments")
 	cmd.Stdin = strings.NewReader(message)
@@ -416,14 +377,12 @@ func (c *Client) StripComments(message string) (string, error) {
 	return string(output), nil
 }
 
-// GetUpstreamBranch returns the upstream tracking branch for a given branch
-// e.g., "main" -> "origin/main"
-// Returns empty string if no upstream is configured
+// GetUpstreamBranch returns the upstream tracking branch for a given branch.
+// Returns empty string if no upstream is configured.
 func (c *Client) GetUpstreamBranch(branch string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", branch+"@{u}")
 	output, err := cmd.Output()
 	if err != nil {
-		// No upstream configured - not an error, just return empty
 		return "", nil
 	}
 	return strings.TrimSpace(string(output)), nil

@@ -15,19 +15,16 @@ var prTemplateLocations = []string{
 }
 
 // FindPRTemplate searches for a GitHub pull request template in standard locations.
-// Returns the template content if found, or an empty string if not found.
 func (c *Client) FindPRTemplate() (string, error) {
 	for _, location := range prTemplateLocations {
 		templatePath := filepath.Join(c.gitRoot, location)
 		content, err := os.ReadFile(templatePath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
+		if err == nil {
+			return string(content), nil
+		}
+		if !os.IsNotExist(err) {
 			return "", err
 		}
-		return string(content), nil
 	}
-
 	return "", nil
 }

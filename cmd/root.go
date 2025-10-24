@@ -26,7 +26,6 @@ import (
 	"github.com/bjulian5/stack/cmd/up"
 )
 
-// rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "stack",
 	Short: "Git-native stacked PR tool",
@@ -39,8 +38,6 @@ familiar git commands for most operations.`,
 	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute(ctx context.Context) {
 	err := rootCmd.ExecuteContext(ctx)
 	if err != nil {
@@ -49,7 +46,6 @@ func Execute(ctx context.Context) {
 }
 
 func init() {
-	// Register all commands
 	commands := []Command{
 		&install.Command{},
 		&newcmd.Command{},
