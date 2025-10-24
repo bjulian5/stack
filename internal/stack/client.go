@@ -13,6 +13,7 @@ import (
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/model"
+	"github.com/bjulian5/stack/internal/ui"
 )
 
 // DefaultSyncThreshold is the time threshold after which a stack is considered stale
@@ -910,14 +911,14 @@ func (c *Client) Restack(stackCtx *StackContext, opts RestackOptions) error {
 	targetBase := opts.Onto
 
 	if opts.Fetch {
-		fmt.Println("Fetching from remote...")
+		ui.Info("Fetching from remote...")
 		if err := c.fetchRemote(); err != nil {
 			return fmt.Errorf("failed to fetch: %w", err)
 		}
 
 		if err := c.UpdateLocalBaseRef(targetBase); err != nil {
 			// Non-fatal: show warning and continue
-			fmt.Fprintf(os.Stderr, "Warning: could not update local base ref: %v\n", err)
+			ui.Warningf("could not update local base ref: %v", err)
 		}
 	}
 
@@ -930,7 +931,7 @@ func (c *Client) Restack(stackCtx *StackContext, opts RestackOptions) error {
 		if err := c.SaveStack(stackCtx.Stack); err != nil {
 			return fmt.Errorf("failed to update stack metadata: %w", err)
 		}
-		fmt.Printf("✓ Updated base branch: %s → %s\n", stackCtx.Stack.Base, targetBase)
+		ui.Successf("Updated base branch: %s → %s", stackCtx.Stack.Base, targetBase)
 	}
 	return nil
 }
@@ -957,7 +958,7 @@ func (c *Client) UpdateLocalBaseRef(baseBranch string) error {
 		if err := c.git.CreateBranchAt(baseBranch, upstreamHash); err != nil {
 			return err
 		}
-		fmt.Printf("Created local branch %s at %s\n", baseBranch, upstreamHash[:7])
+		ui.Infof("Created local branch %s at %s", baseBranch, upstreamHash[:7])
 		return nil
 	}
 
@@ -965,7 +966,7 @@ func (c *Client) UpdateLocalBaseRef(baseBranch string) error {
 		if err := c.git.UpdateRef(baseBranch, upstreamHash); err != nil {
 			return err
 		}
-		fmt.Printf("Updating %s: %s..%s\n", baseBranch, currentHash[:7], upstreamHash[:7])
+		ui.Infof("Updating %s: %s..%s", baseBranch, currentHash[:7], upstreamHash[:7])
 	}
 	return nil
 }
@@ -1002,7 +1003,7 @@ func (c *Client) CheckoutChangeForEditing(stackCtx *StackContext, change *model.
 				return "", fmt.Errorf("failed to sync branch to current commit: %w", err)
 			}
 			// TODO:(this is probably unexpected)
-			fmt.Printf("⚠️  Synced branch to current commit (was at %s, now at %s)\n",
+			ui.Warningf("Synced branch to current commit (was at %s, now at %s)",
 				git.ShortHash(existingHash), git.ShortHash(change.CommitHash))
 		}
 	} else {
@@ -1096,7 +1097,7 @@ func (c *Client) RebaseSubsequentCommitsWithRecovery(params RebaseParams) (int, 
 		StackBranch:       params.StackBranch,
 	}
 	if err := c.SaveRebaseState(params.StackName, rebaseState); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to save rebase state: %v\n", err)
+		ui.Warningf("failed to save rebase state: %v", err)
 	}
 
 	gitClient, ok := c.git.(*git.Client)
@@ -1115,7 +1116,7 @@ func (c *Client) RebaseSubsequentCommitsWithRecovery(params RebaseParams) (int, 
 	}
 
 	if err := c.ClearRebaseState(params.StackName); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to clear rebase state: %v\n", err)
+		ui.Warningf("failed to clear rebase state: %v", err)
 	}
 
 	return rebasedCount, nil
@@ -1188,7 +1189,7 @@ func (c *Client) DeleteStack(stackName string, skipConfirm bool) error {
 		return fmt.Errorf("failed to archive stack metadata: %w", err)
 	}
 
-	fmt.Printf("✓ Archived stack metadata to .git/stack/.archived/%s-*\n", stackName)
+	ui.Successf("Archived stack metadata to .git/stack/.archived/%s-*", stackName)
 
 	c.deleteBranches(branches)
 	return nil
@@ -1202,7 +1203,7 @@ func (c *Client) checkoutBaseBranchIfNeeded(stack *model.Stack, branches []strin
 
 	for _, branch := range branches {
 		if branch == currentBranch {
-			fmt.Printf("Currently on stack branch '%s', checking out base branch '%s'...\n", currentBranch, stack.Base)
+			ui.Infof("Currently on stack branch '%s', checking out base branch '%s'...", currentBranch, stack.Base)
 			if err := c.git.CheckoutBranch(stack.Base); err != nil {
 				return fmt.Errorf("failed to checkout base branch: %w", err)
 			}
@@ -1218,7 +1219,7 @@ func (c *Client) deleteBranches(branches []string) {
 	for _, branch := range branches {
 		if c.git.BranchExists(branch) {
 			if err := c.git.DeleteBranch(branch, true); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to delete local branch %s: %v\n", branch, err)
+				ui.Warningf("failed to delete local branch %s: %v", branch, err)
 			} else {
 				deletedLocal++
 			}
@@ -1226,7 +1227,7 @@ func (c *Client) deleteBranches(branches []string) {
 
 		if err := c.git.DeleteRemoteBranch(branch); err != nil {
 			if !strings.Contains(err.Error(), "remote ref does not exist") {
-				fmt.Fprintf(os.Stderr, "Warning: failed to delete remote branch %s: %v\n", branch, err)
+				ui.Warningf("failed to delete remote branch %s: %v", branch, err)
 			}
 		} else {
 			deletedRemote++
@@ -1234,10 +1235,10 @@ func (c *Client) deleteBranches(branches []string) {
 	}
 
 	if deletedLocal > 0 {
-		fmt.Printf("✓ Deleted %d local branch(es)\n", deletedLocal)
+		ui.Successf("Deleted %d local branch(es)", deletedLocal)
 	}
 	if deletedRemote > 0 {
-		fmt.Printf("✓ Deleted %d remote branch(es)\n", deletedRemote)
+		ui.Successf("Deleted %d remote branch(es)", deletedRemote)
 	}
 }
 
@@ -1272,7 +1273,7 @@ func (c *Client) GetCleanupCandidates() ([]CleanupCandidate, error) {
 	for _, s := range stacks {
 		stackCtx, err := c.loadStackWithSync(s.Name)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to load stack %s: %v\n", s.Name, err)
+			ui.Warningf("failed to load stack %s: %v", s.Name, err)
 			continue
 		}
 
@@ -1295,7 +1296,7 @@ func (c *Client) loadStackWithSync(name string) (*StackContext, error) {
 	}
 
 	if _, err := c.SyncPRMetadata(stackCtx); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to sync stack %s with GitHub: %v\n", name, err)
+		ui.Warningf("failed to sync stack %s with GitHub: %v", name, err)
 	}
 
 	return c.GetStackContextByName(name)
