@@ -358,8 +358,17 @@ func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, 
 		return nil, nil, fmt.Errorf("failed to get active commits: %w", err)
 	}
 
+	// Filter commits to only include those belonging to this stack
+	filteredCommits := make([]git.Commit, 0, len(activeCommits))
+	for _, commit := range activeCommits {
+		stackName := commit.Message.Trailers["PR-Stack"]
+		if stackName == s.Name {
+			filteredCommits = append(filteredCommits, commit)
+		}
+	}
+
 	// Convert to changes with IsMerged = false
-	activeChanges = c.commitsToChanges(activeCommits, prData, false)
+	activeChanges = c.commitsToChanges(filteredCommits, prData, false)
 
 	// Renumber positions for active changes (1-indexed)
 	for i := range activeChanges {

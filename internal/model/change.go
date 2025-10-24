@@ -33,7 +33,7 @@ type ChangeSyncStatus struct {
 
 func (c *Change) NeedsSyncToGitHub() ChangeSyncStatus {
 	if c.IsLocal() {
-		return ChangeSyncStatus{NeedsSync: false}
+		return ChangeSyncStatus{NeedsSync: true, Reason: "new change"}
 	}
 
 	if c.PR.Title == "" || c.PR.Body == "" || c.PR.Base == "" {
