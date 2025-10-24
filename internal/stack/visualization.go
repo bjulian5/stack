@@ -13,7 +13,7 @@ func GenerateStackVisualization(stackCtx *StackContext, currentPRNumber int) str
 
 	currentPosition := 0
 	for _, change := range stackCtx.ActiveChanges {
-		if change.PR != nil && change.PR.PRNumber == currentPRNumber {
+		if !change.IsLocal() && change.PR.PRNumber == currentPRNumber {
 			currentPosition = change.Position
 			break
 		}
@@ -24,12 +24,12 @@ func GenerateStackVisualization(stackCtx *StackContext, currentPRNumber int) str
 
 	for _, change := range stackCtx.ActiveChanges {
 		prLabel := "-"
-		if change.PR != nil {
+		if !change.IsLocal() {
 			prLabel = change.PR.URL
 		}
 
 		status := "local"
-		if change.PR != nil {
+		if !change.IsLocal() {
 			status = change.PR.State
 		}
 		statusEmoji, statusText := getStatusDisplay(status)
@@ -46,7 +46,7 @@ func GenerateStackVisualization(stackCtx *StackContext, currentPRNumber int) str
 
 	sb.WriteString("\n**Merge order:** `" + stackCtx.Stack.Base)
 	for _, change := range stackCtx.ActiveChanges {
-		if change.PR != nil {
+		if !change.IsLocal() {
 			sb.WriteString(fmt.Sprintf(" → #%d", change.PR.PRNumber))
 		}
 	}
@@ -55,7 +55,7 @@ func GenerateStackVisualization(stackCtx *StackContext, currentPRNumber int) str
 	sb.WriteString("💡 **Review tip:** Start from the bottom (")
 	if len(stackCtx.ActiveChanges) > 0 {
 		firstChange := stackCtx.ActiveChanges[0]
-		if firstChange.PR != nil {
+		if !firstChange.IsLocal() {
 			sb.WriteString(fmt.Sprintf("[#%d](%s)", firstChange.PR.PRNumber, firstChange.PR.URL))
 		}
 	}
@@ -83,7 +83,7 @@ func getStatusDisplay(status string) (emoji, text string) {
 
 func (c *Client) SyncVisualizationComments(stackCtx *StackContext) error {
 	for _, change := range stackCtx.ActiveChanges {
-		if change.PR == nil {
+		if change.IsLocal() {
 			continue
 		}
 

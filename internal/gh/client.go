@@ -466,3 +466,21 @@ func (c *Client) UpdatePRComment(commentID string, body string) error {
 
 	return nil
 }
+
+// MarkPRReady marks a PR as ready for review (not draft)
+func (c *Client) MarkPRReady(prNumber int) error {
+	_, err := c.execGH("pr", "ready", fmt.Sprintf("%d", prNumber))
+	if err != nil {
+		return fmt.Errorf("failed to mark PR as ready: %w", err)
+	}
+	return nil
+}
+
+// MarkPRDraft marks a PR as draft (not ready for review)
+func (c *Client) MarkPRDraft(prNumber int) error {
+	_, err := c.execGH("pr", "ready", fmt.Sprintf("%d", prNumber), "--undo")
+	if err != nil {
+		return fmt.Errorf("failed to mark PR as draft: %w", err)
+	}
+	return nil
+}

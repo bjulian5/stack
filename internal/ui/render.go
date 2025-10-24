@@ -222,7 +222,7 @@ func RenderMergedPRsTable(mergedChanges []stack.Change) string {
 	rows := make([][]string, len(mergedChanges))
 	for i, change := range mergedChanges {
 		prLabel := "-"
-		if change.PR != nil {
+		if !change.IsLocal() {
 			prLabel = StatusMergedStyle.Render(fmt.Sprintf("#%d", change.PR.PRNumber))
 		}
 
@@ -263,7 +263,7 @@ func RenderStackDetailsTable(s *stack.Stack, changes []stack.Change, currentUUID
 		statusText := GetChangeStatus(change).Render()
 
 		prLabel := "-"
-		if change.PR != nil {
+		if !change.IsLocal() {
 			prLabel = fmt.Sprintf("#%d", change.PR.PRNumber)
 		}
 
@@ -273,7 +273,7 @@ func RenderStackDetailsTable(s *stack.Stack, changes []stack.Change, currentUUID
 		}
 
 		url := "-"
-		if change.PR != nil && change.PR.URL != "" {
+		if !change.IsLocal() && change.PR.URL != "" {
 			url = change.PR.URL
 		}
 

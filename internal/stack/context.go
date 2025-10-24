@@ -88,37 +88,26 @@ func FormatStackBranch(username string, stackName string) string {
 }
 
 // ValidateBottomUpMerges ensures that only bottom PRs are merged (no out-of-order merges).
-// Returns an error if any PR in the middle or top is merged while earlier PRs are not.
 func ValidateBottomUpMerges(activeChanges []Change, mergedPRNumbers map[int]bool) error {
 	if len(mergedPRNumbers) == 0 {
-		return nil // No newly merged PRs
+		return nil
 	}
 
-	// Find the first change that is NOT newly merged
 	firstUnmergedIdx := -1
 	for i, change := range activeChanges {
-		if change.PR == nil {
-			// Local change, not pushed yet - definitely not merged
-			firstUnmergedIdx = i
-			break
-		}
-		if !mergedPRNumbers[change.PR.PRNumber] {
-			// This PR is not in the newly merged set
+		if change.IsLocal() || !mergedPRNumbers[change.PR.PRNumber] {
 			firstUnmergedIdx = i
 			break
 		}
 	}
 
-	// If all changes are merged, that's fine
 	if firstUnmergedIdx == -1 {
 		return nil
 	}
 
-	// Check if any changes after the first unmerged are in the merged set
 	for i := firstUnmergedIdx + 1; i < len(activeChanges); i++ {
 		change := activeChanges[i]
-		if change.PR != nil && mergedPRNumbers[change.PR.PRNumber] {
-			// Found an out-of-order merge!
+		if !change.IsLocal() && mergedPRNumbers[change.PR.PRNumber] {
 			return fmt.Errorf(
 				"out-of-order merge detected: PR #%d (change #%d) is merged, but change #%d is not.\n\n"+
 					"Stack requires bottom-up merging. To fix:\n"+
@@ -133,36 +122,20 @@ func ValidateBottomUpMerges(activeChanges []Change, mergedPRNumbers map[int]bool
 	return nil
 }
 
-// IsUUIDBranch checks if a branch name matches the UUID branch pattern
+// IsUUIDBranch checks if a branch name matches the UUID branch pattern.
+// Pattern: username/stack-<name>/<uuid> where <uuid> is 16 hex characters (not "TOP").
 func IsUUIDBranch(branch string) bool {
-	// UUID branches follow pattern: username/stack-<name>/<uuid>
-	// where <uuid> is 16 hex characters (NOT "TOP")
 	parts := strings.Split(branch, "/")
-	if len(parts) != 3 {
+	if len(parts) != 3 || !strings.HasPrefix(parts[1], "stack-") {
 		return false
 	}
 
-	// Check if the second part starts with "stack-"
-	secondPart := parts[1]
-	if !strings.HasPrefix(secondPart, "stack-") {
+	uuid := parts[2]
+	if uuid == "TOP" || len(uuid) != 16 {
 		return false
 	}
 
-	// Check if the third part looks like a UUID (16 hex chars)
-	// Must NOT be "TOP" (that's the stack branch)
-	possibleUUID := parts[2]
-	if possibleUUID == "TOP" || len(possibleUUID) != 16 {
-		return false
-	}
-
-	// Check if it's all hex characters
-	for _, c := range possibleUUID {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return false
-		}
-	}
-
-	return true
+	return validUUID(uuid)
 }
 
 func validUUID(uuid string) bool {
@@ -177,42 +150,28 @@ func validUUID(uuid string) bool {
 	return true
 }
 
-// ExtractStackName extracts the stack name from a stack branch
+// ExtractStackName extracts the stack name from a stack branch.
+// Branch format: username/stack-<name>/TOP or username/stack-<name>/<uuid>
 func ExtractStackName(branch string) string {
-	// Branch format: username/stack-<name>/TOP
 	parts := strings.Split(branch, "/")
-	if len(parts) != 3 {
+	if len(parts) != 3 || !strings.HasPrefix(parts[1], "stack-") {
 		return ""
 	}
 
-	secondPart := parts[1]
-	if !strings.HasPrefix(secondPart, "stack-") {
-		return ""
-	}
-
-	// Verify it's a stack branch (ends with /TOP or is a valid UUID)
 	if parts[2] != "TOP" && !validUUID(parts[2]) {
 		return ""
 	}
 
-	return strings.TrimPrefix(secondPart, "stack-")
+	return strings.TrimPrefix(parts[1], "stack-")
 }
 
-// ExtractUUIDFromBranch extracts stack name and UUID from a UUID branch
+// ExtractUUIDFromBranch extracts stack name and UUID from a UUID branch.
+// Branch format: username/stack-<name>/<uuid>
 func ExtractUUIDFromBranch(branch string) (stackName string, uuid string) {
-	// Branch format: username/stack-<name>/<uuid>
 	parts := strings.Split(branch, "/")
-	if len(parts) != 3 {
+	if len(parts) != 3 || !strings.HasPrefix(parts[1], "stack-") {
 		return "", ""
 	}
 
-	secondPart := parts[1]
-	if !strings.HasPrefix(secondPart, "stack-") {
-		return "", ""
-	}
-
-	stackName = strings.TrimPrefix(secondPart, "stack-")
-	uuid = parts[2]
-
-	return stackName, uuid
+	return strings.TrimPrefix(parts[1], "stack-"), parts[2]
 }

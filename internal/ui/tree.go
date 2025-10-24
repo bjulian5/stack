@@ -168,7 +168,7 @@ func formatChangeForTree(change stack.Change, currentUUID string) string {
 
 	// Format PR label
 	var prLabel string
-	if change.PR != nil {
+	if !change.IsLocal() {
 		prLabel = fmt.Sprintf("#%d", change.PR.PRNumber)
 	} else {
 		prLabel = "[local]"

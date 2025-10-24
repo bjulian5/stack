@@ -276,22 +276,16 @@ func FormatStackPreview(stackName string, branch string, base string, changes []
 	return strings.Join(lines, "\n")
 }
 
-// FormatChangeFinderLine formats a change for fuzzy finder display
-// Used by both 'stack edit' and 'stack pr open' commands
-// Note: Fuzzy finder doesn't support ANSI codes, so we use plain text
+// FormatChangeFinderLine formats a change for fuzzy finder display.
+// Fuzzy finder doesn't support ANSI codes, so we use plain text.
 func FormatChangeFinderLine(change stack.Change) string {
-	// Ultra-simple version for debugging
 	status := GetChangeStatus(change)
 
 	prLabel := "local"
-	if change.PR != nil {
+	if !change.IsLocal() {
 		prLabel = fmt.Sprintf("#%d", change.PR.PRNumber)
 	}
 
-	// Keep title as-is, no truncation
-	title := change.Title
-
-	// Short hash
 	shortHash := change.CommitHash
 	if len(shortHash) > 7 {
 		shortHash = shortHash[:7]
@@ -301,13 +295,12 @@ func FormatChangeFinderLine(change stack.Change) string {
 		change.Position,
 		status.Icon,
 		prLabel,
-		title,
+		change.Title,
 		shortHash)
 }
 
-// FormatChangePreview formats a change for fuzzy finder preview window
-// Used by both 'stack edit' and 'stack pr open' commands
-// Note: Preview pane supports ANSI codes, so we can use styling
+// FormatChangePreview formats a change for fuzzy finder preview window.
+// Preview pane supports ANSI codes, so we can use styling.
 func FormatChangePreview(change stack.Change) string {
 	lines := []string{
 		RenderKeyValue("Position", fmt.Sprintf("%d", change.Position)),
@@ -319,7 +312,7 @@ func FormatChangePreview(change stack.Change) string {
 		lines = append(lines, RenderKeyValue("UUID", Muted(change.UUID)))
 	}
 
-	if change.PR != nil {
+	if !change.IsLocal() {
 		status := GetStatus(change.PR.State)
 		prInfo := fmt.Sprintf("#%d (%s)", change.PR.PRNumber, status.Render())
 		lines = append(lines, RenderKeyValue("PR", prInfo))
@@ -327,7 +320,6 @@ func FormatChangePreview(change stack.Change) string {
 	}
 
 	if change.Description != "" {
-		// Don't truncate description - let it wrap naturally
 		lines = append(lines, "", Bold("Description:"), change.Description)
 	}
 

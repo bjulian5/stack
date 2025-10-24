@@ -510,6 +510,68 @@ func (c *Client) SetLocalDraft(stackName string, uuid string, localDraft bool) e
 	return c.SavePRs(stackName, prData)
 }
 
+type MarkChangeStatusResult struct {
+	SyncedToGitHub bool
+	PRNumber       int
+}
+
+func (c *Client) MarkChangeDraft(stackName string, change *Change) (*MarkChangeStatusResult, error) {
+	return c.markChangeStatus(stackName, change, true)
+}
+
+func (c *Client) MarkChangeReady(stackName string, change *Change) (*MarkChangeStatusResult, error) {
+	return c.markChangeStatus(stackName, change, false)
+}
+
+func (c *Client) markChangeStatus(stackName string, change *Change, isDraft bool) (*MarkChangeStatusResult, error) {
+	result := &MarkChangeStatusResult{}
+
+	if !change.IsLocal() && (change.PR.State == "open" || change.PR.State == "draft") {
+		var err error
+		if isDraft {
+			err = c.gh.MarkPRDraft(change.PR.PRNumber)
+		} else {
+			err = c.gh.MarkPRReady(change.PR.PRNumber)
+		}
+		if err != nil {
+			status := "ready"
+			if isDraft {
+				status = "draft"
+			}
+			return nil, fmt.Errorf("failed to mark PR #%d as %s on GitHub: %w", change.PR.PRNumber, status, err)
+		}
+
+		prData, err := c.LoadPRs(stackName)
+		if err != nil {
+			return nil, err
+		}
+
+		pr := prData.PRs[change.UUID]
+		pr.LocalDraftStatus = isDraft
+		pr.RemoteDraftStatus = isDraft
+		if isDraft {
+			pr.State = "draft"
+		} else {
+			pr.State = "open"
+		}
+		prData.PRs[change.UUID] = pr
+
+		if err := c.SavePRs(stackName, prData); err != nil {
+			return nil, fmt.Errorf("failed to update local state: %w", err)
+		}
+
+		result.SyncedToGitHub = true
+		result.PRNumber = change.PR.PRNumber
+	} else {
+		if err := c.SetLocalDraft(stackName, change.UUID, isDraft); err != nil {
+			return nil, err
+		}
+		result.SyncedToGitHub = false
+	}
+
+	return result, nil
+}
+
 // SyncPRFromGitHub syncs PR information from GitHub to local storage
 func (c *Client) SyncPRFromGitHub(data PRSyncData) error {
 	prData, err := c.LoadPRs(data.StackName)
@@ -542,10 +604,6 @@ func (c *Client) SyncPRFromGitHub(data PRSyncData) error {
 	return c.SavePRs(data.StackName, prData)
 }
 
-// ====================================================================
-// Refresh Operations (moved from RefreshOperations)
-// ====================================================================
-
 // RefreshResult contains the results of a refresh operation
 type RefreshResult struct {
 	MergedCount    int      // Number of PRs that were merged
@@ -570,7 +628,7 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 
 	var prNumbers []int
 	for _, change := range stackCtx.AllChanges {
-		if change.PR != nil {
+		if !change.IsLocal() {
 			prNumbers = append(prNumbers, change.PR.PRNumber)
 		}
 	}
@@ -599,7 +657,7 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 
 	// Update ALL PR metadata from GitHub (not just merged ones)
 	for _, change := range stackCtx.AllChanges {
-		if change.PR == nil {
+		if change.IsLocal() {
 			continue
 		}
 
@@ -618,15 +676,13 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 		}
 	}
 
-	// Save all updated PR metadata
 	if err := c.SavePRs(stackCtx.StackName, prData); err != nil {
 		return nil, fmt.Errorf("failed to save PRs: %w", err)
 	}
 
-	// Identify newly merged changes
 	var newlyMerged []Change
 	for _, change := range stackCtx.AllChanges {
-		if change.PR == nil {
+		if change.IsLocal() {
 			continue
 		}
 
@@ -636,7 +692,6 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 		}
 
 		if prState.IsMerged && !c.IsChangeMerged(&change) {
-			// Create a copy of the change with merged status
 			mergedChange := change
 			mergedChange.IsMerged = true
 			mergedChange.MergedAt = prState.MergedAt
@@ -644,7 +699,6 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 		}
 	}
 
-	// Validate bottom-up merge order
 	mergedPRNumbers := make(map[int]bool)
 	for _, change := range newlyMerged {
 		mergedPRNumbers[change.PR.PRNumber] = true
@@ -653,12 +707,10 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 		return nil, err
 	}
 
-	// Save merged changes to stack metadata
 	if err := c.SaveMergedChanges(stackCtx.StackName, newlyMerged); err != nil {
 		return nil, fmt.Errorf("failed to save merged changes: %w", err)
 	}
 
-	// Update sync metadata
 	if err := c.UpdateSyncMetadata(stackCtx.StackName); err != nil {
 		return nil, err
 	}
@@ -753,7 +805,7 @@ func (c *Client) MaybeRefreshStackMetadata(stackCtx *StackContext) (*StackContex
 
 // IsChangeMerged returns true if a change has been merged on GitHub
 func (c *Client) IsChangeMerged(change *Change) bool {
-	return change.PR != nil && strings.ToLower(change.PR.State) == "merged"
+	return !change.IsLocal() && strings.ToLower(change.PR.State) == "merged"
 }
 
 // fetchRemote fetches from the remote repository

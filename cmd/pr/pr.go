@@ -3,20 +3,19 @@ package pr
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/cmd/pr/draft"
 	"github.com/bjulian5/stack/cmd/pr/open"
+	"github.com/bjulian5/stack/cmd/pr/ready"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
 )
 
-// Command is the parent command for all pr subcommands
 type Command struct {
-	// Clients (shared by subcommands)
 	Git   *git.Client
 	Stack *stack.Client
 }
 
-// Register registers the pr command and all subcommands
 func (c *Command) Register(parent *cobra.Command) {
 	var err error
 	c.Git, err = git.NewClient()
@@ -32,9 +31,14 @@ func (c *Command) Register(parent *cobra.Command) {
 		Long:  `Commands for working with pull requests in the current stack.`,
 	}
 
-	// Register subcommands
-	openCmd := &open.Command{Git: c.Git, Stack: c.Stack}
+	openCmd := &open.Command{Git: c.Git, Stack: c.Stack, GH: ghClient}
 	openCmd.Register(cmd)
+
+	readyCmd := &ready.Command{Git: c.Git, Stack: c.Stack}
+	readyCmd.Register(cmd)
+
+	draftCmd := &draft.Command{Git: c.Git, Stack: c.Stack}
+	draftCmd.Register(cmd)
 
 	parent.AddCommand(cmd)
 }
