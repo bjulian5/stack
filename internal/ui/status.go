@@ -103,7 +103,7 @@ func GetChangeStatus(change model.Change) Status {
 		return GetStatus("local")
 	}
 
-	if change.NeedsPush() {
+	if change.NeedsSyncToGitHub().NeedsSync {
 		return GetStatus("needs-push")
 	}
 
@@ -164,54 +164,15 @@ func FormatPRLabelCompact(pr *model.PR) string {
 }
 
 // FormatChangeStatus formats the status for a change in the stack.
-// Shows local draft/ready preference with sync indicator if GitHub state differs.
+// Uses GetChangeStatus which handles all status logic including sync needs.
 func FormatChangeStatus(change model.Change) string {
-	if change.IsLocal() {
-		if change.GetDraftStatus() {
-			return GetStatus("draft").Render()
-		}
-		return GetStatus("local").Render()
-	}
-
-	var localStatus Status
-	if change.GetDraftStatus() {
-		localStatus = GetStatus("draft")
-	} else {
-		localStatus = GetStatus("open")
-	}
-
-	syncStatus := change.NeedsSyncToGitHub()
-	if syncStatus.NeedsSync {
-		modifiedIcon := GetStatus("needs-push").RenderCompact()
-		return localStatus.Render() + " " + modifiedIcon
-	}
-
-	return localStatus.Render()
+	return GetChangeStatus(change).Render()
 }
 
 // FormatChangeStatusCompact formats the status for a change in compact form.
-func FormatChangeStatusCompact(change model.Change) string{
-	if change.IsLocal() {
-		if change.GetDraftStatus() {
-			return GetStatus("draft").RenderCompact()
-		}
-		return GetStatus("local").RenderCompact()
-	}
-
-	var localStatus Status
-	if change.GetDraftStatus() {
-		localStatus = GetStatus("draft")
-	} else {
-		localStatus = GetStatus("open")
-	}
-
-	syncStatus := change.NeedsSyncToGitHub()
-	if syncStatus.NeedsSync {
-		modifiedStatus := GetStatus("needs-push")
-		return localStatus.RenderCompact() + modifiedStatus.RenderCompact()
-	}
-
-	return localStatus.RenderCompact()
+// Uses GetChangeStatus which handles all status logic including sync needs.
+func FormatChangeStatusCompact(change model.Change) string {
+	return GetChangeStatus(change).RenderCompact()
 }
 
 // FormatPRSummary formats a summary of PR counts
@@ -268,8 +229,8 @@ func CountPRsByState(changes []model.Change) (open, draft, merged, closed, local
 			}
 		}
 
-		// Check if this change needs to be pushed
-		if change.NeedsPush() {
+		// Check if this change needs to be synced to GitHub
+		if change.NeedsSyncToGitHub().NeedsSync {
 			needsPush++
 		}
 	}

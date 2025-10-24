@@ -160,13 +160,6 @@ func formatChangeForTree(change model.Change, currentUUID string) string {
 	status := GetChangeStatus(change)
 	icon := status.RenderCompact()
 
-	// Add sync indicator if change needs syncing to GitHub
-	syncStatus := change.NeedsSyncToGitHub()
-	if syncStatus.NeedsSync {
-		modifiedStatus := GetStatus("needs-push")
-		icon += modifiedStatus.RenderCompact()
-	}
-
 	// Format PR label
 	var prLabel string
 	if !change.IsLocal() {

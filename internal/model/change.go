@@ -19,13 +19,6 @@ func (c *Change) IsLocal() bool {
 	return c.PR == nil || c.PR.PRNumber == 0
 }
 
-func (c *Change) NeedsPush() bool {
-	if c.IsLocal() {
-		return false
-	}
-	return c.CommitHash != c.PR.CommitHash
-}
-
 func (c *Change) GetDraftStatus() bool {
 	if c.PR != nil {
 		return c.PR.LocalDraftStatus
@@ -47,7 +40,7 @@ func (c *Change) NeedsSyncToGitHub() ChangeSyncStatus {
 		return ChangeSyncStatus{NeedsSync: true, Reason: "metadata not cached"}
 	}
 
-	if c.NeedsPush() {
+	if c.CommitHash != c.PR.CommitHash {
 		return ChangeSyncStatus{NeedsSync: true, Reason: "commit changed"}
 	}
 
