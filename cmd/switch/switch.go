@@ -9,6 +9,7 @@ import (
 
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
+	"github.com/bjulian5/stack/internal/model"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
 )
@@ -100,7 +101,7 @@ func (c *Command) Run(ctx context.Context) error {
 			return fmt.Errorf("stack '%s' not found", c.StackName)
 		}
 	} else {
-		stackChangesMap := make(map[string][]stack.Change)
+		stackChangesMap := make(map[string][]model.Change)
 		for _, s := range stacks {
 			ctx, err := c.Stack.GetStackContextByName(s.Name)
 			if err != nil {

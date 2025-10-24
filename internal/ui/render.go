@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bjulian5/stack/internal/model"
 	"github.com/bjulian5/stack/internal/stack"
 )
 
 // RenderStackList renders a list of all stacks with styling
 // Now uses tree visualization by default via RenderStackListTree
-func RenderStackList(stacks []*stack.Stack, currentStackName string, stackChanges map[string][]stack.Change) string {
+func RenderStackList(stacks []*stack.Stack, currentStackName string, stackChanges map[string][]model.Change) string {
 	// Use the new tree-based visualization
 	return RenderStackListTree(stacks, stackChanges, currentStackName)
 }
@@ -17,7 +18,7 @@ func RenderStackList(stacks []*stack.Stack, currentStackName string, stackChange
 // RenderStackDetails renders detailed information about a stack
 // Now uses tree visualization by default via RenderStackTree
 // Accepts currentUUID to show current position indicator
-func RenderStackDetails(s *stack.Stack, changes []stack.Change, currentUUID string) string {
+func RenderStackDetails(s *stack.Stack, changes []model.Change, currentUUID string) string {
 	var output strings.Builder
 
 	// Render the tree visualization with current position
@@ -47,7 +48,7 @@ func RenderStackDetails(s *stack.Stack, changes []stack.Change, currentUUID stri
 }
 
 // RenderStackSummary renders a brief summary of a stack
-func RenderStackSummary(s *stack.Stack, changes []stack.Change) string {
+func RenderStackSummary(s *stack.Stack, changes []model.Change) string {
 	open, draft, merged, _, local, needsPush := CountPRsByState(changes)
 	totalPRs := len(changes)
 
@@ -88,7 +89,7 @@ func RenderEditSuccess(position int, title string, branch string) string {
 type NavigationSuccess struct {
 	Message     string
 	Stack       *stack.Stack
-	Changes     []stack.Change
+	Changes     []model.Change
 	CurrentUUID string
 	IsEditing   bool
 }
@@ -214,7 +215,7 @@ func RenderPushSummary(created, updated, skipped int) string {
 }
 
 // RenderMergedPRsTable renders a table of merged PRs for the refresh command
-func RenderMergedPRsTable(mergedChanges []stack.Change) string {
+func RenderMergedPRsTable(mergedChanges []model.Change) string {
 	if len(mergedChanges) == 0 {
 		return ""
 	}
@@ -248,7 +249,7 @@ func RenderMergedPRsTable(mergedChanges []stack.Change) string {
 
 // RenderStackDetailsTable renders a detailed table view of a single stack
 // Accepts currentUUID to highlight the current row
-func RenderStackDetailsTable(s *stack.Stack, changes []stack.Change, currentUUID string) string {
+func RenderStackDetailsTable(s *stack.Stack, changes []model.Change, currentUUID string) string {
 	if len(changes) == 0 {
 		return RenderPanel(Dim("No changes in this stack"))
 	}
@@ -301,7 +302,7 @@ func RenderStackDetailsTable(s *stack.Stack, changes []stack.Change, currentUUID
 	return output.String()
 }
 
-func buildSummaryLine(changes []stack.Change) string {
+func buildSummaryLine(changes []model.Change) string {
 	open, draft, merged, closed, local, needsPush := CountPRsByState(changes)
 	totalPRs := len(changes)
 
@@ -348,7 +349,7 @@ func buildLegendPanel() string {
 }
 
 // RenderStackListTable renders a table comparing multiple stacks
-func RenderStackListTable(stacks []*stack.Stack, allChanges map[string][]stack.Change, currentStackName string) string {
+func RenderStackListTable(stacks []*stack.Stack, allChanges map[string][]model.Change, currentStackName string) string {
 	if len(stacks) == 0 {
 		return RenderNoStacksMessage()
 	}

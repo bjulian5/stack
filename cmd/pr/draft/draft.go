@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bjulian5/stack/internal/git"
+	"github.com/bjulian5/stack/internal/model"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
 )
@@ -58,7 +59,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("no changes in stack")
 	}
 
-	var changesToMark []stack.Change
+	var changesToMark []model.Change
 	if c.All {
 		changesToMark = stackCtx.ActiveChanges
 	} else {
@@ -66,7 +67,7 @@ func (c *Command) Run(ctx context.Context) error {
 		if currentChange == nil {
 			return fmt.Errorf("unable to determine current change")
 		}
-		changesToMark = []stack.Change{*currentChange}
+		changesToMark = []model.Change{*currentChange}
 	}
 
 	hasUnpushedChanges := false

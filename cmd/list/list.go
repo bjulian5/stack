@@ -8,6 +8,7 @@ import (
 
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
+	"github.com/bjulian5/stack/internal/model"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
 )
@@ -61,7 +62,7 @@ func (c *Command) Run(ctx context.Context) error {
 		currentStack = stackCtx.StackName
 	}
 
-	stackChanges := make(map[string][]stack.Change)
+	stackChanges := make(map[string][]model.Change)
 	for _, s := range stacks {
 		ctx, err := c.Stack.GetStackContextByName(s.Name)
 		if err != nil {

@@ -3,6 +3,8 @@ package stack
 import (
 	"fmt"
 	"strings"
+
+	"github.com/bjulian5/stack/internal/model"
 )
 
 func GenerateStackVisualization(stackCtx *StackContext, currentPRNumber int) string {
@@ -97,7 +99,7 @@ func (c *Client) SyncVisualizationComments(stackCtx *StackContext) error {
 	return nil
 }
 
-func (c *Client) syncCommentForPR(stackName, uuid string, pr *PR, vizContent string) error {
+func (c *Client) syncCommentForPR(stackName, uuid string, pr *model.PR, vizContent string) error {
 	marker := fmt.Sprintf("<!-- stack-visualization: %s -->", stackName)
 
 	if pr.VizCommentID != "" {
@@ -137,7 +139,7 @@ func (c *Client) syncCommentForPR(stackName, uuid string, pr *PR, vizContent str
 	return nil
 }
 
-func (c *Client) cacheCommentID(stackName, uuid, commentID string, pr *PR) {
+func (c *Client) cacheCommentID(stackName, uuid, commentID string, pr *model.PR) {
 	if pr.VizCommentID != commentID {
 		pr.VizCommentID = commentID
 		if err := c.SetPR(stackName, uuid, pr); err != nil {

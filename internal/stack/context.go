@@ -3,17 +3,19 @@ package stack
 import (
 	"fmt"
 	"strings"
+
+	"github.com/bjulian5/stack/internal/model"
 )
 
 // StackContext represents a snapshot of stack state for the current branch or a stack loaded by name.
 type StackContext struct {
 	StackName     string
 	Stack         *Stack
-	AllChanges    []Change // Complete history (merged + active)
-	ActiveChanges []Change // Only unmerged changes from TOP branch
-	currentUUID   string   // UUID where we are positioned
-	onUUIDBranch  bool     // true if on UUID branch (editing specific change)
-	stackActive   bool     // true if this stack is currently active in repo
+	AllChanges    []model.Change // Complete history (merged + active)
+	ActiveChanges []model.Change // Only unmerged changes from TOP branch
+	currentUUID   string         // UUID where we are positioned
+	onUUIDBranch  bool           // true if on UUID branch (editing specific change)
+	stackActive   bool           // true if this stack is currently active in repo
 }
 
 func (s *StackContext) IsStack() bool {
@@ -24,7 +26,7 @@ func (s *StackContext) OnUUIDBranch() bool {
 	return s.onUUIDBranch
 }
 
-func (s *StackContext) CurrentChange() *Change {
+func (s *StackContext) CurrentChange() *model.Change {
 	if s.currentUUID == "" {
 		return nil
 	}
@@ -35,7 +37,7 @@ func (s *StackContext) GetCurrentPositionUUID() string {
 	return s.currentUUID
 }
 
-func (s *StackContext) FindChange(uuid string) *Change {
+func (s *StackContext) FindChange(uuid string) *model.Change {
 	for i := range s.AllChanges {
 		if s.AllChanges[i].UUID == uuid {
 			return &s.AllChanges[i]
@@ -53,7 +55,7 @@ func FormatStackBranch(username string, stackName string) string {
 }
 
 // ValidateBottomUpMerges ensures that only bottom PRs are merged (no out-of-order merges).
-func ValidateBottomUpMerges(activeChanges []Change, mergedPRNumbers map[int]bool) error {
+func ValidateBottomUpMerges(activeChanges []model.Change, mergedPRNumbers map[int]bool) error {
 	if len(mergedPRNumbers) == 0 {
 		return nil
 	}

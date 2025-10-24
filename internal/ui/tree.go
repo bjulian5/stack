@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bjulian5/stack/internal/model"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/charmbracelet/lipgloss/tree"
 )
@@ -16,7 +17,7 @@ import (
 //	  ├─● #123 Add JWT auth (a1b2c3d)
 //	  ├─◐ #124 Refresh tokens (b2c3d4e)
 //	  ╰─◯ Unit tests (c3d4e5f) [local]
-func RenderStackTree(s *stack.Stack, changes []stack.Change, currentUUID string) string {
+func RenderStackTree(s *stack.Stack, changes []model.Change, currentUUID string) string {
 	if len(changes) == 0 {
 		return TreeRootStyle.Render(s.Name) + "\n" + Dim("  No changes yet")
 	}
@@ -51,7 +52,7 @@ func RenderStackTree(s *stack.Stack, changes []stack.Change, currentUUID string)
 //	├─● #123 Add JWT auth (a1b2c3d)
 //	├─◐ #124 Refresh tokens (b2c3d4e)
 //	╰─◯ Unit tests (c3d4e5f) [local]
-func RenderStackTreeCompact(s *stack.Stack, changes []stack.Change, currentUUID string) string {
+func RenderStackTreeCompact(s *stack.Stack, changes []model.Change, currentUUID string) string {
 	if len(changes) == 0 {
 		return TreeRootStyle.Render(s.Name) + "\n" + Dim("  No changes yet")
 	}
@@ -86,7 +87,7 @@ func RenderStackTreeCompact(s *stack.Stack, changes []stack.Change, currentUUID 
 //	╰─ ui-improvements
 //	   ├─ 5 local
 //	   ╰─ bjulian5/stack-ui-improvements/TOP → main
-func RenderStackListTree(stacks []*stack.Stack, allChanges map[string][]stack.Change, currentStackName string) string {
+func RenderStackListTree(stacks []*stack.Stack, allChanges map[string][]model.Change, currentStackName string) string {
 	if len(stacks) == 0 {
 		return Dim("No stacks yet. Create one with: ") + Highlight("stack new <name>")
 	}
@@ -103,7 +104,7 @@ func RenderStackListTree(stacks []*stack.Stack, allChanges map[string][]stack.Ch
 		// Get changes for this stack
 		changes, ok := allChanges[s.Name]
 		if !ok {
-			changes = []stack.Change{}
+			changes = []model.Change{}
 		}
 
 		// Add summary line
@@ -132,7 +133,7 @@ func RenderStackListTree(stacks []*stack.Stack, allChanges map[string][]stack.Ch
 //	├─ 1. ● #123 Add JWT auth (a1b2c3d)
 //	├─ 2. ◐ #124 Refresh tokens (b2c3d4e)
 //	╰─ 3. ◯ Unit tests (c3d4e5f) [local]
-func RenderChangeListTree(changes []stack.Change) string {
+func RenderChangeListTree(changes []model.Change) string {
 	if len(changes) == 0 {
 		return Dim("No changes in this stack")
 	}
@@ -155,7 +156,7 @@ func RenderChangeListTree(changes []stack.Change) string {
 
 // formatChangeForTree formats a change for display in a tree
 // If currentUUID matches this change's UUID, adds a green arrow indicator
-func formatChangeForTree(change stack.Change, currentUUID string) string {
+func formatChangeForTree(change model.Change, currentUUID string) string {
 	status := GetChangeStatus(change)
 	icon := status.RenderCompact()
 
@@ -211,7 +212,7 @@ func formatStackNameForTree(stackName string, currentStackName string) string {
 }
 
 // formatStackSummary creates a summary line for a stack
-func formatStackSummary(changes []stack.Change) string {
+func formatStackSummary(changes []model.Change) string {
 	if len(changes) == 0 {
 		return "No changes"
 	}

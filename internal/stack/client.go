@@ -12,6 +12,7 @@ import (
 	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
+	"github.com/bjulian5/stack/internal/model"
 )
 
 // DefaultSyncThreshold is the time threshold after which a stack is considered stale
@@ -337,7 +338,7 @@ func (c *Client) CreateStack(name string, baseBranch string) (*Stack, error) {
 // getChangesForStack loads all changes for a stack (shared logic)
 // getChangesForStack returns both AllChanges and ActiveChanges for a stack.
 // AllChanges includes merged + active changes. ActiveChanges includes only unmerged changes.
-func (c *Client) getChangesForStack(s *Stack) (allChanges []Change, activeChanges []Change, err error) {
+func (c *Client) getChangesForStack(s *Stack) (allChanges []model.Change, activeChanges []model.Change, err error) {
 	// Load PR tracking data
 	prData, err := c.LoadPRs(s.Name)
 	if err != nil {
@@ -347,7 +348,7 @@ func (c *Client) getChangesForStack(s *Stack) (allChanges []Change, activeChange
 	// Get merged changes from stack metadata (not from a git branch)
 	mergedChanges := s.MergedChanges
 	if mergedChanges == nil {
-		mergedChanges = []Change{}
+		mergedChanges = []model.Change{}
 	}
 
 	// Load active changes from TOP branch
@@ -383,7 +384,7 @@ func (c *Client) getChangesForStack(s *Stack) (allChanges []Change, activeChange
 	}
 
 	// Build AllChanges (merged first, then active)
-	allChanges = make([]Change, 0, len(mergedChanges)+len(activeChanges))
+	allChanges = make([]model.Change, 0, len(mergedChanges)+len(activeChanges))
 	allChanges = append(allChanges, mergedChanges...)
 	allChanges = append(allChanges, activeChanges...)
 
@@ -391,11 +392,11 @@ func (c *Client) getChangesForStack(s *Stack) (allChanges []Change, activeChange
 }
 
 // commitsToChanges converts git commits to Changes with the specified merged status
-func (c *Client) commitsToChanges(commits []git.Commit, prData *PRData, isMerged bool) []Change {
-	changes := make([]Change, len(commits))
+func (c *Client) commitsToChanges(commits []git.Commit, prData *model.PRData, isMerged bool) []model.Change {
+	changes := make([]model.Change, len(commits))
 	for i, commit := range commits {
 		uuid := commit.Message.Trailers["PR-UUID"]
-		var pr *PR
+		var pr *model.PR
 
 		if uuid != "" {
 			if p, ok := prData.PRs[uuid]; ok {
@@ -403,7 +404,7 @@ func (c *Client) commitsToChanges(commits []git.Commit, prData *PRData, isMerged
 			}
 		}
 
-		changes[i] = Change{
+		changes[i] = model.Change{
 			Position:    i + 1, // 1-indexed by commit order; renumbered later for active changes only
 			Title:       commit.Message.Title,
 			Description: commit.Message.Body,
@@ -418,13 +419,13 @@ func (c *Client) commitsToChanges(commits []git.Commit, prData *PRData, isMerged
 }
 
 // LoadPRs loads PR tracking data for a stack
-func (c *Client) LoadPRs(stackName string) (*PRData, error) {
+func (c *Client) LoadPRs(stackName string) (*model.PRData, error) {
 	stackDir := c.getStackDir(stackName)
 	prsPath := filepath.Join(stackDir, "prs.json")
 
 	// If file doesn't exist, return empty PRData with current version
 	if _, err := os.Stat(prsPath); os.IsNotExist(err) {
-		return &PRData{Version: 1, PRs: make(map[string]*PR)}, nil
+		return &model.PRData{Version: 1, PRs: make(map[string]*model.PR)}, nil
 	}
 
 	data, err := os.ReadFile(prsPath)
@@ -432,7 +433,7 @@ func (c *Client) LoadPRs(stackName string) (*PRData, error) {
 		return nil, fmt.Errorf("failed to read PRs file: %w", err)
 	}
 
-	var prData PRData
+	var prData model.PRData
 	if err := json.Unmarshal(data, &prData); err != nil {
 		return nil, fmt.Errorf("failed to parse PRs file: %w", err)
 	}
@@ -444,14 +445,14 @@ func (c *Client) LoadPRs(stackName string) (*PRData, error) {
 
 	// Ensure the map is initialized even if the JSON was empty
 	if prData.PRs == nil {
-		prData.PRs = make(map[string]*PR)
+		prData.PRs = make(map[string]*model.PR)
 	}
 
 	return &prData, nil
 }
 
 // SavePRs saves PR tracking data for a stack
-func (c *Client) SavePRs(stackName string, prData *PRData) error {
+func (c *Client) SavePRs(stackName string, prData *model.PRData) error {
 	stackDir := c.getStackDir(stackName)
 
 	// Ensure version is set before saving
@@ -478,7 +479,7 @@ func (c *Client) SavePRs(stackName string, prData *PRData) error {
 }
 
 // SetPR sets PR information for a UUID
-func (c *Client) SetPR(stackName string, uuid string, pr *PR) error {
+func (c *Client) SetPR(stackName string, uuid string, pr *model.PR) error {
 	prData, err := c.LoadPRs(stackName)
 	if err != nil {
 		return err
@@ -499,7 +500,7 @@ func (c *Client) SetLocalDraft(stackName string, uuid string, localDraft bool) e
 	pr, exists := prData.PRs[uuid]
 	if !exists {
 		// Create new PR entry with just LocalDraftStatus set
-		pr = &PR{
+		pr = &model.PR{
 			LocalDraftStatus: localDraft,
 		}
 	} else {
@@ -515,15 +516,15 @@ type MarkChangeStatusResult struct {
 	PRNumber       int
 }
 
-func (c *Client) MarkChangeDraft(stackName string, change *Change) (*MarkChangeStatusResult, error) {
+func (c *Client) MarkChangeDraft(stackName string, change *model.Change) (*MarkChangeStatusResult, error) {
 	return c.markChangeStatus(stackName, change, true)
 }
 
-func (c *Client) MarkChangeReady(stackName string, change *Change) (*MarkChangeStatusResult, error) {
+func (c *Client) MarkChangeReady(stackName string, change *model.Change) (*MarkChangeStatusResult, error) {
 	return c.markChangeStatus(stackName, change, false)
 }
 
-func (c *Client) markChangeStatus(stackName string, change *Change, isDraft bool) (*MarkChangeStatusResult, error) {
+func (c *Client) markChangeStatus(stackName string, change *model.Change, isDraft bool) (*MarkChangeStatusResult, error) {
 	result := &MarkChangeStatusResult{}
 
 	if !change.IsLocal() && (change.PR.State == "open" || change.PR.State == "draft") {
@@ -573,7 +574,7 @@ func (c *Client) markChangeStatus(stackName string, change *Change, isDraft bool
 }
 
 // SyncPRFromGitHub syncs PR information from GitHub to local storage
-func (c *Client) SyncPRFromGitHub(data PRSyncData) error {
+func (c *Client) SyncPRFromGitHub(data model.PRSyncData) error {
 	prData, err := c.LoadPRs(data.StackName)
 	if err != nil {
 		return err
@@ -581,7 +582,7 @@ func (c *Client) SyncPRFromGitHub(data PRSyncData) error {
 
 	pr, exists := prData.PRs[data.UUID]
 	if !exists {
-		pr = &PR{
+		pr = &model.PR{
 			CreatedAt:        data.GitHubPR.CreatedAt,
 			LocalDraftStatus: true, // Default to draft for new PRs
 		}
@@ -606,9 +607,9 @@ func (c *Client) SyncPRFromGitHub(data PRSyncData) error {
 
 // RefreshResult contains the results of a refresh operation
 type RefreshResult struct {
-	MergedCount    int      // Number of PRs that were merged
-	RemainingCount int      // Number of PRs still active
-	MergedChanges  []Change // The changes that were merged
+	MergedCount    int                // Number of PRs that were merged
+	RemainingCount int                // Number of PRs still active
+	MergedChanges  []model.Change // The changes that were merged
 }
 
 // SyncPRMetadata queries GitHub and updates local metadata without modifying git state.
@@ -680,7 +681,7 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 		return nil, fmt.Errorf("failed to save PRs: %w", err)
 	}
 
-	var newlyMerged []Change
+	var newlyMerged []model.Change
 	for _, change := range stackCtx.AllChanges {
 		if change.IsLocal() {
 			continue
@@ -726,7 +727,7 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 // ApplyRefresh applies a refresh by rebasing the TOP branch onto the latest base.
 // Requires: current branch is TOP, no uncommitted changes.
 // This performs the git operations to actually apply merged PR removals.
-func (c *Client) ApplyRefresh(stackCtx *StackContext, merged []Change) error {
+func (c *Client) ApplyRefresh(stackCtx *StackContext, merged []model.Change) error {
 	// Validate on TOP branch (not editing a specific change)
 	if !stackCtx.IsStack() || stackCtx.OnUUIDBranch() {
 		currentBranch, _ := c.git.GetCurrentBranch()
@@ -804,7 +805,7 @@ func (c *Client) MaybeRefreshStackMetadata(stackCtx *StackContext) (*StackContex
 }
 
 // IsChangeMerged returns true if a change has been merged on GitHub
-func (c *Client) IsChangeMerged(change *Change) bool {
+func (c *Client) IsChangeMerged(change *model.Change) bool {
 	return !change.IsLocal() && strings.ToLower(change.PR.State) == "merged"
 }
 
@@ -823,7 +824,7 @@ func (c *Client) fetchRemote() error {
 }
 
 // SaveMergedChanges appends newly merged changes to the stack metadata
-func (c *Client) SaveMergedChanges(stackName string, newlyMerged []Change) error {
+func (c *Client) SaveMergedChanges(stackName string, newlyMerged []model.Change) error {
 	// Load current stack
 	s, err := c.LoadStack(stackName)
 	if err != nil {
@@ -832,7 +833,7 @@ func (c *Client) SaveMergedChanges(stackName string, newlyMerged []Change) error
 
 	// Initialize if nil
 	if s.MergedChanges == nil {
-		s.MergedChanges = []Change{}
+		s.MergedChanges = []model.Change{}
 	}
 
 	// Append newly merged changes
@@ -848,7 +849,7 @@ func (c *Client) SaveMergedChanges(stackName string, newlyMerged []Change) error
 
 // CleanupMergedBranches deletes UUID branches for merged PRs
 // Errors are non-fatal and just printed as warnings
-func (c *Client) CleanupMergedBranches(stackCtx *StackContext, merged []Change) error {
+func (c *Client) CleanupMergedBranches(stackCtx *StackContext, merged []model.Change) error {
 	username, err := common.GetUsername()
 	if err != nil {
 		return err
@@ -972,7 +973,7 @@ func (c *Client) UpdateLocalBaseRef(baseBranch string) error {
 // CheckoutChangeForEditing checks out a UUID branch for the given change, creating it if needed.
 // If the branch already exists but points to a different commit, it syncs it to the current commit.
 // Returns the branch name that was checked out.
-func (c *Client) CheckoutChangeForEditing(stackCtx *StackContext, change *Change) (string, error) {
+func (c *Client) CheckoutChangeForEditing(stackCtx *StackContext, change *model.Change) (string, error) {
 	// Get username for branch naming
 	username, err := common.GetUsername()
 	if err != nil {

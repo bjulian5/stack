@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bjulian5/stack/internal/stack"
+	"github.com/bjulian5/stack/internal/model"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -95,7 +95,7 @@ func GetStatus(state string) Status {
 }
 
 // GetChangeStatus returns a Status for a stack change, using LocalDraftStatus as source of truth.
-func GetChangeStatus(change stack.Change) Status {
+func GetChangeStatus(change model.Change) Status {
 	if change.IsLocal() {
 		if change.GetDraftStatus() {
 			return GetStatus("draft")
@@ -138,7 +138,7 @@ func (s Status) RenderWithCount(count int) string {
 }
 
 // FormatPRLabel formats a PR number with styling and full URL
-func FormatPRLabel(pr *stack.PR) string {
+func FormatPRLabel(pr *model.PR) string {
 	if pr == nil {
 		return Dim("-")
 	}
@@ -156,7 +156,7 @@ func FormatPRLabel(pr *stack.PR) string {
 }
 
 // FormatPRLabelCompact formats a PR number in compact form
-func FormatPRLabelCompact(pr *stack.PR) string {
+func FormatPRLabelCompact(pr *model.PR) string {
 	if pr == nil {
 		return Dim("-")
 	}
@@ -165,7 +165,7 @@ func FormatPRLabelCompact(pr *stack.PR) string {
 
 // FormatChangeStatus formats the status for a change in the stack.
 // Shows local draft/ready preference with sync indicator if GitHub state differs.
-func FormatChangeStatus(change stack.Change) string {
+func FormatChangeStatus(change model.Change) string {
 	if change.IsLocal() {
 		if change.GetDraftStatus() {
 			return GetStatus("draft").Render()
@@ -190,7 +190,7 @@ func FormatChangeStatus(change stack.Change) string {
 }
 
 // FormatChangeStatusCompact formats the status for a change in compact form.
-func FormatChangeStatusCompact(change stack.Change) string {
+func FormatChangeStatusCompact(change model.Change) string{
 	if change.IsLocal() {
 		if change.GetDraftStatus() {
 			return GetStatus("draft").RenderCompact()
@@ -251,7 +251,7 @@ func FormatPRSummary(openCount, draftCount, mergedCount, localCount, needsPushCo
 
 // CountPRsByState counts PRs by their state
 // Returns counts for: open, draft, merged, closed, local, and needsPush
-func CountPRsByState(changes []stack.Change) (open, draft, merged, closed, local, needsPush int) {
+func CountPRsByState(changes []model.Change) (open, draft, merged, closed, local, needsPush int) {
 	for _, change := range changes {
 		if change.IsLocal() {
 			local++

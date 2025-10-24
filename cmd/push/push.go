@@ -9,6 +9,7 @@ import (
 	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
+	"github.com/bjulian5/stack/internal/model"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
 )
@@ -64,7 +65,7 @@ Example:
 // pushPR pushes a single PR to GitHub and returns PR number, URL, and whether it was newly created
 func (c *Command) pushPR(
 	stackName string,
-	change stack.Change,
+	change model.Change,
 	prBranch string,
 	existingPRNumber int,
 ) (prNumber int, url string, isNew bool, err error) {
@@ -90,7 +91,7 @@ func (c *Command) pushPR(
 		return 0, "", false, fmt.Errorf("failed to sync PR for %s: %w", change.Title, err)
 	}
 
-	syncData := stack.PRSyncData{
+	syncData := model.PRSyncData{
 		StackName:         stackName,
 		UUID:              change.UUID,
 		Branch:            prBranch,
@@ -171,7 +172,7 @@ func (c *Command) Run(ctx context.Context) error {
 		prBranch := stackCtx.FormatUUIDBranch(username, change.UUID)
 
 		existingPRNumber := 0
-		var existingPR *stack.PR
+		var existingPR *model.PR
 
 		if change.PR != nil {
 			existingPRNumber = change.PR.PRNumber

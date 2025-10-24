@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/bjulian5/stack/internal/stack"
+	"github.com/bjulian5/stack/internal/model"
 )
 
 // Truncate truncates text to maxLen with an ellipsis if needed
@@ -141,7 +141,7 @@ func Columns(items ...string) string {
 // FormatStackFinderLine formats a stack for display in fuzzy finder
 // Returns a formatted line showing stack name, PR summary, base branch, and optional current marker
 // Note: Fuzzy finder doesn't support ANSI codes, so we use plain text
-func FormatStackFinderLine(stackName string, base string, changes []stack.Change, currentStackName string) string {
+func FormatStackFinderLine(stackName string, base string, changes []model.Change, currentStackName string) string {
 	open, draft, merged, _, local, _ := CountPRsByState(changes)
 	totalPRs := len(changes)
 
@@ -202,7 +202,7 @@ func FormatStackFinderLine(stackName string, base string, changes []stack.Change
 // FormatStackPreview formats a stack preview for the fuzzy finder preview window
 // Returns a formatted preview showing stack details and first few PRs
 // Note: Preview pane supports ANSI codes, so we can use styling
-func FormatStackPreview(stackName string, branch string, base string, changes []stack.Change) string {
+func FormatStackPreview(stackName string, branch string, base string, changes []model.Change) string {
 	lines := []string{
 		RenderKeyValue("Stack", Bold(stackName)),
 		RenderKeyValue("Branch", Muted(branch)),
@@ -243,7 +243,7 @@ func FormatStackPreview(stackName string, branch string, base string, changes []
 
 // FormatChangeFinderLine formats a change for fuzzy finder display.
 // Fuzzy finder doesn't support ANSI codes, so we use plain text.
-func FormatChangeFinderLine(change stack.Change) string {
+func FormatChangeFinderLine(change model.Change) string {
 	status := GetChangeStatus(change)
 
 	prLabel := "local"
@@ -266,7 +266,7 @@ func FormatChangeFinderLine(change stack.Change) string {
 
 // FormatChangePreview formats a change for fuzzy finder preview window.
 // Preview pane supports ANSI codes, so we can use styling.
-func FormatChangePreview(change stack.Change) string {
+func FormatChangePreview(change model.Change) string {
 	lines := []string{
 		RenderKeyValue("Position", fmt.Sprintf("%d", change.Position)),
 		RenderKeyValue("Title", Bold(change.Title)),

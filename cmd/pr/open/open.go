@@ -8,6 +8,7 @@ import (
 
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
+	"github.com/bjulian5/stack/internal/model"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
 )
@@ -48,10 +49,10 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("not on a stack branch: switch to a stack first or use 'stack switch'")
 	}
 
-	var selectedChange *stack.Change
+	var selectedChange *model.Change
 
 	if c.UseSelect {
-		var prsOnly []stack.Change
+		var prsOnly []model.Change
 		for _, change := range stackCtx.AllChanges {
 			if !change.IsLocal() {
 				prsOnly = append(prsOnly, change)
