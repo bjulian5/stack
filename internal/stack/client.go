@@ -505,8 +505,6 @@ func (c *Client) SetLocalDraft(stackName string, uuid string, localDraft bool) e
 	} else {
 		pr.LocalDraftStatus = localDraft
 	}
-
-	fmt.Printf("Setting LocalDraftStatus for %s to %v\n", uuid, localDraft)
 	prData.PRs[uuid] = pr
 
 	return c.SavePRs(stackName, prData)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -56,7 +57,6 @@ func (c *Client) createPR(spec PRSpec) (*PR, error) {
 		"--body", spec.Body,
 		"--base", spec.Base,
 		"--head", spec.Head,
-		"--json", "number,url,state,isDraft,createdAt,updatedAt",
 	}
 
 	if spec.Draft {
@@ -68,12 +68,38 @@ func (c *Client) createPR(spec PRSpec) (*PR, error) {
 		return nil, fmt.Errorf("failed to create PR: %w", err)
 	}
 
-	pr, err := c.parsePRJSON(output)
+	// gh pr create outputs the PR URL (e.g., https://github.com/owner/repo/pull/123)
+	// Use regex to extract PR number from the output
+	prNumber, err := extractPRNumber(string(output))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse created PR data: %w", err)
+		return nil, fmt.Errorf("failed to extract PR number from output: %w", err)
+	}
+
+	// Fetch the full PR details using the PR number
+	pr, err := c.getPRByNumber(prNumber)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch created PR details: %w", err)
 	}
 
 	return pr, nil
+}
+
+// extractPRNumber extracts the PR number from gh pr create output using regex
+func extractPRNumber(output string) (int, error) {
+	// Match GitHub PR URL pattern: https://github.com/owner/repo/pull/123
+	re := regexp.MustCompile(`https://github\.com/[^/]+/[^/]+/pull/(\d+)`)
+	matches := re.FindStringSubmatch(output)
+
+	if len(matches) < 2 {
+		return 0, fmt.Errorf("no PR URL found in output: %s", output)
+	}
+
+	var prNumber int
+	if _, err := fmt.Sscanf(matches[1], "%d", &prNumber); err != nil {
+		return 0, fmt.Errorf("failed to parse PR number: %w", err)
+	}
+
+	return prNumber, nil
 }
 
 // updatePR updates an existing PR and constructs result without additional fetch
