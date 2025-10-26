@@ -51,13 +51,21 @@ go build && ./stack list
 - All git operations are delegated through this client for consistency
 - Dependency injection pattern: Commands receive `*git.Client` to enable testing
 
+**Domain Models** (`internal/model/`)
+- `Stack` - Stack configuration with base branch, timestamps, sync tracking, and merged changes
+- `Change` - Individual PR/commit with position tracking (absolute and active)
+- `PR` - GitHub PR metadata with versioning, draft status tracking, and cached metadata
+- `PRData` - Versioned wrapper for PR tracking (currently version 1)
+- Separate package for clean domain model separation
+
 **Stack Client** (`internal/stack/client.go`)
+- Large orchestration layer (1385 lines) managing all stack operations
 - Manages stack metadata stored in `.git/stack/<stack-name>/`
 - Each stack has `config.json` (stack metadata) and `prs.json` (PR tracking with versioning)
 - Provides `GetStackContext()` to determine current stack from branch name
 - `GetStackContextByName(name)` loads a specific stack's context by name
-- PR data stored as `PRData` structure with version field for future schema evolution
-- Methods: `LoadPRs()`, `SavePRs()`, `SetPR()` work with versioned PR data
+- Methods: `LoadPRs()`, `SavePRs()`, `SetPR()`, `SyncPRFromGitHub()`, `CreateStack()`, `DeleteStack()`, `Restack()`, etc.
+- Handles sync status checking (5-minute staleness threshold)
 
 **Stack Context** (`internal/stack/context.go`)
 - `StackContext` is the primary abstraction for working with stacks
@@ -75,14 +83,18 @@ go build && ./stack list
 - Commands are registered in `cmd/root.go` init()
 - Each command struct holds its own clients (`Git` and `Stack`) for dependency injection
 
-**UI System** (`internal/ui/`)
+**UI System** (`internal/ui/`) - 11 files
 - Centralized terminal styling and formatting using `lipgloss`
+- `config.go` - UI configuration settings
 - `format.go` - Reusable formatting utilities (truncate, pad, boxes, panels)
 - `styles.go` - Consistent color scheme and style definitions
 - `render.go` - Stack rendering (list view, details view, push progress)
 - `status.go` - Status rendering for stack details
 - `select.go` - Fuzzy finder for interactive change selection
 - `table.go` - Table formatting for stack display
+- `tree.go` - Tree-based stack visualization
+- `input.go` - User input handling
+- `print.go` - Simple output functions
 - `terminal.go` - Terminal utilities and width detection
 - All commands use the UI system for consistent output
 
@@ -91,6 +103,7 @@ go build && ./stack list
 - `SyncPR()` - Idempotent PR creation/update with auto-recovery
 - `BatchGetPRs()` - Efficient batch PR queries via GraphQL
 - `GetPRState()` - Query individual PR merge status
+- `MarkPRReady()` / `MarkPRDraft()` - Toggle PR draft status
 - `ListPRComments()` / `CreatePRComment()` / `UpdatePRComment()` - Comment management for stack visualization
 - `OpenPR()` - Open PR in browser
 
@@ -136,19 +149,23 @@ stack/
 │   ├── newcmd/new.go                # stack new command (newcmd to avoid "new" keyword)
 │   ├── list/list.go                 # stack list command
 │   ├── status/status.go             # stack status command
-│   ├── edit/edit.go                 # stack edit command
+│   ├── edit/edit.go                 # stack edit command (interactive fuzzy finder only)
 │   ├── fixup/fixup.go               # stack fixup command
 │   ├── switch/switch.go             # stack switch command (package: switchcmd)
 │   ├── top/top.go                   # stack top command
 │   ├── bottom/bottom.go             # stack bottom command
 │   ├── up/up.go                     # stack up command
 │   ├── down/down.go                 # stack down command
-│   ├── push/push.go                 # stack push command
+│   ├── push/push.go                 # stack push command (--dry-run, --force flags)
 │   ├── refresh/refresh.go           # stack refresh command
 │   ├── restack/restack.go           # stack restack command
+│   ├── delete/delete.go             # stack delete command
+│   ├── cleanup/cleanup.go           # stack cleanup command
 │   ├── pr/
 │   │   ├── pr.go                    # Parent PR command
-│   │   └── open/open.go             # stack pr open command
+│   │   ├── open/open.go             # stack pr open command
+│   │   ├── ready/ready.go           # stack pr ready command (--all flag)
+│   │   └── draft/draft.go           # stack pr draft command (--all flag)
 │   └── hook/
 │       ├── hook.go                  # Parent hook command
 │       ├── prepare_commit_msg.go    # prepare-commit-msg hook implementation
@@ -161,25 +178,30 @@ stack/
 │   │   ├── commit.go                # Commit and CommitMessage types with parsing
 │   │   ├── rebase.go                # Rebase operations for stack updates
 │   │   └── template.go              # Commit message templates
-│   ├── stack/
-│   │   ├── client.go                # Stack metadata management
-│   │   ├── stack.go                 # Stack struct
-│   │   ├── config.go                # Stack configuration
-│   │   ├── pr.go                    # PRData and PR structs with versioning
+│   ├── model/
+│   │   ├── stack.go                 # Stack domain model
 │   │   ├── change.go                # Change domain model
+│   │   └── pr.go                    # PR and PRData models with versioning
+│   ├── stack/
+│   │   ├── client.go                # Stack metadata management (1385 lines - core orchestration)
+│   │   ├── config.go                # Stack and global configuration
 │   │   ├── context.go               # StackContext for branch-based state and branch helpers
 │   │   ├── visualization.go         # Stack visualization in PR comments
 │   │   └── rebase_state.go          # Rebase state management for recovery
 │   ├── gh/
 │   │   ├── client.go                # GitHub client via gh CLI
-│   │   └── types.go                 # GitHub types (PR, PRSpec, PRState, Comment)
+│   │   └── types.go                 # GitHub types (PRSpec, Comment)
 │   ├── ui/
+│   │   ├── config.go                # UI configuration settings
 │   │   ├── format.go                # Formatting utilities and helper functions
 │   │   ├── styles.go                # lipgloss style definitions
 │   │   ├── render.go                # Stack rendering functions
 │   │   ├── status.go                # Status rendering
 │   │   ├── select.go                # Interactive fuzzy finder
 │   │   ├── table.go                 # Table formatting
+│   │   ├── tree.go                  # Tree-based stack visualization
+│   │   ├── input.go                 # User input handling
+│   │   ├── print.go                 # Simple output functions
 │   │   └── terminal.go              # Terminal utilities
 │   ├── hooks/
 │   │   └── install.go               # Hook installation/uninstallation
@@ -206,19 +228,24 @@ The codebase has completed **Phase 1** (Foundation), **Phase 2** (Git Hooks), **
 - ✅ Amend and insert operations for stack editing
 
 **Phase 3 - Editing & Navigation (✅ Completed):**
-- ✅ `stack edit` - Interactive PR editing with fuzzy finder
+- ✅ `stack edit` - Interactive PR editing with fuzzy finder (no direct arguments)
 - ✅ `stack switch [name]` - Stack switching with fuzzy finder
 - ✅ `stack top/bottom/up/down` - Navigate through stack changes
-- ✅ UI system with lipgloss for styled terminal output
+- ✅ `stack delete [name]` - Delete stacks with archival
+- ✅ `stack cleanup` - Clean up fully merged or empty stacks
+- ✅ UI system with lipgloss for styled terminal output (11 files)
+- ✅ Tree-based and table-based rendering options
 - ✅ Uncommitted changes validation before operations
 
 **Phase 4 - GitHub Integration (✅ Completed):**
-- ✅ `stack push` - Push PRs to GitHub with draft/ready support
+- ✅ `stack push` - Push PRs to GitHub (--dry-run, --force flags)
+- ✅ `stack pr ready/draft` - Mark PRs as ready or draft (--all flag)
 - ✅ `stack install` - Install hooks and configure git
-- ✅ `stack pr open` - Open PRs in browser
+- ✅ `stack pr open` - Open PRs in browser (--select flag)
 - ✅ GitHub client with batch API queries
-- ✅ Stack visualization in PR comments
+- ✅ Stack visualization in PR comments with caching
 - ✅ Idempotent PR sync (create or update)
+- ✅ Draft status tracking (local vs remote)
 
 **Phase 5 - Sync & Refresh (✅ Completed):**
 - ✅ `stack refresh` - Detect and handle merged PRs

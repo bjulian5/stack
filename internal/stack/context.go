@@ -60,12 +60,12 @@ func (s *StackContext) FormatUUIDBranch(username string, uuid string) string {
 	return fmt.Sprintf("%s/stack-%s/%s", username, s.StackName, uuid)
 }
 
-func FormatStackBranch(username string, stackName string) string {
+func formatStackBranch(username string, stackName string) string {
 	return fmt.Sprintf("%s/stack-%s/TOP", username, stackName)
 }
 
-// ValidateBottomUpMerges ensures that only bottom PRs are merged (no out-of-order merges).
-func ValidateBottomUpMerges(activeChanges []model.Change, mergedPRNumbers map[int]bool) error {
+// validateBottomUpMerges ensures that only bottom PRs are merged (no out-of-order merges).
+func validateBottomUpMerges(activeChanges []model.Change, mergedPRNumbers map[int]bool) error {
 	if len(mergedPRNumbers) == 0 {
 		return nil
 	}
@@ -99,7 +99,7 @@ func ValidateBottomUpMerges(activeChanges []model.Change, mergedPRNumbers map[in
 	return nil
 }
 
-func IsUUIDBranch(branch string) bool {
+func isUUIDBranch(branch string) bool {
 	parts := strings.Split(branch, "/")
 	if len(parts) != 3 || !strings.HasPrefix(parts[1], "stack-") {
 		return false
@@ -125,7 +125,7 @@ func validUUID(uuid string) bool {
 	return true
 }
 
-func ExtractStackName(branch string) string {
+func extractStackName(branch string) string {
 	parts := strings.Split(branch, "/")
 	if len(parts) != 3 || !strings.HasPrefix(parts[1], "stack-") {
 		return ""
@@ -138,7 +138,7 @@ func ExtractStackName(branch string) string {
 	return strings.TrimPrefix(parts[1], "stack-")
 }
 
-func ExtractUUIDFromBranch(branch string) (stackName string, uuid string) {
+func extractUUIDFromBranch(branch string) (stackName string, uuid string) {
 	parts := strings.Split(branch, "/")
 	if len(parts) != 3 || !strings.HasPrefix(parts[1], "stack-") {
 		return "", ""

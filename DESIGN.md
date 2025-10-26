@@ -207,9 +207,11 @@ stack switch feature-redesign
 stack edit
 ```
 
-**Interactive prompt:**
+**Interactive fuzzy finder:**
+Uses an interactive fuzzy finder to select which change to edit. Type to search by title, then press Enter to select.
+
 ```
-Select PR to edit:
+> token
 
  #  Title                         Status
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -217,13 +219,8 @@ Select PR to edit:
  2  Add refresh token handling   🟡 #1235
  3  Add cookie security          ⚪ Local
 
-Enter number: 2
-```
-
-**Direct selection:**
-```bash
-stack edit 2           # Edit 2nd PR
-stack edit abc1234     # Edit by commit hash
+3/3
+>
 ```
 
 #### What Happens
@@ -358,10 +355,11 @@ https://github.com/user/repo/pulls?q=is:pr+author:@me+head:username/stack-auth-r
 
 **Options:**
 ```bash
-stack push --ready      # Mark all PRs as ready for review (not draft)
-stack push --pr 2       # Push only PR #2 (and update bases for #3+)
 stack push --dry-run    # Show what would happen without doing it
+stack push --force      # Force update stack visualizations even if unchanged
 ```
+
+**Note:** To mark PRs as ready or draft, use `stack pr ready` or `stack pr draft` commands (see below).
 
 **Implementation via `gh` CLI:**
 ```bash
@@ -665,15 +663,46 @@ stack switch auth-refactor  # Direct switch
 
 ---
 
-### Working with Changes
-
-#### `stack edit [ref]`
-Edit a PR in the stack. Opens interactive selector if no ref provided.
+#### `stack delete [name]`
+Delete a stack and its branches.
 
 ```bash
-stack edit           # Interactive
-stack edit 2         # Edit PR #2
-stack edit abc1234   # Edit by commit hash
+stack delete               # Delete current stack (with confirmation)
+stack delete auth-refactor # Delete specific stack
+stack delete --force       # Skip confirmation prompt
+```
+
+**What it does:**
+- Deletes stack metadata from `.git/stack/<name>/`
+- Removes stack branch (TOP branch)
+- Removes all UUID branches for the stack
+- Archives metadata to `.git/stack/.archived/<name>-<timestamp>/`
+
+---
+
+#### `stack cleanup`
+Clean up stacks that have all PRs merged or are empty.
+
+```bash
+stack cleanup
+```
+
+**What it does:**
+- Scans all stacks in repository
+- Identifies stacks where all PRs are merged
+- Identifies empty stacks with no commits
+- Prompts for confirmation
+- Deletes eligible stacks and their branches
+
+---
+
+### Working with Changes
+
+#### `stack edit`
+Edit a PR in the stack using an interactive fuzzy finder.
+
+```bash
+stack edit           # Opens interactive fuzzy finder
 ```
 
 ---
@@ -734,10 +763,29 @@ stack fixup  # Interactive fuzzy finder to select change
 Push PRs to GitHub.
 
 ```bash
-stack push              # Push all PRs as drafts
-stack push --ready      # Mark all as ready for review
-stack push --dry-run    # Show what would happen
-stack push --force      # Force update stack visualizations
+stack push              # Push all PRs (creates as drafts by default)
+stack push --dry-run    # Show what would happen without doing it
+stack push --force      # Force update stack visualizations even if unchanged
+```
+
+---
+
+#### `stack pr ready [--all]`
+Mark changes as ready for review (not draft).
+
+```bash
+stack pr ready          # Mark current change as ready
+stack pr ready --all    # Mark all changes in stack as ready
+```
+
+---
+
+#### `stack pr draft [--all]`
+Mark changes as draft.
+
+```bash
+stack pr draft          # Mark current change as draft
+stack pr draft --all    # Mark all changes in stack as draft
 ```
 
 ---
@@ -895,10 +943,18 @@ stack/
 │   │   └── refresh.go           # stack refresh command (✅ completed)
 │   ├── restack/
 │   │   └── restack.go           # stack restack command (✅ completed)
+│   ├── delete/
+│   │   └── delete.go            # stack delete command (✅ completed)
+│   ├── cleanup/
+│   │   └── cleanup.go           # stack cleanup command (✅ completed)
 │   ├── pr/
 │   │   ├── pr.go                # Parent PR command (✅ completed)
-│   │   └── open/
-│   │       └── open.go          # stack pr open command (✅ completed)
+│   │   ├── open/
+│   │   │   └── open.go          # stack pr open command (✅ completed)
+│   │   ├── ready/
+│   │   │   └── ready.go         # stack pr ready command (✅ completed)
+│   │   └── draft/
+│   │       └── draft.go         # stack pr draft command (✅ completed)
 │   └── hook/                    # Git hook implementations (✅ completed)
 │       ├── hook.go              # Parent hook command
 │       ├── prepare_commit_msg.go # prepare-commit-msg hook
@@ -913,27 +969,33 @@ stack/
 │   │   ├── rebase.go            # Rebase operations for stack updates
 │   │   └── template.go          # Commit message templates
 │   │
+│   ├── model/                   # Domain models (✅ completed)
+│   │   ├── stack.go             # Stack model
+│   │   ├── change.go            # Change model
+│   │   └── pr.go                # PR and PRData models with versioning
+│   │
 │   ├── stack/                   # Stack management (✅ completed)
 │   │   ├── client.go            # Stack client for metadata management
-│   │   ├── stack.go             # Stack struct
-│   │   ├── config.go            # Stack configuration
-│   │   ├── pr.go                # PRData and PR structs with versioning
-│   │   ├── change.go            # Change domain model
+│   │   ├── config.go            # Stack and global configuration
 │   │   ├── context.go           # StackContext for branch-based state
 │   │   ├── visualization.go     # Stack visualization in PR comments
 │   │   └── rebase_state.go      # Rebase state management for recovery
 │   │
 │   ├── gh/                      # GitHub integration (✅ completed)
 │   │   ├── client.go            # gh CLI wrapper with batch API
-│   │   └── types.go             # GitHub types (PR, PRSpec, PRState, Comment)
+│   │   └── types.go             # GitHub types (PRSpec, Comment)
 │   │
 │   ├── ui/                      # User interface (✅ completed)
+│   │   ├── config.go            # UI configuration settings
 │   │   ├── format.go            # Formatting utilities
 │   │   ├── styles.go            # lipgloss style definitions
 │   │   ├── render.go            # Stack rendering functions
 │   │   ├── status.go            # Status rendering
 │   │   ├── select.go            # Interactive fuzzy finder
 │   │   ├── table.go             # Table formatting
+│   │   ├── tree.go              # Tree visualization
+│   │   ├── input.go             # User input handling
+│   │   ├── print.go             # Simple output functions
 │   │   └── terminal.go          # Terminal utilities
 │   │
 │   ├── hooks/                   # Git hooks (✅ completed)
