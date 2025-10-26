@@ -93,8 +93,6 @@ func (c *Command) Run(ctx context.Context) error {
 		return nil
 	}
 
-	// Apply refresh (fetch + rebase)
-	ui.Info("Fetching from remote and rebasing TOP branch...")
 	if err := c.Stack.ApplyRefresh(stackCtx, result.StaleMergedChanges); err != nil {
 		return err
 	}
@@ -107,6 +105,11 @@ func (c *Command) Run(ctx context.Context) error {
 	// Display summary
 	ui.Println("")
 	ui.Successf("Stack refreshed: %d merged, %d remaining", result.StaleMergedCount, result.RemainingCount)
+
+	if result.RemainingCount > 0 {
+		ui.Println("")
+		ui.Info("Run 'stack push' to update PR base branches on GitHub")
+	}
 
 	return nil
 }

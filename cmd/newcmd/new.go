@@ -72,8 +72,16 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("stack is not installed in this repository\n\nRun 'stack install' first to set up hooks and configuration")
 	}
 
+	baseBranch := c.BaseBranch
+	if baseBranch == "" {
+		baseBranch, err = c.Git.GetCurrentBranch()
+		if err != nil {
+			return fmt.Errorf("failed to get current branch: %w", err)
+		}
+	}
+
 	// Create the stack
-	s, err := c.Stack.CreateStack(c.StackName, c.BaseBranch)
+	s, err := c.Stack.CreateStack(c.StackName, baseBranch)
 	if err != nil {
 		return fmt.Errorf("failed to create stack: %w", err)
 	}

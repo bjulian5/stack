@@ -12,5 +12,6 @@ type Stack struct {
 	Created       time.Time `json:"created"`
 	LastSynced    time.Time `json:"last_synced"`    // When we last checked GitHub for merged PRs
 	SyncHash      string    `json:"sync_hash"`      // TOP branch commit hash at last sync
+	BaseRef       string    `json:"base_ref"`       // Git ref of the base branch at stack creation
 	MergedChanges []Change  `json:"merged_changes"` // PRs that have been merged on GitHub
 }

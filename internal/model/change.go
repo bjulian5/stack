@@ -62,3 +62,13 @@ func (c *Change) NeedsSyncToGitHub() ChangeSyncStatus {
 
 	return ChangeSyncStatus{NeedsSync: false}
 }
+
+// StackChanges contains the various categories of changes in a stack.
+type StackChanges struct {
+	// All includes merged + active changes (deduplicated by UUID).
+	All []Change
+	// Active includes only unmerged changes currently on the stack branch.
+	Active []Change
+	// StaleMerged includes active changes that are merged on GitHub but still on the TOP branch (need refresh).
+	StaleMerged []Change
+}

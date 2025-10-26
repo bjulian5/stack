@@ -228,7 +228,7 @@ func (c *Client) getStackContextByName(name string, currentBranch string) (*Stac
 	}
 
 	// Load all changes (merged + active + stale merged)
-	allChanges, activeChanges, staleMergedChanges, err := c.getChangesForStack(stack)
+	changes, err := c.getChangesForStack(stack)
 	if err != nil {
 		return nil, err
 	}
@@ -236,9 +236,9 @@ func (c *Client) getStackContextByName(name string, currentBranch string) (*Stac
 	res := &StackContext{
 		StackName:          name,
 		Stack:              stack,
-		AllChanges:         allChanges,
-		ActiveChanges:      activeChanges,
-		StaleMergedChanges: staleMergedChanges,
+		AllChanges:         changes.All,
+		ActiveChanges:      changes.Active,
+		StaleMergedChanges: changes.StaleMerged,
 	}
 
 	if IsUUIDBranch(currentBranch) {
@@ -254,8 +254,8 @@ func (c *Client) getStackContextByName(name string, currentBranch string) (*Stac
 		}
 		res.stackActive = currentStackName == name
 
-		if len(allChanges) > 0 {
-			lastChange := allChanges[len(allChanges)-1]
+		if len(changes.All) > 0 {
+			lastChange := changes.All[len(changes.All)-1]
 			res.currentUUID = lastChange.UUID
 		}
 	}
@@ -288,11 +288,7 @@ func (c *Client) CreateStack(name string, baseBranch string) (*model.Stack, erro
 
 	// Get current branch as base if not specified
 	if baseBranch == "" {
-		currentBranch, err := c.git.GetCurrentBranch()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get current branch: %w", err)
-		}
-		baseBranch = currentBranch
+		return nil, fmt.Errorf("base branch is required")
 	}
 
 	// Get username for branch naming
@@ -320,14 +316,23 @@ func (c *Client) CreateStack(name string, baseBranch string) (*model.Stack, erro
 		return nil, fmt.Errorf("failed to get repo info: %w", err)
 	}
 
+	baseRef, err := c.git.GetCommitHash(baseBranch)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get base branch hash: %w", err)
+	}
+
 	// Create stack metadata
 	s := &model.Stack{
-		Name:     name,
-		Branch:   branchName,
-		Base:     baseBranch,
-		Owner:    owner,
-		RepoName: repoName,
-		Created:  time.Now(),
+		Name:          name,
+		Branch:        branchName,
+		Base:          baseBranch,
+		Owner:         owner,
+		RepoName:      repoName,
+		Created:       time.Now(),
+		BaseRef:       baseRef,
+		MergedChanges: []model.Change{},
+		LastSynced:    time.Time{},
+		SyncHash:      baseRef,
 	}
 
 	if err := c.SaveStack(s); err != nil {
@@ -337,16 +342,27 @@ func (c *Client) CreateStack(name string, baseBranch string) (*model.Stack, erro
 	return s, nil
 }
 
-// getChangesForStack loads all changes for a stack (shared logic)
-// getChangesForStack returns AllChanges, ActiveChanges, and StaleMergedChanges for a stack.
-// AllChanges includes merged + active changes. ActiveChanges includes only unmerged changes.
-// StaleMergedChanges are active changes that are merged on GitHub but still on TOP branch (need refresh).
-func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, activeChanges []model.Change, staleMergedChanges []model.Change, err error) {
+// StackChanges contains the various categories of changes in a stack.
+type stackChanges struct {
+	// All includes merged + active changes (deduplicated by UUID).
+	All []model.Change
+	// Active includes only unmerged changes currently on the stack branch.
+	Active []model.Change
+	// StaleMerged includes active changes that are merged on GitHub but still on the TOP branch (need refresh).
+	StaleMerged []model.Change
+}
+
+// getChangesForStack loads all changes for a stack
+func (c *Client) getChangesForStack(s *model.Stack) (*stackChanges, error) {
 	// Load PR tracking data
 	prData, err := c.LoadPRs(s.Name)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to load PRs: %w", err)
+		return nil, fmt.Errorf("failed to load PRs: %w", err)
 	}
+
+	var allChanges []model.Change
+	var activeChanges []model.Change
+	var staleMergedChanges []model.Change
 
 	// Get merged changes from stack metadata (not from a git branch)
 	mergedChanges := s.MergedChanges
@@ -364,10 +380,14 @@ func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, 
 		}
 	}
 
-	// Load active changes from TOP branch
-	activeCommits, err := c.git.GetCommits(s.Branch, s.Base)
+	baseRef := s.BaseRef
+	if baseRef == "" {
+		baseRef = s.Base
+	}
+
+	activeCommits, err := c.git.GetCommits(s.Branch, baseRef)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to get active commits: %w", err)
+		return nil, fmt.Errorf("failed to get active commits: %w", err)
 	}
 
 	// Filter commits to only include those belonging to this stack
@@ -419,7 +439,7 @@ func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, 
 	// Calculate and set DesiredBase for each change based on stacking order
 	username, err := common.GetUsername()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to get username: %w", err)
+		return nil, fmt.Errorf("failed to get username: %w", err)
 	}
 
 	for i := range activeChanges {
@@ -475,7 +495,11 @@ func (c *Client) getChangesForStack(s *model.Stack) (allChanges []model.Change, 
 		}
 	}
 
-	return allChanges, activeChanges, staleMergedChanges, nil
+	return &stackChanges{
+		All:         allChanges,
+		Active:      activeChanges,
+		StaleMerged: staleMergedChanges,
+	}, nil
 }
 
 // commitsToChanges converts git commits to Changes with the specified merged status
@@ -765,7 +789,6 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 				pr.State = strings.ToLower(prState.State)
 			}
 			pr.RemoteDraftStatus = prState.IsDraft
-			// Preserve pr.LocalDraftStatus - don't overwrite user's preference!
 		}
 		change.PR = pr
 	}
@@ -981,13 +1004,20 @@ func (c *Client) Restack(stackCtx *StackContext, opts RestackOptions) error {
 		return err
 	}
 
-	if stackCtx.Stack.Base != targetBase {
-		stackCtx.Stack.Base = targetBase
-		if err := c.SaveStack(stackCtx.Stack); err != nil {
-			return fmt.Errorf("failed to update stack metadata: %w", err)
-		}
-		ui.Successf("Updated base branch: %s → %s", stackCtx.Stack.Base, targetBase)
+	ref, err := c.git.GetCommitHash(targetBase)
+	if err != nil {
+		return fmt.Errorf("failed to get target base hash: %w", err)
 	}
+
+	stackCtx.Stack.BaseRef = ref
+	stackCtx.Stack.Base = targetBase
+	if err := c.SaveStack(stackCtx.Stack); err != nil {
+		return fmt.Errorf("failed to update stack metadata: %w", err)
+	}
+
+	// if _, err := c.UpdateUUIDBranches(stackCtx.StackName); err != nil {
+	// 	return fmt.Errorf("failed to update UUID branches: %w", err)
+	// }
 	return nil
 }
 
@@ -1176,10 +1206,6 @@ func (c *Client) RebaseSubsequentCommitsWithRecovery(params RebaseParams) (int, 
 
 	return rebasedCount, nil
 }
-
-// ====================================================================
-// Stack Deletion and Cleanup Operations
-// ====================================================================
 
 func (c *Client) ArchiveStack(stackName string) error {
 	stackDir := c.getStackDir(stackName)

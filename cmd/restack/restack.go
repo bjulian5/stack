@@ -122,6 +122,11 @@ func (c *Command) Run(ctx context.Context) error {
 		fetch = true
 	}
 
+	ui.Info("Checking PR merge status on GitHub...")
+	if _, err := c.Stack.SyncPRMetadata(stackCtx); err != nil {
+		return fmt.Errorf("failed to sync PR metadata: %w", err)
+	}
+
 	opts := stack.RestackOptions{
 		Onto:  targetBase,
 		Fetch: fetch,
