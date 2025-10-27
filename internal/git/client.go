@@ -22,6 +22,10 @@ func NewClient() (*Client, error) {
 	return &Client{gitRoot: gitRoot}, nil
 }
 
+func NewClientAt(path string) (*Client, error) {
+	return &Client{gitRoot: path}, nil
+}
+
 // GitRoot returns the root directory of the git repository
 func (c *Client) GitRoot() string {
 	return c.gitRoot
@@ -29,6 +33,7 @@ func (c *Client) GitRoot() string {
 
 func (c *Client) GetCurrentBranch() (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = c.gitRoot
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get current branch: %w", err)
@@ -38,6 +43,7 @@ func (c *Client) GetCurrentBranch() (string, error) {
 
 func (c *Client) CheckoutBranch(name string) error {
 	cmd := exec.Command("git", "checkout", name)
+	cmd.Dir = c.gitRoot
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to checkout branch %s: %w", name, err)
 	}
@@ -46,6 +52,7 @@ func (c *Client) CheckoutBranch(name string) error {
 
 func (c *Client) CreateAndCheckoutBranch(name string) error {
 	cmd := exec.Command("git", "checkout", "-b", name)
+	cmd.Dir = c.gitRoot
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to create and checkout branch %s: %w", name, err)
 	}
@@ -63,6 +70,7 @@ func (c *Client) CreateAndCheckoutBranch(name string) error {
 // Use CheckoutBranch() if you want to checkout an existing branch.
 func (c *Client) CreateAndCheckoutBranchAt(name string, commitHash string) error {
 	cmd := exec.Command("git", "checkout", "-b", name, commitHash)
+	cmd.Dir = c.gitRoot
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to create and checkout branch %s at %s: %w", name, commitHash, err)
 	}
@@ -71,11 +79,13 @@ func (c *Client) CreateAndCheckoutBranchAt(name string, commitHash string) error
 
 func (c *Client) BranchExists(name string) bool {
 	cmd := exec.Command("git", "rev-parse", "--verify", name)
+	cmd.Dir = c.gitRoot
 	return cmd.Run() == nil
 }
 
 func (c *Client) GetCommitHash(ref string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", ref)
+	cmd.Dir = c.gitRoot
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get commit hash for %s: %w", ref, err)
@@ -85,6 +95,7 @@ func (c *Client) GetCommitHash(ref string) (string, error) {
 
 func (c *Client) GetCommits(branch string, base string) ([]Commit, error) {
 	cmd := exec.Command("git", "rev-list", "--reverse", fmt.Sprintf("%s..%s", base, branch))
+	cmd.Dir = c.gitRoot
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get commits: %w", err)
@@ -114,6 +125,7 @@ func (c *Client) GetCommit(hash string) (Commit, error) {
 	}
 
 	cmd := exec.Command("git", "log", "--format=%B", "-n", "1", actualHash)
+	cmd.Dir = c.gitRoot
 	output, err := cmd.Output()
 	if err != nil {
 		return Commit{}, fmt.Errorf("failed to get commit %s: %w", actualHash, err)
@@ -138,6 +150,7 @@ func getGitRoot() (string, error) {
 
 func (c *Client) CherryPick(commitHash string) error {
 	cmd := exec.Command("git", "cherry-pick", commitHash)
+	cmd.Dir = c.gitRoot
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to cherry-pick %s: %w", commitHash, err)
 	}
@@ -146,6 +159,7 @@ func (c *Client) CherryPick(commitHash string) error {
 
 func (c *Client) ResetHard(ref string) error {
 	cmd := exec.Command("git", "reset", "--hard", ref)
+	cmd.Dir = c.gitRoot
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to reset to %s: %w", ref, err)
 	}
@@ -154,6 +168,7 @@ func (c *Client) ResetHard(ref string) error {
 
 func (c *Client) AmendCommitMessage(message string) error {
 	cmd := exec.Command("git", "commit", "--amend", "-m", message)
+	cmd.Dir = c.gitRoot
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to amend commit: %w", err)
 	}
@@ -162,6 +177,7 @@ func (c *Client) AmendCommitMessage(message string) error {
 
 func (c *Client) RebaseOnto(newBase string, upstream string, branch string) error {
 	cmd := exec.Command("git", "rebase", "--onto", newBase, upstream, branch)
+	cmd.Dir = c.gitRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to rebase: %w\nOutput: %s", err, string(output))
@@ -171,6 +187,7 @@ func (c *Client) RebaseOnto(newBase string, upstream string, branch string) erro
 
 func (c *Client) GetParentCommit(commitHash string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", commitHash+"^")
+	cmd.Dir = c.gitRoot
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get parent of %s: %w", commitHash, err)
@@ -180,6 +197,7 @@ func (c *Client) GetParentCommit(commitHash string) (string, error) {
 
 func (c *Client) GetCommitTree(commitHash string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", commitHash+"^{tree}")
+	cmd.Dir = c.gitRoot
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get tree for %s: %w", commitHash, err)
@@ -189,6 +207,7 @@ func (c *Client) GetCommitTree(commitHash string) (string, error) {
 
 func (c *Client) CommitTree(treeHash string, parentHash string, message string) (string, error) {
 	cmd := exec.Command("git", "commit-tree", treeHash, "-p", parentHash, "-m", message)
+	cmd.Dir = c.gitRoot
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to commit tree: %w", err)
@@ -212,6 +231,7 @@ func (c *Client) IsRebaseInProgress() bool {
 
 func (c *Client) UpdateRef(branchName string, commitHash string) error {
 	cmd := exec.Command("git", "update-ref", "refs/heads/"+branchName, commitHash)
+	cmd.Dir = c.gitRoot
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to update ref %s to %s: %w", branchName, commitHash, err)
 	}
@@ -220,6 +240,7 @@ func (c *Client) UpdateRef(branchName string, commitHash string) error {
 
 func (c *Client) HasUncommittedChanges() (bool, error) {
 	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = c.gitRoot
 	output, err := cmd.Output()
 	if err != nil {
 		return false, fmt.Errorf("failed to check git status: %w", err)
@@ -229,6 +250,7 @@ func (c *Client) HasUncommittedChanges() (bool, error) {
 
 func (c *Client) HasStagedChanges() (bool, error) {
 	cmd := exec.Command("git", "diff", "--cached", "--quiet")
+	cmd.Dir = c.gitRoot
 	err := cmd.Run()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
@@ -241,6 +263,7 @@ func (c *Client) HasStagedChanges() (bool, error) {
 
 func (c *Client) CommitFixup(commitHash string) error {
 	cmd := exec.Command("git", "commit", "--fixup", commitHash)
+	cmd.Dir = c.gitRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to create fixup commit: %w\nOutput: %s", err, string(output))
@@ -252,6 +275,7 @@ func (c *Client) CommitFixup(commitHash string) error {
 // Uses GIT_SEQUENCE_EDITOR=true to automatically apply the rebase plan without user interaction.
 func (c *Client) RebaseInteractiveAutosquash(fromCommit string) error {
 	cmd := exec.Command("git", "rebase", "-i", "--autosquash", fromCommit)
+	cmd.Dir = c.gitRoot
 	cmd.Env = append(os.Environ(), "GIT_SEQUENCE_EDITOR=true")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -274,6 +298,7 @@ func (c *Client) Push(branch string, force bool) error {
 	}
 
 	cmd := exec.Command("git", args...)
+	cmd.Dir = c.gitRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to push branch %s: %w\nOutput: %s", branch, err, string(output))
@@ -283,6 +308,7 @@ func (c *Client) Push(branch string, force bool) error {
 
 func (c *Client) GetRemoteName() (string, error) {
 	cmd := exec.Command("git", "remote")
+	cmd.Dir = c.gitRoot
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get remote: %w", err)
@@ -298,6 +324,7 @@ func (c *Client) GetRemoteName() (string, error) {
 
 func (c *Client) Fetch(remote string) error {
 	cmd := exec.Command("git", "fetch", remote)
+	cmd.Dir = c.gitRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to fetch from %s: %w\nOutput: %s", remote, err, string(output))
@@ -307,6 +334,7 @@ func (c *Client) Fetch(remote string) error {
 
 func (c *Client) CreateBranchAt(branchName string, ref string) error {
 	cmd := exec.Command("git", "branch", branchName, ref)
+	cmd.Dir = c.gitRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to create branch %s at %s: %w\nOutput: %s", branchName, ref, err, string(output))
@@ -316,6 +344,7 @@ func (c *Client) CreateBranchAt(branchName string, ref string) error {
 
 func (c *Client) Rebase(onto string) error {
 	cmd := exec.Command("git", "rebase", onto)
+	cmd.Dir = c.gitRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("rebase failed: %w\nOutput: %s", err, string(output))
@@ -333,6 +362,7 @@ func (c *Client) DeleteBranch(branchName string, force bool) error {
 	args = append(args, branchName)
 
 	cmd := exec.Command("git", args...)
+	cmd.Dir = c.gitRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to delete branch %s: %w\nOutput: %s", branchName, err, string(output))
@@ -347,6 +377,7 @@ func (c *Client) DeleteRemoteBranch(branchName string) error {
 	}
 
 	cmd := exec.Command("git", "push", remote, "--delete", branchName)
+	cmd.Dir = c.gitRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if strings.Contains(string(output), "remote ref does not exist") {
@@ -359,6 +390,7 @@ func (c *Client) DeleteRemoteBranch(branchName string) error {
 
 func (c *Client) SetConfig(key string, value string) error {
 	cmd := exec.Command("git", "config", key, value)
+	cmd.Dir = c.gitRoot
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to set config %s=%s: %w", key, value, err)
 	}
@@ -369,6 +401,7 @@ func (c *Client) SetConfig(key string, value string) error {
 // Respects the configured comment character (core.commentChar).
 func (c *Client) StripComments(message string) (string, error) {
 	cmd := exec.Command("git", "stripspace", "--strip-comments")
+	cmd.Dir = c.gitRoot
 	cmd.Stdin = strings.NewReader(message)
 	output, err := cmd.Output()
 	if err != nil {
@@ -381,6 +414,7 @@ func (c *Client) StripComments(message string) (string, error) {
 // Returns empty string if no upstream is configured.
 func (c *Client) GetUpstreamBranch(branch string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", branch+"@{u}")
+	cmd.Dir = c.gitRoot
 	output, err := cmd.Output()
 	if err != nil {
 		return "", nil

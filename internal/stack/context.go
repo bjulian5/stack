@@ -19,6 +19,7 @@ type StackContext struct {
 	currentUUID        string                   // UUID where we are positioned
 	onUUIDBranch       bool                     // true if on UUID branch (editing specific change)
 	stackActive        bool                     // true if this stack is currently active in repo
+	username           string                   // username for branch naming
 }
 
 func (s *StackContext) IsStack() bool {
@@ -59,8 +60,8 @@ func (s *StackContext) FindChangeInActive(uuid string) *model.Change {
 	return nil
 }
 
-func (s *StackContext) FormatUUIDBranch(username string, uuid string) string {
-	return fmt.Sprintf("%s/stack-%s/%s", username, s.StackName, uuid)
+func (s *StackContext) FormatUUIDBranch(uuid string) string {
+	return fmt.Sprintf("%s/stack-%s/%s", s.username, s.StackName, uuid)
 }
 
 // Save persists the current state of all changes to disk (prs.json and config.json)

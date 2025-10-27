@@ -25,9 +25,9 @@ func (c *Client) getGlobalConfigPath() string {
 	return filepath.Join(c.getStacksRootDir(), "config.json")
 }
 
-// LoadGlobalConfig loads the global stack configuration
+// loadGlobalConfig loads the global stack configuration
 // Returns a default config if the file doesn't exist
-func (c *Client) LoadGlobalConfig() (*GlobalConfig, error) {
+func (c *Client) loadGlobalConfig() (*GlobalConfig, error) {
 	configPath := c.getGlobalConfigPath()
 
 	data, err := os.ReadFile(configPath)
@@ -51,8 +51,8 @@ func (c *Client) LoadGlobalConfig() (*GlobalConfig, error) {
 	return &config, nil
 }
 
-// SaveGlobalConfig saves the global stack configuration
-func (c *Client) SaveGlobalConfig(config *GlobalConfig) error {
+// saveGlobalConfig saves the global stack configuration
+func (c *Client) saveGlobalConfig(config *GlobalConfig) error {
 	stacksRoot := c.getStacksRootDir()
 
 	// Ensure .git/stack directory exists
@@ -77,7 +77,7 @@ func (c *Client) SaveGlobalConfig(config *GlobalConfig) error {
 
 // IsInstalled checks if stack is properly installed in this repository
 func (c *Client) IsInstalled() (bool, error) {
-	config, err := c.LoadGlobalConfig()
+	config, err := c.loadGlobalConfig()
 	if err != nil {
 		return false, err
 	}
@@ -87,7 +87,7 @@ func (c *Client) IsInstalled() (bool, error) {
 
 // MarkInstalled marks stack as installed with current timestamp
 func (c *Client) MarkInstalled() error {
-	config, err := c.LoadGlobalConfig()
+	config, err := c.loadGlobalConfig()
 	if err != nil {
 		return err
 	}
@@ -103,5 +103,5 @@ func (c *Client) MarkInstalled() error {
 	config.HooksVersion = CurrentHooksVersion
 	config.GitConfigured = true
 
-	return c.SaveGlobalConfig(config)
+	return c.saveGlobalConfig(config)
 }

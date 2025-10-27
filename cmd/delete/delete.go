@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
@@ -68,12 +67,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to load stack: %w", err)
 	}
 
-	username, err := common.GetUsername()
-	if err != nil {
-		return fmt.Errorf("failed to get username: %w", err)
-	}
-
-	branches, err := c.Stack.GetStackBranches(username, stackName)
+	branches, err := c.Stack.GetStackBranches(stackName)
 	if err != nil {
 		return fmt.Errorf("failed to get stack branches: %w", err)
 	}

@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/model"
@@ -148,12 +147,6 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("stack out of sync - run 'stack refresh' first")
 	}
 
-	// Get username for branch naming
-	username, err := common.GetUsername()
-	if err != nil {
-		return fmt.Errorf("failed to get username: %w", err)
-	}
-
 	if c.DryRun {
 		ui.Info("Dry run mode - no changes will be made")
 		ui.Println("")
@@ -162,7 +155,7 @@ func (c *Command) Run(ctx context.Context) error {
 	var created, updated, skipped int
 
 	for _, change := range stackCtx.ActiveChanges {
-		prBranch := stackCtx.FormatUUIDBranch(username, change.UUID)
+		prBranch := stackCtx.FormatUUIDBranch(change.UUID)
 
 		existingPRNumber := 0
 		var existingPR *model.PR

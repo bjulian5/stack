@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/model"
@@ -20,8 +20,8 @@ import (
 // and needs to be refreshed to check for merged PRs on GitHub
 const DefaultSyncThreshold = 5 * time.Minute
 
-// GitOperations defines the git operations needed by Stack Client
-type GitOperations interface {
+// GitClient defines the git operations needed by Stack Client
+type GitClient interface {
 	GetCurrentBranch() (string, error)
 	BranchExists(name string) bool
 	CreateAndCheckoutBranch(name string) error
@@ -42,19 +42,37 @@ type GitOperations interface {
 	HasUncommittedChanges() (bool, error)
 }
 
+// GithubClient defines the GitHub operations needed by Stack Client
+type GithubClient interface {
+	GetRepoInfo() (owner string, repoName string, err error)
+	MarkPRDraft(prNumber int) error
+	MarkPRReady(prNumber int) error
+	BatchGetPRs(owner, repoName string, prNumbers []int) (*gh.BatchPRsResult, error)
+	UpdatePRComment(commentID string, body string) error
+	ListPRComments(prNumber int) ([]gh.Comment, error)
+	CreatePRComment(prNumber int, body string) (string, error)
+}
+
 // Client provides stack operations
 type Client struct {
-	git     GitOperations
-	gh      *gh.Client
-	gitRoot string
+	git      GitClient
+	gh       GithubClient
+	gitRoot  string
+	username string
 }
 
 // NewClient creates a new stack client
-func NewClient(gitOps GitOperations, ghClient *gh.Client) *Client {
+func NewClient(gitOps GitClient, ghClient GithubClient) *Client {
+	// TODO: update callsites to handle error
+	username, err := getUsername()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get username: %v", err))
+	}
 	return &Client{
-		git:     gitOps,
-		gh:      ghClient,
-		gitRoot: gitOps.GitRoot(),
+		git:      gitOps,
+		gh:       ghClient,
+		gitRoot:  gitOps.GitRoot(),
+		username: username,
 	}
 }
 
@@ -249,6 +267,7 @@ func (c *Client) getStackContextByName(name string, currentBranch string) (*Stac
 		AllChanges:         changes.All,
 		ActiveChanges:      changes.Active,
 		StaleMergedChanges: changes.StaleMerged,
+		username:           c.username,
 	}
 
 	if isUUIDBranch(currentBranch) {
@@ -301,14 +320,8 @@ func (c *Client) CreateStack(name string, baseBranch string) (*model.Stack, erro
 		return nil, fmt.Errorf("base branch is required")
 	}
 
-	// Get username for branch naming
-	username, err := common.GetUsername()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get username: %w", err)
-	}
-
 	// Format branch name
-	branchName := formatStackBranch(username, name)
+	branchName := formatStackBranch(c.username, name)
 
 	// Check if branch already exists
 	if c.git.BranchExists(branchName) {
@@ -451,12 +464,6 @@ func (c *Client) getChangesForStack(s *model.Stack) (*stackChanges, error) {
 		activeChanges[i].ActivePosition = i + 1
 	}
 
-	// Calculate and set DesiredBase for each change based on stacking order
-	username, err := common.GetUsername()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get username: %w", err)
-	}
-
 	for i := range activeChanges {
 		// Determine the correct base for this change by looking at what comes before it
 		var desiredBase string
@@ -474,7 +481,7 @@ func (c *Client) getChangesForStack(s *model.Stack) (*stackChanges, error) {
 		} else {
 			// Subsequent active changes: base off the previous active change's PR branch
 			prevChange := activeChanges[i-1]
-			desiredBase = fmt.Sprintf("%s/stack-%s/%s", username, s.Name, prevChange.UUID)
+			desiredBase = fmt.Sprintf("%s/stack-%s/%s", c.username, s.Name, prevChange.UUID)
 		}
 
 		activeChanges[i].DesiredBase = desiredBase
@@ -995,14 +1002,9 @@ func (c *Client) UpdateLocalBaseRef(baseBranch string) error {
 // If the branch already exists but points to a different commit, it syncs it to the current commit.
 // Returns the branch name that was checked out.
 func (c *Client) CheckoutChangeForEditing(stackCtx *StackContext, change *model.Change) (string, error) {
-	// Get username for branch naming
-	username, err := common.GetUsername()
-	if err != nil {
-		return "", fmt.Errorf("failed to get username: %w", err)
-	}
 
 	// Format UUID branch name
-	branchName := stackCtx.FormatUUIDBranch(username, change.UUID)
+	branchName := stackCtx.FormatUUIDBranch(change.UUID)
 
 	// Check if UUID branch already exists
 	if c.git.BranchExists(branchName) {
@@ -1066,18 +1068,13 @@ func (c *Client) UpdateUUIDBranches(stackName string) (int, error) {
 		return 0, fmt.Errorf("failed to reload stack context: %w", err)
 	}
 
-	username, err := common.GetUsername()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get username: %w", err)
-	}
-
 	updatedCount := 0
 	for _, change := range ctx.ActiveChanges {
 		if change.UUID == "" {
 			continue
 		}
 
-		branchName := ctx.FormatUUIDBranch(username, change.UUID)
+		branchName := ctx.FormatUUIDBranch(change.UUID)
 
 		if !c.git.BranchExists(branchName) {
 			continue
@@ -1163,8 +1160,8 @@ func (c *Client) ArchiveStack(stackName string) error {
 	return nil
 }
 
-func (c *Client) GetStackBranches(username, stackName string) ([]string, error) {
-	pattern := fmt.Sprintf("refs/heads/%s/stack-%s/*", username, stackName)
+func (c *Client) GetStackBranches(stackName string) ([]string, error) {
+	pattern := fmt.Sprintf("refs/heads/%s/stack-%s/*", c.username, stackName)
 	cmd := exec.Command("git", "for-each-ref", "--format=%(refname:short)", pattern)
 	output, err := cmd.Output()
 	if err != nil {
@@ -1185,12 +1182,7 @@ func (c *Client) DeleteStack(stackName string, skipConfirm bool) error {
 		return fmt.Errorf("failed to load stack: %w", err)
 	}
 
-	username, err := common.GetUsername()
-	if err != nil {
-		return fmt.Errorf("failed to get username: %w", err)
-	}
-
-	branches, err := c.GetStackBranches(username, stackName)
+	branches, err := c.GetStackBranches(stackName)
 	if err != nil {
 		return fmt.Errorf("failed to get stack branches: %w", err)
 	}
@@ -1315,4 +1307,13 @@ func (c *Client) loadStackWithSync(name string) (*StackContext, error) {
 
 	// stackCtx is already fresh after SyncPRMetadata - no need to reload
 	return stackCtx, nil
+}
+
+// getUsername returns the username for branch naming
+func getUsername() (string, error) {
+	currentUser, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current user: %w", err)
+	}
+	return currentUser.Username, nil
 }

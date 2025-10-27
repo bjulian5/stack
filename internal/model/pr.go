@@ -2,7 +2,11 @@ package model
 
 import (
 	"time"
+
+	"github.com/bjulian5/stack/internal/gh"
 )
+
+type PRState string
 
 // PR represents a pull request in the stack
 type PR struct {
@@ -36,6 +40,19 @@ func (p *PR) IsMerged() bool {
 		return false
 	}
 	return p.State == "merged"
+}
+
+// PRSyncData contains all data needed to sync a PR to local storage
+type PRSyncData struct {
+	StackName         string
+	UUID              string
+	Branch            string
+	CommitHash        string
+	GitHubPR          *gh.PR
+	Title             string
+	Body              string
+	Base              string
+	RemoteDraftStatus bool // The draft status that was pushed to GitHub
 }
 
 // PRData is a wrapper for PR tracking data
