@@ -20,7 +20,7 @@ func init() {
 // SelectChange presents a fuzzy finder to select a change from the stack.
 // Returns the selected change, or nil if the user cancelled the selection.
 // Returns an error only if the fuzzy finder encounters an unexpected error.
-func SelectChange(changes []model.Change) (*model.Change, error) {
+func SelectChange(changes []*model.Change) (*model.Change, error) {
 	// Flush stdout/stderr before starting fuzzy finder to clear any ANSI sequences
 	os.Stdout.Sync()
 	os.Stderr.Sync()
@@ -43,5 +43,5 @@ func SelectChange(changes []model.Change) (*model.Change, error) {
 		return nil, nil
 	}
 
-	return &changes[idx], nil
+	return changes[idx], nil
 }

@@ -81,7 +81,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("no active changes in stack: all changes are merged")
 	}
 
-	topActiveChange := &stackCtx.ActiveChanges[len(stackCtx.ActiveChanges)-1]
+	topActiveChange := stackCtx.ActiveChanges[len(stackCtx.ActiveChanges)-1]
 
 	// Validate UUID exists
 	if topActiveChange.UUID == "" {
@@ -100,11 +100,6 @@ func (c *Command) Run(ctx context.Context) error {
 			"Change #%d has been merged on GitHub - run 'stack refresh' to sync",
 			topActiveChange.Position,
 		)
-	}
-
-	stackCtx, err = c.Stack.GetStackContext()
-	if err != nil {
-		return fmt.Errorf("failed to get updated stack context: %w", err)
 	}
 
 	// Print success message with stack tree

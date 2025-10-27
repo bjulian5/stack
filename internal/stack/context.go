@@ -11,12 +11,14 @@ import (
 type StackContext struct {
 	StackName          string
 	Stack              *model.Stack
-	AllChanges         []model.Change // Complete history (merged + active)
-	ActiveChanges      []model.Change // Only unmerged changes from TOP branch
-	StaleMergedChanges []model.Change // Active changes that are merged on GitHub but still on TOP branch (need restack)
-	currentUUID        string         // UUID where we are positioned
-	onUUIDBranch       bool           // true if on UUID branch (editing specific change)
-	stackActive        bool           // true if this stack is currently active in repo
+	changes            map[string]*model.Change // Source of truth: changes indexed by UUID
+	client             *Client                  // Client for persistence operations
+	AllChanges         []*model.Change          // Complete history (merged + active) - pointers into changes map
+	ActiveChanges      []*model.Change          // Only unmerged changes from TOP branch - pointers into changes map
+	StaleMergedChanges []*model.Change          // Active changes that are merged on GitHub but still on TOP branch (need restack) - pointers into changes map
+	currentUUID        string                   // UUID where we are positioned
+	onUUIDBranch       bool                     // true if on UUID branch (editing specific change)
+	stackActive        bool                     // true if this stack is currently active in repo
 }
 
 func (s *StackContext) IsStack() bool {
@@ -39,18 +41,19 @@ func (s *StackContext) GetCurrentPositionUUID() string {
 }
 
 func (s *StackContext) FindChange(uuid string) *model.Change {
-	for i := range s.AllChanges {
-		if s.AllChanges[i].UUID == uuid {
-			return &s.AllChanges[i]
-		}
-	}
-	return nil
+	return s.changes[uuid]
 }
 
 func (s *StackContext) FindChangeInActive(uuid string) *model.Change {
-	for i := range s.ActiveChanges {
-		if s.ActiveChanges[i].UUID == uuid {
-			return &s.ActiveChanges[i]
+	// Check if the change exists in the map first
+	change := s.changes[uuid]
+	if change == nil {
+		return nil
+	}
+	// Verify it's actually in the active changes
+	for _, activeChange := range s.ActiveChanges {
+		if activeChange.UUID == uuid {
+			return change
 		}
 	}
 	return nil
@@ -60,12 +63,45 @@ func (s *StackContext) FormatUUIDBranch(username string, uuid string) string {
 	return fmt.Sprintf("%s/stack-%s/%s", username, s.StackName, uuid)
 }
 
+// Save persists the current state of all changes to disk (prs.json and config.json)
+func (ctx *StackContext) Save() error {
+	if ctx.client == nil {
+		return fmt.Errorf("StackContext has no client reference for persistence")
+	}
+
+	// Build PRData from the changes map
+	prData := &model.PRData{
+		Version: 1,
+		PRs:     make(map[string]*model.PR),
+	}
+
+	for uuid, change := range ctx.changes {
+		if change.PR != nil {
+			prData.PRs[uuid] = change.PR
+		}
+	}
+
+	// Save PR data
+	if err := ctx.client.SavePRs(ctx.StackName, prData); err != nil {
+		return err
+	}
+
+	// Save Stack metadata (includes merged changes, sync metadata, etc.)
+	if ctx.Stack != nil {
+		if err := ctx.client.SaveStack(ctx.Stack); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func formatStackBranch(username string, stackName string) string {
 	return fmt.Sprintf("%s/stack-%s/TOP", username, stackName)
 }
 
 // validateBottomUpMerges ensures that only bottom PRs are merged (no out-of-order merges).
-func validateBottomUpMerges(activeChanges []model.Change, mergedPRNumbers map[int]bool) error {
+func validateBottomUpMerges(activeChanges []*model.Change, mergedPRNumbers map[int]bool) error {
 	if len(mergedPRNumbers) == 0 {
 		return nil
 	}

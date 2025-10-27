@@ -52,7 +52,7 @@ func (c *Command) Run(ctx context.Context) error {
 	var selectedChange *model.Change
 
 	if c.UseSelect {
-		var prsOnly []model.Change
+		var prsOnly []*model.Change
 		for _, change := range stackCtx.AllChanges {
 			if !change.IsLocal() {
 				prsOnly = append(prsOnly, change)

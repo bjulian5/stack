@@ -99,7 +99,7 @@ func (c *Command) Run(ctx context.Context) error {
 
 	// Calculate target position ( move up by 1 )
 	targetPosition := currentActivePosition + 1
-	targetChange := &stackCtx.ActiveChanges[targetPosition-1]
+	targetChange := stackCtx.ActiveChanges[targetPosition-1]
 
 	// Validate UUID exists
 	if targetChange.UUID == "" {
@@ -118,12 +118,6 @@ func (c *Command) Run(ctx context.Context) error {
 			"Change #%d has been merged on GitHub - run 'stack refresh' to sync",
 			targetChange.Position,
 		)
-	}
-
-	// Get updated context (now on UUID branch)
-	stackCtx, err = c.Stack.GetStackContext()
-	if err != nil {
-		return fmt.Errorf("failed to get updated stack context: %w", err)
 	}
 
 	// Print success message with stack tree

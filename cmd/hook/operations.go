@@ -28,9 +28,7 @@ func updateAllUUIDBranches(g *git.Client, ctx *stack.StackContext) error {
 		return fmt.Errorf("failed to get username: %w", err)
 	}
 
-	for i := range ctx.ActiveChanges {
-		change := &ctx.ActiveChanges[i]
-
+	for _, change := range ctx.ActiveChanges {
 		if change.UUID == "" {
 			continue
 		}

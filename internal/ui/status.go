@@ -96,7 +96,10 @@ func GetStatus(state string) Status {
 }
 
 // GetChangeStatus returns a Status for a stack change, using LocalDraftStatus as source of truth.
-func GetChangeStatus(change model.Change) Status {
+func GetChangeStatus(change *model.Change) Status {
+	if change == nil {
+		return GetStatus("local")
+	}
 	if change.IsLocal() {
 		if change.GetDraftStatus() {
 			return GetStatus("draft")
@@ -162,13 +165,13 @@ func FormatPRLabelCompact(pr *model.PR) string {
 
 // FormatChangeStatus formats the status for a change in the stack.
 // Uses GetChangeStatus which handles all status logic including sync needs.
-func FormatChangeStatus(change model.Change) string {
+func FormatChangeStatus(change *model.Change) string {
 	return GetChangeStatus(change).Render()
 }
 
 // FormatChangeStatusCompact formats the status for a change in compact form.
 // Uses GetChangeStatus which handles all status logic including sync needs.
-func FormatChangeStatusCompact(change model.Change) string {
+func FormatChangeStatusCompact(change *model.Change) string {
 	return GetChangeStatus(change).RenderCompact()
 }
 
@@ -209,7 +212,7 @@ func FormatPRSummary(openCount, draftCount, mergedCount, localCount, needsPushCo
 
 // CountPRsByState counts PRs by their state
 // Returns counts for: open, draft, merged, closed, local, and needsPush
-func CountPRsByState(changes []model.Change) (open, draft, merged, closed, local, needsPush int) {
+func CountPRsByState(changes []*model.Change) (open, draft, merged, closed, local, needsPush int) {
 	for _, change := range changes {
 		if change.IsLocal() {
 			local++

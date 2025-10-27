@@ -101,7 +101,7 @@ func (c *Command) Run(ctx context.Context) error {
 			return fmt.Errorf("stack '%s' not found", c.StackName)
 		}
 	} else {
-		stackChangesMap := make(map[string][]model.Change)
+		stackChangesMap := make(map[string][]*model.Change)
 		for _, s := range stacks {
 			ctx, err := c.Stack.GetStackContextByName(s.Name)
 			if err != nil {

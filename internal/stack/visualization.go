@@ -7,7 +7,7 @@ import (
 	"github.com/bjulian5/stack/internal/model"
 )
 
-func GenerateStackVisualization(stackCtx *StackContext, currentPRNumber int) string {
+func generateStackVisualization(stackCtx *StackContext, currentPRNumber int) string {
 	var sb strings.Builder
 
 	totalPRs := len(stackCtx.AllChanges)
@@ -89,19 +89,22 @@ func (c *Client) SyncVisualizationComments(stackCtx *StackContext) error {
 			continue
 		}
 
-		vizContent := GenerateStackVisualization(stackCtx, change.PR.PRNumber)
+		vizContent := generateStackVisualization(stackCtx, change.PR.PRNumber)
 
-		if err := c.syncCommentForPR(stackCtx.StackName, change.UUID, change.PR, vizContent); err != nil {
+		if err := c.syncCommentForPR(change.PR, vizContent); err != nil {
 			return fmt.Errorf("failed to sync comment for PR #%d: %w", change.PR.PRNumber, err)
 		}
+	}
+
+	// Save all VizCommentID updates at once
+	if err := stackCtx.Save(); err != nil {
+		return fmt.Errorf("failed to save visualization comment IDs: %w", err)
 	}
 
 	return nil
 }
 
-func (c *Client) syncCommentForPR(stackName, uuid string, pr *model.PR, vizContent string) error {
-	marker := fmt.Sprintf("<!-- stack-visualization: %s -->", stackName)
-
+func (c *Client) syncCommentForPR(pr *model.PR, vizContent string) error {
 	if pr.VizCommentID != "" {
 		err := c.gh.UpdatePRComment(pr.VizCommentID, vizContent)
 		if err == nil {
@@ -117,7 +120,7 @@ func (c *Client) syncCommentForPR(stackName, uuid string, pr *model.PR, vizConte
 
 	var existingCommentID string
 	for _, comment := range comments {
-		if strings.Contains(comment.Body, marker) {
+		if strings.Contains(comment.Body, "<!-- stack-visualization:") {
 			existingCommentID = comment.ID
 			break
 		}
@@ -127,23 +130,18 @@ func (c *Client) syncCommentForPR(stackName, uuid string, pr *model.PR, vizConte
 		if err := c.gh.UpdatePRComment(existingCommentID, vizContent); err != nil {
 			return fmt.Errorf("failed to update comment: %w", err)
 		}
-		c.cacheCommentID(stackName, uuid, existingCommentID, pr)
+		// Update VizCommentID in place (pointer semantics)
+		// Will be persisted when SyncVisualizationComments calls stackCtx.Save()
+		pr.VizCommentID = existingCommentID
 	} else {
 		commentID, err := c.gh.CreatePRComment(pr.PRNumber, vizContent)
 		if err != nil {
 			return fmt.Errorf("failed to create comment: %w", err)
 		}
-		c.cacheCommentID(stackName, uuid, commentID, pr)
+		// Update VizCommentID in place (pointer semantics)
+		// Will be persisted when SyncVisualizationComments calls stackCtx.Save()
+		pr.VizCommentID = commentID
 	}
 
 	return nil
-}
-
-func (c *Client) cacheCommentID(stackName, uuid, commentID string, pr *model.PR) {
-	if pr.VizCommentID != commentID {
-		pr.VizCommentID = commentID
-		if err := c.SetPR(stackName, uuid, pr); err != nil {
-			fmt.Printf("Warning: Failed to cache comment ID for PR #%d: %v\n", pr.PRNumber, err)
-		}
-	}
 }

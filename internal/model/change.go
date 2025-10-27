@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/bjulian5/stack/internal/gh"
+)
 
 // Change represents a commit in the context of a stack that may become a pull request.
 type Change struct {
@@ -61,6 +65,38 @@ func (c *Change) NeedsSyncToGitHub() ChangeSyncStatus {
 	}
 
 	return ChangeSyncStatus{NeedsSync: false}
+}
+
+// UpdateFromPush updates the PR metadata after a successful push to GitHub
+func (c *Change) UpdateFromPush(ghPR *gh.PR, branch string) {
+	if c.PR == nil {
+		c.PR = &PR{
+			CreatedAt:        ghPR.CreatedAt,
+			LocalDraftStatus: true, // Will be updated below
+		}
+	}
+
+	// Update PR fields from GitHub response
+	c.PR.PRNumber = ghPR.Number
+	c.PR.URL = ghPR.URL
+	c.PR.State = ghPR.State
+	c.PR.Branch = branch
+	c.PR.CommitHash = c.CommitHash
+	c.PR.LastPushed = ghPR.UpdatedAt
+	c.PR.RemoteDraftStatus = ghPR.IsDraft
+
+	// Also update the local draft status to match what we just pushed
+	// (the caller should have already set LocalDraftStatus before calling SyncPR)
+	c.PR.LocalDraftStatus = ghPR.IsDraft
+}
+
+// UpdateTitle updates the title and description after syncing
+func (c *Change) UpdateTitle(title, description, base string) {
+	if c.PR != nil {
+		c.PR.Title = title
+		c.PR.Body = description
+		c.PR.Base = base
+	}
 }
 
 // StackChanges contains the various categories of changes in a stack.

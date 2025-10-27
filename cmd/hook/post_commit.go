@@ -187,6 +187,8 @@ func (c *PostCommitCommand) handleAmend(ctx *stack.StackContext, currentBranch s
 		subsequentCount = rebasedCount
 	}
 
+	// Reload context after git rebase modified commit history
+	// The rebase changed commit hashes, so we need to rebuild the changes map from new git state
 	ctx, err = c.Stack.GetStackContextByName(ctx.StackName)
 	if err != nil {
 		return fmt.Errorf("failed to reload stack context: %w", err)
@@ -302,6 +304,8 @@ func (c *PostCommitCommand) handleInsert(ctx *stack.StackContext, currentBranch 
 		subsequentCount = rebasedCount
 	}
 
+	// Reload context after git rebase modified commit history
+	// The rebase changed commit hashes, so we need to rebuild the changes map from new git state
 	ctx, err = c.Stack.GetStackContextByName(ctx.StackName)
 	if err != nil {
 		return fmt.Errorf("failed to reload stack context: %w", err)

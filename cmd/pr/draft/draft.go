@@ -59,7 +59,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("no changes in stack")
 	}
 
-	var changesToMark []model.Change
+	var changesToMark []*model.Change
 	if c.All {
 		changesToMark = stackCtx.ActiveChanges
 	} else {
@@ -67,12 +67,11 @@ func (c *Command) Run(ctx context.Context) error {
 		if currentChange == nil {
 			return fmt.Errorf("unable to determine current change")
 		}
-		changesToMark = []model.Change{*currentChange}
+		changesToMark = []*model.Change{currentChange}
 	}
 
 	hasUnpushedChanges := false
-	for i := range changesToMark {
-		change := &changesToMark[i]
+	for _, change := range changesToMark {
 		if change.UUID == "" {
 			ui.Warningf("Skipping change without UUID: %s", change.Title)
 			continue

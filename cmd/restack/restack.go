@@ -276,7 +276,7 @@ func (c *Command) retryRebase(stackName string, rebaseState *stack.RebaseState, 
 			"After resolving conflicts:\n" +
 			"  git add <resolved-files>\n" +
 			"  git rebase --continue\n" +
-			"  stack restack --recover")
+			"  stack restack --recover", err)
 	}
 
 	ui.Successf("Successfully rebased %d commit(s)", rebasedCount)
@@ -329,7 +329,7 @@ func (c *Command) keepCurrentState(stackName string, stackCtx *stack.StackContex
 
 	// Clear rebase state
 	if err := c.Stack.ClearRebaseState(stackName); err != nil {
-		ui.Warningf("failed to clear rebase state: %w", err)
+		ui.Warningf("failed to clear rebase state: %v", err)
 	}
 
 	ui.Success("Cleared rebase state")

@@ -62,7 +62,7 @@ func (c *Command) Run(ctx context.Context) error {
 		currentStack = stackCtx.StackName
 	}
 
-	stackChanges := make(map[string][]model.Change)
+	stackChanges := make(map[string][]*model.Change)
 	for _, s := range stacks {
 		ctx, err := c.Stack.GetStackContextByName(s.Name)
 		if err != nil {

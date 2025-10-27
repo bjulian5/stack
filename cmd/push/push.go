@@ -64,6 +64,7 @@ Example:
 
 // pushPR pushes a single PR to GitHub and returns PR number, URL, and whether it was newly created
 func (c *Command) pushPR(
+	stackCtx *stack.StackContext,
 	stackName string,
 	change model.Change,
 	prBranch string,
@@ -91,19 +92,19 @@ func (c *Command) pushPR(
 		return 0, "", false, fmt.Errorf("failed to sync PR for %s: %w", change.Title, err)
 	}
 
-	syncData := model.PRSyncData{
-		StackName:         stackName,
-		UUID:              change.UUID,
-		Branch:            prBranch,
-		CommitHash:        change.CommitHash,
-		GitHubPR:          ghPR,
-		Title:             spec.Title,
-		Body:              spec.Body,
-		Base:              spec.Base,
-		RemoteDraftStatus: spec.Draft, // What we pushed becomes the new remote state
+	// Find the change in stackCtx to update it (since change is passed by value)
+	changeInCtx := stackCtx.FindChange(change.UUID)
+	if changeInCtx == nil {
+		return 0, "", false, fmt.Errorf("change %s not found in stack context", change.UUID)
 	}
-	if err := c.Stack.SyncPRFromGitHub(syncData); err != nil {
-		return 0, "", false, fmt.Errorf("failed to update PR tracking: %w", err)
+
+	// Update the change with the GitHub response
+	changeInCtx.UpdateFromPush(ghPR, prBranch)
+	changeInCtx.UpdateTitle(spec.Title, spec.Body, spec.Base)
+
+	// Persist to disk
+	if err := stackCtx.Save(); err != nil {
+		return 0, "", false, fmt.Errorf("failed to save stack context: %w", err)
 	}
 
 	return ghPR.Number, ghPR.URL, existingPRNumber == 0, nil
@@ -145,11 +146,6 @@ func (c *Command) Run(ctx context.Context) error {
 		ui.Warning("One or more PRs have been merged on GitHub.")
 		ui.Print("Please run 'stack refresh' to sync your stack before pushing.")
 		return fmt.Errorf("stack out of sync - run 'stack refresh' first")
-	}
-
-	stackCtx, err = c.Stack.GetStackContextByName(stackCtx.StackName)
-	if err != nil {
-		return fmt.Errorf("failed to reload stack context: %w", err)
 	}
 
 	// Get username for branch naming
@@ -221,7 +217,7 @@ func (c *Command) Run(ctx context.Context) error {
 			updateReason = syncStatus.Reason
 		}
 
-		prNumber, prURL, isNew, err := c.pushPR(stackCtx.StackName, change, prBranch, existingPRNumber)
+		prNumber, prURL, isNew, err := c.pushPR(stackCtx, stackCtx.StackName, *change, prBranch, existingPRNumber)
 		if err != nil {
 			return err
 		}
@@ -256,12 +252,8 @@ func (c *Command) Run(ctx context.Context) error {
 		ui.Println("")
 		ui.Info("Updating stack visualizations...")
 
-		freshCtx, err := c.Stack.GetStackContext()
-		if err != nil {
-			return fmt.Errorf("failed to reload stack context: %w", err)
-		}
-
-		if err := c.Stack.SyncVisualizationComments(freshCtx); err != nil {
+		// stackCtx is already fresh after all pushPR calls saved their updates
+		if err := c.Stack.SyncVisualizationComments(stackCtx); err != nil {
 			return fmt.Errorf("failed to sync visualization comments: %w", err)
 		}
 

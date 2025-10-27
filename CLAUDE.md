@@ -59,12 +59,13 @@ go build && ./stack list
 - Separate package for clean domain model separation
 
 **Stack Client** (`internal/stack/client.go`)
-- Large orchestration layer (1385 lines) managing all stack operations
+- Large orchestration layer managing all stack operations
 - Manages stack metadata stored in `.git/stack/<stack-name>/`
 - Each stack has `config.json` (stack metadata) and `prs.json` (PR tracking with versioning)
 - Provides `GetStackContext()` to determine current stack from branch name
 - `GetStackContextByName(name)` loads a specific stack's context by name
-- Methods: `LoadPRs()`, `SavePRs()`, `SetPR()`, `SyncPRFromGitHub()`, `CreateStack()`, `DeleteStack()`, `Restack()`, etc.
+- Methods: `LoadPRs()`, `SavePRs()` work with versioned PR data
+- Mutations now go through `StackContext.Save()` which persists both PRs and Stack metadata
 - Handles sync status checking (5-minute staleness threshold)
 
 **Stack Context** (`internal/stack/context.go`)

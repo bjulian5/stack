@@ -17,7 +17,7 @@ import (
 //	  ├─● #123 Add JWT auth (a1b2c3d)
 //	  ├─◐ #124 Refresh tokens (b2c3d4e)
 //	  ╰─◯ Unit tests (c3d4e5f) [local]
-func RenderStackTree(s *model.Stack, changes []model.Change, currentUUID string) string {
+func RenderStackTree(s *model.Stack, changes []*model.Change, currentUUID string) string {
 	if len(changes) == 0 {
 		return TreeRootStyle.Render(s.Name) + "\n" + Dim("  No changes yet")
 	}
@@ -52,7 +52,7 @@ func RenderStackTree(s *model.Stack, changes []model.Change, currentUUID string)
 //	├─● #123 Add JWT auth (a1b2c3d)
 //	├─◐ #124 Refresh tokens (b2c3d4e)
 //	╰─◯ Unit tests (c3d4e5f) [local]
-func RenderStackTreeCompact(s *model.Stack, changes []model.Change, currentUUID string) string {
+func RenderStackTreeCompact(s *model.Stack, changes []*model.Change, currentUUID string) string {
 	if len(changes) == 0 {
 		return TreeRootStyle.Render(s.Name) + "\n" + Dim("  No changes yet")
 	}
@@ -87,7 +87,7 @@ func RenderStackTreeCompact(s *model.Stack, changes []model.Change, currentUUID 
 //	╰─ ui-improvements
 //	   ├─ 5 local
 //	   ╰─ bjulian5/stack-ui-improvements/TOP → main
-func RenderStackListTree(stacks []*model.Stack, allChanges map[string][]model.Change, currentStackName string) string {
+func RenderStackListTree(stacks []*model.Stack, allChanges map[string][]*model.Change, currentStackName string) string {
 	if len(stacks) == 0 {
 		return Dim("No stacks yet. Create one with: ") + Highlight("stack new <name>")
 	}
@@ -104,7 +104,7 @@ func RenderStackListTree(stacks []*model.Stack, allChanges map[string][]model.Ch
 		// Get changes for this stack
 		changes, ok := allChanges[s.Name]
 		if !ok {
-			changes = []model.Change{}
+			changes = []*model.Change{}
 		}
 
 		// Add summary line
@@ -133,7 +133,7 @@ func RenderStackListTree(stacks []*model.Stack, allChanges map[string][]model.Ch
 //	├─ 1. ● #123 Add JWT auth (a1b2c3d)
 //	├─ 2. ◐ #124 Refresh tokens (b2c3d4e)
 //	╰─ 3. ◯ Unit tests (c3d4e5f) [local]
-func RenderChangeListTree(changes []model.Change) string {
+func RenderChangeListTree(changes []*model.Change) string {
 	if len(changes) == 0 {
 		return Dim("No changes in this stack")
 	}
@@ -156,7 +156,10 @@ func RenderChangeListTree(changes []model.Change) string {
 
 // formatChangeForTree formats a change for display in a tree
 // If currentUUID matches this change's UUID, adds a green arrow indicator
-func formatChangeForTree(change model.Change, currentUUID string) string {
+func formatChangeForTree(change *model.Change, currentUUID string) string {
+	if change == nil {
+		return ""
+	}
 	status := GetChangeStatus(change)
 	icon := status.RenderCompact()
 
@@ -209,7 +212,7 @@ func formatStackNameForTree(stackName string, currentStackName string) string {
 }
 
 // formatStackSummary creates a summary line for a stack
-func formatStackSummary(changes []model.Change) string {
+func formatStackSummary(changes []*model.Change) string {
 	if len(changes) == 0 {
 		return "No changes"
 	}
