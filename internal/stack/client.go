@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 // DefaultSyncThreshold is the time threshold after which a stack is considered stale
 // and needs to be refreshed to check for merged PRs on GitHub
 const DefaultSyncThreshold = 5 * time.Minute
+
+var validStackNameRegex = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 // GitClient defines the git operations needed by Stack Client
 type GitClient interface {
@@ -320,6 +323,10 @@ func (c *Client) CreateStack(name string, baseBranch string) (*model.Stack, erro
 		return nil, fmt.Errorf("base branch is required")
 	}
 
+	if err := validateStackName(name); err != nil {
+		return nil, err
+	}
+
 	// Format branch name
 	branchName := formatStackBranch(c.username, name)
 
@@ -363,6 +370,13 @@ func (c *Client) CreateStack(name string, baseBranch string) (*model.Stack, erro
 	}
 
 	return s, nil
+}
+
+func validateStackName(name string) error {
+	if !validStackNameRegex.MatchString(name) {
+		return fmt.Errorf("invalid stack name '%s': only letters, numbers, dots, underscores, and hyphens are allowed", name)
+	}
+	return nil
 }
 
 // StackChanges contains the various categories of changes in a stack.
