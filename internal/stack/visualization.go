@@ -62,7 +62,7 @@ func generateStackVisualization(stackCtx *StackContext, currentPRNumber int) str
 		}
 	}
 	sb.WriteString(") for full context\n\n")
-
+	sb.WriteString("🤖 Auto-updated by [stack](https://github.com/bjulian5/stack)\n\n")
 	sb.WriteString(fmt.Sprintf("<!-- stack-visualization: %s -->\n", stackCtx.StackName))
 
 	return sb.String()

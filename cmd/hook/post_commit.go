@@ -212,8 +212,6 @@ func (c *PostCommitCommand) handleTopBranchAmend(ctx *stack.StackContext, curren
 	if _, err := c.Stack.UpdateUUIDBranches(ctx.StackName); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to update UUID branches: %v\n", err)
 	}
-
-	fmt.Printf("✓ Updated commit on TOP branch\n")
 	return nil
 }
 
