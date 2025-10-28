@@ -77,7 +77,7 @@ func (c *Command) Run(ctx context.Context) error {
 			continue
 		}
 
-		result, err := c.Stack.MarkChangeDraft(stackCtx.StackName, change)
+		result, err := c.Stack.MarkChangeDraft(stackCtx, change)
 		if err != nil {
 			return fmt.Errorf("failed to mark change %s as draft: %w", change.Title, err)
 		}

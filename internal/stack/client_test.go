@@ -309,7 +309,7 @@ func TestGetStackContext_WithMergedAndActiveChanges(t *testing.T) {
 			},
 		},
 	}
-	err = stackClient.SavePRs("test-stack", prData)
+	err = stackClient.savePRs("test-stack", prData)
 	require.NoError(t, err)
 
 	// Update Stack.MergedChanges to include the merged change
@@ -445,7 +445,7 @@ func TestGetStackContext_WithStaleMergedChanges(t *testing.T) {
 			},
 		},
 	}
-	err = stackClient.SavePRs("test-stack", prData)
+	err = stackClient.savePRs("test-stack", prData)
 	require.NoError(t, err)
 
 	// Load the stack context

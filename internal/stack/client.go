@@ -596,8 +596,8 @@ func (c *Client) LoadPRs(stackName string) (*model.PRData, error) {
 	return &prData, nil
 }
 
-// SavePRs saves PR tracking data for a stack
-func (c *Client) SavePRs(stackName string, prData *model.PRData) error {
+// savePRs saves PR tracking data for a stack
+func (c *Client) savePRs(stackName string, prData *model.PRData) error {
 	stackDir := c.getStackDir(stackName)
 
 	// Ensure version is set before saving
@@ -623,41 +623,20 @@ func (c *Client) SavePRs(stackName string, prData *model.PRData) error {
 	return nil
 }
 
-// SetLocalDraft sets the LocalDraftStatus preference for a change by UUID
-func (c *Client) SetLocalDraft(stackName string, uuid string, localDraft bool) error {
-	prData, err := c.LoadPRs(stackName)
-	if err != nil {
-		return err
-	}
-
-	pr, exists := prData.PRs[uuid]
-	if !exists {
-		// Create new PR entry with just LocalDraftStatus set
-		pr = &model.PR{
-			LocalDraftStatus: localDraft,
-		}
-	} else {
-		pr.LocalDraftStatus = localDraft
-	}
-	prData.PRs[uuid] = pr
-
-	return c.SavePRs(stackName, prData)
-}
-
 type MarkChangeStatusResult struct {
 	SyncedToGitHub bool
 	PRNumber       int
 }
 
-func (c *Client) MarkChangeDraft(stackName string, change *model.Change) (*MarkChangeStatusResult, error) {
-	return c.markChangeStatus(stackName, change, true)
+func (c *Client) MarkChangeDraft(stackCtx *StackContext, change *model.Change) (*MarkChangeStatusResult, error) {
+	return c.markChangeStatus(stackCtx, change, true)
 }
 
-func (c *Client) MarkChangeReady(stackName string, change *model.Change) (*MarkChangeStatusResult, error) {
-	return c.markChangeStatus(stackName, change, false)
+func (c *Client) MarkChangeReady(stackCtx *StackContext, change *model.Change) (*MarkChangeStatusResult, error) {
+	return c.markChangeStatus(stackCtx, change, false)
 }
 
-func (c *Client) markChangeStatus(stackName string, change *model.Change, isDraft bool) (*MarkChangeStatusResult, error) {
+func (c *Client) markChangeStatus(stackCtx *StackContext, change *model.Change, isDraft bool) (*MarkChangeStatusResult, error) {
 	result := &MarkChangeStatusResult{}
 
 	if !change.IsLocal() && (change.PR.State == "open" || change.PR.State == "draft") {
@@ -674,33 +653,26 @@ func (c *Client) markChangeStatus(stackName string, change *model.Change, isDraf
 			}
 			return nil, fmt.Errorf("failed to mark PR #%d as %s on GitHub: %w", change.PR.PRNumber, status, err)
 		}
+		change.PR.RemoteDraftStatus = isDraft
+		change.PR.LocalDraftStatus = isDraft
 
-		prData, err := c.LoadPRs(stackName)
-		if err != nil {
-			return nil, err
-		}
-
-		pr := prData.PRs[change.UUID]
-		pr.LocalDraftStatus = isDraft
-		pr.RemoteDraftStatus = isDraft
 		if isDraft {
-			pr.State = "draft"
+			change.PR.State = "draft"
 		} else {
-			pr.State = "open"
+			change.PR.State = "open"
 		}
-		prData.PRs[change.UUID] = pr
-
-		if err := c.SavePRs(stackName, prData); err != nil {
-			return nil, fmt.Errorf("failed to update local state: %w", err)
-		}
-
 		result.SyncedToGitHub = true
 		result.PRNumber = change.PR.PRNumber
 	} else {
-		if err := c.SetLocalDraft(stackName, change.UUID, isDraft); err != nil {
-			return nil, err
+		if change.PR == nil {
+			change.PR = &model.PR{}
 		}
+		change.PR.LocalDraftStatus = isDraft
 		result.SyncedToGitHub = false
+	}
+
+	if err := stackCtx.Save(); err != nil {
+		return nil, fmt.Errorf("failed to save stack context: %w", err)
 	}
 
 	return result, nil

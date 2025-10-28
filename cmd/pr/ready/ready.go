@@ -77,7 +77,7 @@ func (c *Command) Run(ctx context.Context) error {
 			continue
 		}
 
-		result, err := c.Stack.MarkChangeReady(stackCtx.StackName, change)
+		result, err := c.Stack.MarkChangeReady(stackCtx, change)
 		if err != nil {
 			return fmt.Errorf("failed to mark change %s as ready: %w", change.Title, err)
 		}

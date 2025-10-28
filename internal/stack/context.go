@@ -83,7 +83,7 @@ func (ctx *StackContext) Save() error {
 	}
 
 	// Save PR data
-	if err := ctx.client.SavePRs(ctx.StackName, prData); err != nil {
+	if err := ctx.client.savePRs(ctx.StackName, prData); err != nil {
 		return err
 	}
 
