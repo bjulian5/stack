@@ -116,7 +116,7 @@ func (c *Command) Run(ctx context.Context) error {
 		Message:     fmt.Sprintf("Checked out change #%d: %s\nBranch: %s", selectedChange.Position, selectedChange.Title, branchName),
 		Stack:       stackCtx.Stack,
 		Changes:     stackCtx.AllChanges,
-		CurrentUUID: stackCtx.GetCurrentPositionUUID(),
+		CurrentUUID: selectedChange.UUID,
 		IsEditing:   true,
 	}))
 	return nil

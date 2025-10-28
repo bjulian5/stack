@@ -107,7 +107,7 @@ func (c *Command) Run(ctx context.Context) error {
 		Message:     fmt.Sprintf("Moved to change #%d: %s", bottomActiveChange.Position, bottomActiveChange.Title),
 		Stack:       stackCtx.Stack,
 		Changes:     stackCtx.AllChanges,
-		CurrentUUID: stackCtx.GetCurrentPositionUUID(),
+		CurrentUUID: bottomActiveChange.UUID,
 		IsEditing:   true,
 	}))
 

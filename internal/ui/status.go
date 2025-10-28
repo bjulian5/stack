@@ -192,7 +192,7 @@ func CountPRsByState(changes []*model.Change) (open, draft, merged, closed, loca
 		}
 
 		// Check if this change needs to be synced to GitHub
-		if change.NeedsSyncToGitHub().NeedsSync {
+		if change.NeedsSyncToGitHub().NeedsSync && !change.PR.IsMerged() {
 			needsPush++
 		}
 	}
