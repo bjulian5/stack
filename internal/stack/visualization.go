@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/bjulian5/stack/internal/model"
 )
 
@@ -84,16 +86,23 @@ func getStatusDisplay(status string) (emoji, text string) {
 }
 
 func (c *Client) SyncVisualizationComments(stackCtx *StackContext) error {
+	g := errgroup.Group{}
 	for _, change := range stackCtx.AllChanges {
 		if change.IsLocal() {
 			continue
 		}
 
 		vizContent := generateStackVisualization(stackCtx, change.PR.PRNumber)
+		g.Go(func() error {
+			if err := c.syncCommentForPR(change.PR, vizContent); err != nil {
+				return fmt.Errorf("failed to sync comment for PR #%d: %w", change.PR.PRNumber, err)
+			}
+			return nil
+		})
+	}
 
-		if err := c.syncCommentForPR(change.PR, vizContent); err != nil {
-			return fmt.Errorf("failed to sync comment for PR #%d: %w", change.PR.PRNumber, err)
-		}
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	// Save all VizCommentID updates at once
@@ -130,16 +139,12 @@ func (c *Client) syncCommentForPR(pr *model.PR, vizContent string) error {
 		if err := c.gh.UpdatePRComment(existingCommentID, vizContent); err != nil {
 			return fmt.Errorf("failed to update comment: %w", err)
 		}
-		// Update VizCommentID in place (pointer semantics)
-		// Will be persisted when SyncVisualizationComments calls stackCtx.Save()
 		pr.VizCommentID = existingCommentID
 	} else {
 		commentID, err := c.gh.CreatePRComment(pr.PRNumber, vizContent)
 		if err != nil {
 			return fmt.Errorf("failed to create comment: %w", err)
 		}
-		// Update VizCommentID in place (pointer semantics)
-		// Will be persisted when SyncVisualizationComments calls stackCtx.Save()
 		pr.VizCommentID = commentID
 	}
 

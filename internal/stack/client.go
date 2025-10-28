@@ -640,18 +640,20 @@ func (c *Client) markChangeStatus(stackCtx *StackContext, change *model.Change, 
 	result := &MarkChangeStatusResult{}
 
 	if !change.IsLocal() && (change.PR.State == "open" || change.PR.State == "draft") {
-		var err error
-		if isDraft {
-			err = c.gh.MarkPRDraft(change.PR.PRNumber)
-		} else {
-			err = c.gh.MarkPRReady(change.PR.PRNumber)
-		}
-		if err != nil {
-			status := "ready"
+		if change.PR.LocalDraftStatus == change.PR.RemoteDraftStatus {
+			var err error
 			if isDraft {
-				status = "draft"
+				err = c.gh.MarkPRDraft(change.PR.PRNumber)
+			} else {
+				err = c.gh.MarkPRReady(change.PR.PRNumber)
 			}
-			return nil, fmt.Errorf("failed to mark PR #%d as %s on GitHub: %w", change.PR.PRNumber, status, err)
+			if err != nil {
+				status := "ready"
+				if isDraft {
+					status = "draft"
+				}
+				return nil, fmt.Errorf("failed to mark PR #%d as %s on GitHub: %w", change.PR.PRNumber, status, err)
+			}
 		}
 		change.PR.RemoteDraftStatus = isDraft
 		change.PR.LocalDraftStatus = isDraft
@@ -673,6 +675,10 @@ func (c *Client) markChangeStatus(stackCtx *StackContext, change *model.Change, 
 
 	if err := stackCtx.Save(); err != nil {
 		return nil, fmt.Errorf("failed to save stack context: %w", err)
+	}
+
+	if err := c.SyncVisualizationComments(stackCtx); err != nil {
+		return nil, fmt.Errorf("failed to sync visualization comments: %w", err)
 	}
 
 	return result, nil
