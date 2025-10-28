@@ -167,7 +167,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Show success message
-	ui.Print(ui.RenderSwitchSuccess(selectedStack.Name))
+	ui.Successf("Switched to stack: %s", ui.Bold(selectedStack.Name))
 	ui.Print("")
 
 	// Load and display full stack details (we just switched, so we're on this stack)

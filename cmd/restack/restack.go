@@ -272,10 +272,10 @@ func (c *Command) retryRebase(stackName string, rebaseState *stack.RebaseState, 
 	)
 	if err != nil {
 		// Rebase failed again - state is already saved, user can retry again
-		return fmt.Errorf("rebase failed again: %w\n\n" +
-			"After resolving conflicts:\n" +
-			"  git add <resolved-files>\n" +
-			"  git rebase --continue\n" +
+		return fmt.Errorf("rebase failed again: %w\n\n"+
+			"After resolving conflicts:\n"+
+			"  git add <resolved-files>\n"+
+			"  git rebase --continue\n"+
 			"  stack restack --recover", err)
 	}
 

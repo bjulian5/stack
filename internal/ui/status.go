@@ -9,34 +9,14 @@ import (
 	"github.com/bjulian5/stack/internal/model"
 )
 
-// Status icons use Unicode geometric shapes for cross-platform compatibility.
-//
-// Icon choices and Unicode codepoints:
-//   - IconOpen:   ● (U+25CF BLACK CIRCLE) - Solid circle indicates active/open state
-//   - IconDraft:  ◐ (U+25D0 CIRCLE WITH LEFT HALF BLACK) - Half-filled shows work in progress
-//   - IconMerged: ◆ (U+25C6 BLACK DIAMOND) - Diamond shape indicates completion/merged
-//   - IconClosed: ○ (U+25CB WHITE CIRCLE) - Empty circle shows inactive/closed state
-//   - IconLocal:  ◯ (U+25EF LARGE CIRCLE) - Larger empty circle for not-yet-pushed state
-//   - IconModified: ⟳ (U+27F3) - Clockwise gapped circle arrow for modified
-//
-// Terminal compatibility:
-//   - These Unicode characters are widely supported in modern terminals
-//   - Requires a font with good Unicode coverage (e.g., Nerd Fonts, DejaVu, Menlo)
-//   - If icons don't render correctly, check terminal font settings
-//   - Some older terminals may display boxes (□) instead of shapes
-//
-// Design rationale:
-//   - Unicode shapes chosen over emoji for better cross-platform consistency
-//   - Emoji rendering varies significantly across platforms (macOS, Linux, Windows)
-//   - These geometric shapes have better font support than emoji
-//   - Color-blind safe: Icons have different shapes, not just different colors
+// Status icons
 const (
-	IconOpen     = "●" // U+25CF - Solid circle for open
-	IconDraft    = "◐" // U+25D0 - Half circle for draft
-	IconMerged   = "◆" // U+25C6 - Diamond for merged
-	IconClosed   = "○" // U+25CB - Empty circle for closed
-	IconLocal    = "◯" // U+25EF - Large circle for local
-	IconModified = "⟳" // U+27F3 - Clockwise gapped circle arrow for modified
+	IconOpen     = "●"
+	IconDraft    = "◐"
+	IconMerged   = "◆"
+	IconClosed   = "○"
+	IconLocal    = "◯"
+	IconModified = "◎"
 )
 
 // Status represents a PR or change status with rendering capabilities
@@ -81,7 +61,7 @@ func GetStatus(state string) Status {
 	case "needs-push":
 		return Status{
 			Icon:  IconModified,
-			Label: "modified", // Display as "modified" not "needs-push"
+			Label: "needs push",
 			State: state,
 			Style: StatusModifiedStyle,
 		}
@@ -138,7 +118,7 @@ func (s Status) RenderWithCount(count int) string {
 }
 
 // FormatPRSummary formats a summary of PR counts
-// e.g., "● 2 open  ◐ 1 draft  ⟳ 1 modified  ◯ 1 local"
+// e.g., "● 2 open  ◐ 1 draft  ◎ 1 needs push  ◯ 1 local"
 func FormatPRSummary(openCount, draftCount, mergedCount, localCount, needsPushCount int) string {
 	var parts []string
 

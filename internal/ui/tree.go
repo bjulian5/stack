@@ -163,10 +163,6 @@ func formatChangeForTree(change *model.Change, currentUUID string) string {
 	status := GetChangeStatus(change)
 	icon := status.RenderCompact()
 
-	if change.NeedsSyncToGitHub().NeedsSync && !change.PR.IsMerged() {
-		icon = fmt.Sprintf("%s%s", icon, GetStatus("needs-push").RenderCompact())
-	}
-
 	// Format PR label
 	var prLabel string
 	if !change.IsLocal() {
@@ -194,6 +190,11 @@ func formatChangeForTree(change *model.Change, currentUUID string) string {
 		title,
 		Dim(fmt.Sprintf("(%s)", commitHash)),
 	)
+
+	// Add needs push indicator if the change is out of sync with GitHub
+	if change.NeedsSyncToGitHub().NeedsSync && !change.PR.IsMerged() && !change.IsLocal() {
+		line += " " + Dim("[needs push]")
+	}
 
 	// Add current position arrow if this is the current change
 	if currentUUID != "" && change.UUID == currentUUID {
@@ -233,7 +234,7 @@ func formatStackSummary(changes []*model.Change) string {
 		parts = append(parts, fmt.Sprintf("%d local", local))
 	}
 	if needsPush > 0 {
-		parts = append(parts, fmt.Sprintf("%d modified", needsPush))
+		parts = append(parts, fmt.Sprintf("%d needs push", needsPush))
 	}
 
 	summary := strings.Join(parts, ", ")

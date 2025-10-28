@@ -39,29 +39,6 @@ func RenderStackDetails(s *model.Stack, changes []*model.Change, currentUUID str
 	return output.String()
 }
 
-// RenderStackSummary renders a brief summary of a stack
-func RenderStackSummary(s *model.Stack, changes []*model.Change) string {
-	open, draft, merged, _, local, needsPush := CountPRsByState(changes)
-	totalPRs := len(changes)
-
-	summary := Bold(s.Name) + "\n" +
-		Dim("Base: ") + Muted(s.Base) + "\n" +
-		Dim("PRs:  ")
-
-	if totalPRs == 0 {
-		summary += Muted("none")
-	} else {
-		summary += FormatPRSummary(open, draft, merged, local, needsPush)
-	}
-
-	return RenderPanel(summary)
-}
-
-// RenderSwitchSuccess renders a success message after switching stacks
-func RenderSwitchSuccess(stackName string) string {
-	return SuccessStyle.Render("✓ " + fmt.Sprintf("Switched to stack: %s", Bold(stackName)))
-}
-
 // RenderEditSuccess renders a success message after starting to edit a change
 func RenderEditSuccess(position int, title string, branch string) string {
 	var output strings.Builder
@@ -322,7 +299,7 @@ func buildSummaryLine(changes []*model.Change) string {
 		states = append(states, StatusClosedStyle.Render(fmt.Sprintf("%d closed", closed)))
 	}
 	if needsPush > 0 {
-		states = append(states, StatusModifiedStyle.Render(fmt.Sprintf("%d modified", needsPush)))
+		states = append(states, StatusModifiedStyle.Render(fmt.Sprintf("%d needs push", needsPush)))
 	}
 	if local > 0 {
 		states = append(states, StatusLocalStyle.Render(fmt.Sprintf("%d local", local)))
@@ -335,8 +312,7 @@ func buildLegendPanel() string {
 	content := GetStatus("open").Render() + " - PR is open and ready for review\n" +
 		GetStatus("draft").Render() + " - PR is in draft state\n" +
 		GetStatus("merged").Render() + " - PR has been merged (tracked in stack metadata)\n" +
-		GetStatus("local").Render() + " - Not yet pushed to GitHub\n" +
-		Dim("(modified)") + " - PR has local changes that need to be pushed"
+		GetStatus("local").Render() + " - Not yet pushed to GitHub"
 	return RenderPanel(content)
 }
 
