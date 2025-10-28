@@ -137,44 +137,6 @@ func (s Status) RenderWithCount(count int) string {
 	return s.Style.Render(text)
 }
 
-// FormatPRLabel formats a PR number with styling and full URL
-func FormatPRLabel(pr *model.PR) string {
-	if pr == nil {
-		return Dim("-")
-	}
-
-	status := GetStatus(pr.State)
-
-	// Display the full URL instead of just the PR number
-	if pr.URL != "" {
-		return status.Style.Render(pr.URL)
-	}
-
-	// Fallback to PR number if URL is not available
-	label := fmt.Sprintf("#%d", pr.PRNumber)
-	return status.Style.Render(label)
-}
-
-// FormatPRLabelCompact formats a PR number in compact form
-func FormatPRLabelCompact(pr *model.PR) string {
-	if pr == nil {
-		return Dim("-")
-	}
-	return fmt.Sprintf("#%d", pr.PRNumber)
-}
-
-// FormatChangeStatus formats the status for a change in the stack.
-// Uses GetChangeStatus which handles all status logic including sync needs.
-func FormatChangeStatus(change *model.Change) string {
-	return GetChangeStatus(change).Render()
-}
-
-// FormatChangeStatusCompact formats the status for a change in compact form.
-// Uses GetChangeStatus which handles all status logic including sync needs.
-func FormatChangeStatusCompact(change *model.Change) string {
-	return GetChangeStatus(change).RenderCompact()
-}
-
 // FormatPRSummary formats a summary of PR counts
 // e.g., "● 2 open  ◐ 1 draft  ⟳ 1 modified  ◯ 1 local"
 func FormatPRSummary(openCount, draftCount, mergedCount, localCount, needsPushCount int) string {
@@ -235,19 +197,4 @@ func CountPRsByState(changes []*model.Change) (open, draft, merged, closed, loca
 		}
 	}
 	return
-}
-
-// Deprecated: Use GetStatus().Render() instead
-func FormatStatus(state string) string {
-	return GetStatus(state).Render()
-}
-
-// Deprecated: Use GetStatus().RenderCompact() instead
-func FormatStatusCompact(state string) string {
-	return GetStatus(state).RenderCompact()
-}
-
-// Deprecated: Use GetStatus().RenderIcon() instead
-func GetStatusIcon(state string) string {
-	return GetStatus(state).RenderIcon()
 }

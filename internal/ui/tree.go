@@ -163,7 +163,7 @@ func formatChangeForTree(change *model.Change, currentUUID string) string {
 	status := GetChangeStatus(change)
 	icon := status.RenderCompact()
 
-	if change.NeedsSyncToGitHub().NeedsSync {
+	if change.NeedsSyncToGitHub().NeedsSync && !change.PR.IsMerged() {
 		icon = fmt.Sprintf("%s%s", icon, GetStatus("needs-push").RenderCompact())
 	}
 

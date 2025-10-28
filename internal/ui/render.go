@@ -31,14 +31,7 @@ func RenderStackDetails(s *model.Stack, changes []*model.Change, currentUUID str
 		output.WriteString("\n\n")
 	}
 
-	// Add legend
-	legendContent := FormatStatus("open") + " - PR is open and ready for review\n" +
-		FormatStatus("draft") + " - PR is in draft state\n" +
-		FormatStatus("merged") + " - PR has been merged (tracked in stack metadata)\n" +
-		FormatStatus("local") + " - Not yet pushed to GitHub\n" +
-		Dim("(modified)") + " - PR has local changes that need to be pushed"
-
-	legend := RenderPanel(legendContent)
+	legend := buildLegendPanel()
 	output.WriteString(Dim("Legend:"))
 	output.WriteString("\n")
 	output.WriteString(legend)
@@ -339,10 +332,10 @@ func buildSummaryLine(changes []*model.Change) string {
 }
 
 func buildLegendPanel() string {
-	content := FormatStatus("open") + " - PR is open and ready for review\n" +
-		FormatStatus("draft") + " - PR is in draft state\n" +
-		FormatStatus("merged") + " - PR has been merged (tracked in stack metadata)\n" +
-		FormatStatus("local") + " - Not yet pushed to GitHub\n" +
+	content := GetStatus("open").Render() + " - PR is open and ready for review\n" +
+		GetStatus("draft").Render() + " - PR is in draft state\n" +
+		GetStatus("merged").Render() + " - PR has been merged (tracked in stack metadata)\n" +
+		GetStatus("local").Render() + " - Not yet pushed to GitHub\n" +
 		Dim("(modified)") + " - PR has local changes that need to be pushed"
 	return RenderPanel(content)
 }

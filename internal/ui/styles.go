@@ -252,22 +252,3 @@ var (
 					Foreground(ColorSuccess).
 					Bold(true)
 )
-
-// GetStatusStyle returns the appropriate style for a PR state
-// Deprecated: Use GetStatus(state).Style instead
-func GetStatusStyle(state string) lipgloss.Style {
-	switch state {
-	case "open":
-		return StatusOpenStyle
-	case "draft":
-		return StatusDraftStyle
-	case "merged":
-		return StatusMergedStyle
-	case "closed":
-		return StatusClosedStyle
-	case "needs-push":
-		return StatusModifiedStyle
-	default:
-		return StatusLocalStyle
-	}
-}
