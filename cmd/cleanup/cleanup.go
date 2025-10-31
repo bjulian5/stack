@@ -79,8 +79,8 @@ func (c *Command) displayCandidates(candidates []stack.CleanupCandidate) {
 
 	for i, candidate := range candidates {
 		reason := c.formatReason(candidate)
-		ui.Printf("  [%d] %s\n", i+1, ui.Bold(candidate.Stack.Name))
-		ui.Printf("      Base: %s\n", candidate.Stack.Base)
+		ui.Printf("  [%d] %s\n", i+1, ui.Bold(candidate.StackCtx.StackName))
+		ui.Printf("      Base: %s\n", candidate.StackCtx.Stack.Base)
 		ui.Printf("      Reason: %s\n", reason)
 		ui.Println("")
 	}
@@ -101,11 +101,19 @@ func (c *Command) deleteSelected(candidates []stack.CleanupCandidate, indices []
 	successCount := 0
 	for _, idx := range indices {
 		candidate := candidates[idx]
-		ui.Infof("Cleaning up stack: %s", candidate.Stack.Name)
+		stack := candidate.StackCtx.Stack
+		ui.Infof("Cleaning up stack: %s", stack.Name)
 		ui.Println("")
 
-		if err := c.Stack.DeleteStack(candidate.Stack.Name, true); err != nil {
-			ui.Errorf("cleaning up stack %s: %v", candidate.Stack.Name, err)
+		if candidate.Reason == "all_merged" {
+			if err := c.Stack.SyncVisualizationComments(candidate.StackCtx); err != nil {
+				ui.Errorf("updating visualization comments for stack %s: %v", stack.Name, err)
+				continue
+			}
+		}
+
+		if err := c.Stack.DeleteStack(candidate.StackCtx.Stack.Name, true); err != nil {
+			ui.Errorf("cleaning up stack %s: %v", stack.Name, err)
 			continue
 		}
 

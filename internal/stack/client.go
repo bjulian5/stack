@@ -1241,17 +1241,17 @@ func (c *Client) deleteBranches(branches []string) {
 }
 
 type CleanupCandidate struct {
-	Stack       *model.Stack
+	StackCtx    *StackContext
 	Reason      string
 	ChangeCount int
 }
 
 func (c *Client) IsStackEligibleForCleanup(stackCtx *StackContext) (bool, string) {
-	if len(stackCtx.ActiveChanges) == 0 {
+	if len(stackCtx.AllChanges) == 0 {
 		return true, "empty"
 	}
 
-	for _, change := range stackCtx.ActiveChanges {
+	for _, change := range stackCtx.AllChanges {
 		if !c.IsChangeMerged(change) {
 			return false, ""
 		}
@@ -1277,7 +1277,7 @@ func (c *Client) GetCleanupCandidates() ([]CleanupCandidate, error) {
 
 		if eligible, reason := c.IsStackEligibleForCleanup(stackCtx); eligible {
 			candidates = append(candidates, CleanupCandidate{
-				Stack:       s,
+				StackCtx:    stackCtx,
 				Reason:      reason,
 				ChangeCount: len(stackCtx.AllChanges),
 			})
