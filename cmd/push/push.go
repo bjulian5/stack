@@ -127,7 +127,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return err
 	}
 	if hasChanges {
-		return fmt.Errorf("you have uncommitted changes. Commit or stash them before pushing.")
+		ui.Warning("Uncommitted changes detected in the working directory.")
 	}
 
 	if len(stackCtx.ActiveChanges) == 0 {
