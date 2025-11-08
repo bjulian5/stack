@@ -77,7 +77,7 @@ func (c *Command) Run(ctx context.Context) error {
 			return nil
 		}
 	} else {
-		currentUUID := stackCtx.GetCurrentPositionUUID()
+		currentUUID := stackCtx.ChangeID()
 		if currentUUID == "" {
 			return fmt.Errorf("no current position in stack")
 		}

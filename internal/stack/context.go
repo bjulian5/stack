@@ -8,28 +8,32 @@ import (
 )
 
 // StackContext represents a snapshot of stack state for the current branch or a stack loaded by name.
+// It provides both the complete change history and the current editing context.
 type StackContext struct {
 	StackName          string
 	Stack              *model.Stack
-	changes            map[string]*model.Change // Source of truth: changes indexed by UUID
+	changes            map[string]*model.Change // Source of truth: all changes indexed by UUID
 	client             *Client                  // Client for persistence operations
-	AllChanges         []*model.Change          // Complete history (merged + active) - pointers into changes map
-	ActiveChanges      []*model.Change          // Only unmerged changes from TOP branch - pointers into changes map
-	StaleMergedChanges []*model.Change          // Active changes that are merged on GitHub but still on TOP branch (need restack) - pointers into changes map
-	currentUUID        string                   // UUID where we are positioned
-	onUUIDBranch       bool                     // true if on UUID branch (editing specific change)
-	stackActive        bool                     // true if this stack is currently active in repo
-	username           string                   // username for branch naming
+	AllChanges         []*model.Change          // Complete history (merged + active)
+	ActiveChanges      []*model.Change          // Only unmerged changes from TOP branch
+	StaleMergedChanges []*model.Change          // Changes merged on GitHub but still on TOP branch
+	currentUUID        string                   // UUID of the current editing position
+	onUUIDBranch       bool                     // Whether positioned on a UUID branch
+	stackActive        bool                     // Whether this stack is the active stack in the repo
+	username           string                   // Username for branch naming
 }
 
+// IsStack returns true if this context represents a stack (vs a regular branch).
 func (s *StackContext) IsStack() bool {
 	return s.StackName != ""
 }
 
+// OnUUIDBranch returns true if positioned on a UUID branch (editing a specific change).
 func (s *StackContext) OnUUIDBranch() bool {
 	return s.onUUIDBranch
 }
 
+// CurrentChange returns the change at the current editing position, or nil if at TOP.
 func (s *StackContext) CurrentChange() *model.Change {
 	if s.currentUUID == "" {
 		return nil
@@ -37,21 +41,23 @@ func (s *StackContext) CurrentChange() *model.Change {
 	return s.FindChange(s.currentUUID)
 }
 
-func (s *StackContext) GetCurrentPositionUUID() string {
+// ChangeID returns the UUID of the current editing position.
+func (s *StackContext) ChangeID() string {
 	return s.currentUUID
 }
 
+// FindChange looks up a change by UUID in the stack.
 func (s *StackContext) FindChange(uuid string) *model.Change {
 	return s.changes[uuid]
 }
 
+// FindChangeInActive looks up a change by UUID and verifies it's in the active (unmerged) set.
 func (s *StackContext) FindChangeInActive(uuid string) *model.Change {
-	// Check if the change exists in the map first
 	change := s.changes[uuid]
 	if change == nil {
 		return nil
 	}
-	// Verify it's actually in the active changes
+
 	for _, activeChange := range s.ActiveChanges {
 		if activeChange.UUID == uuid {
 			return change
@@ -60,17 +66,17 @@ func (s *StackContext) FindChangeInActive(uuid string) *model.Change {
 	return nil
 }
 
+// FormatUUIDBranch returns the branch name for a UUID in this stack.
 func (s *StackContext) FormatUUIDBranch(uuid string) string {
 	return fmt.Sprintf("%s/stack-%s/%s", s.username, s.StackName, uuid)
 }
 
-// Save persists the current state of all changes to disk (prs.json and config.json)
+// Save persists the current state to disk, including PR metadata and stack configuration.
 func (ctx *StackContext) Save() error {
 	if ctx.client == nil {
-		return fmt.Errorf("StackContext has no client reference for persistence")
+		return fmt.Errorf("cannot save: StackContext has no client reference")
 	}
 
-	// Build PRData from the changes map
 	prData := &model.PRData{
 		Version: 1,
 		PRs:     make(map[string]*model.PR),
@@ -82,22 +88,22 @@ func (ctx *StackContext) Save() error {
 		}
 	}
 
-	// Save PR data
 	if err := ctx.client.savePRs(ctx.StackName, prData); err != nil {
-		return err
+		return fmt.Errorf("failed to save PR data: %w", err)
 	}
 
-	// Save Stack metadata (includes merged changes, sync metadata, etc.)
 	if ctx.Stack != nil {
 		if err := ctx.client.SaveStack(ctx.Stack); err != nil {
-			return err
+			return fmt.Errorf("failed to save stack metadata: %w", err)
 		}
 	}
 
 	return nil
 }
 
-func formatStackBranch(username string, stackName string) string {
+// Branch formatting and validation helpers
+
+func formatStackBranch(username, stackName string) string {
 	return fmt.Sprintf("%s/stack-%s/TOP", username, stackName)
 }
 
@@ -123,7 +129,7 @@ func validateBottomUpMerges(activeChanges []*model.Change, mergedPRNumbers map[i
 		change := activeChanges[i]
 		if !change.IsLocal() && mergedPRNumbers[change.PR.PRNumber] {
 			return fmt.Errorf(
-				"out-of-order merge detected: PR #%d (change #%d) is merged, but change #%d is not.\n\n"+
+				"out-of-order merge detected: PR #%d (change #%d) is merged, but change #%d is not\n\n"+
 					"Stack requires bottom-up merging. To fix:\n"+
 					"  1. Ask for PR #%d to be reverted, OR\n"+
 					"  2. Manually merge the earlier PRs first, OR\n"+
@@ -136,6 +142,8 @@ func validateBottomUpMerges(activeChanges []*model.Change, mergedPRNumbers map[i
 	return nil
 }
 
+// Branch parsing helpers
+
 func isUUIDBranch(branch string) bool {
 	parts := strings.Split(branch, "/")
 	if len(parts) != 3 || !strings.HasPrefix(parts[1], "stack-") {
@@ -143,11 +151,7 @@ func isUUIDBranch(branch string) bool {
 	}
 
 	uuid := parts[2]
-	if uuid == "TOP" || len(uuid) != 16 {
-		return false
-	}
-
-	return validUUID(uuid)
+	return uuid != "TOP" && validUUID(uuid)
 }
 
 func validUUID(uuid string) bool {
@@ -168,7 +172,8 @@ func extractStackName(branch string) string {
 		return ""
 	}
 
-	if parts[2] != "TOP" && !validUUID(parts[2]) {
+	suffix := parts[2]
+	if suffix != "TOP" && !validUUID(suffix) {
 		return ""
 	}
 

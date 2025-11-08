@@ -77,7 +77,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to sync with GitHub: %w", err)
 	}
 
-	currentUUID := stackCtx.GetCurrentPositionUUID()
+	currentUUID := stackCtx.ChangeID()
 
 	var output string
 	if c.Table {

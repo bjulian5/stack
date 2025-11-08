@@ -152,7 +152,7 @@ func (c *Command) Run(ctx context.Context) error {
 		}
 
 		// Get current position (we're on this stack, so arrow will show)
-		currentUUID := stackCtx.GetCurrentPositionUUID()
+		currentUUID := stackCtx.ChangeID()
 
 		ui.Print(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges, currentUUID))
 		return nil
@@ -181,7 +181,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	// Get current position (we're on TOP branch, arrow will show at last change)
-	currentUUID := stackCtx.GetCurrentPositionUUID()
+	currentUUID := stackCtx.ChangeID()
 
 	ui.Print(ui.RenderStackDetails(stackCtx.Stack, stackCtx.AllChanges, currentUUID))
 

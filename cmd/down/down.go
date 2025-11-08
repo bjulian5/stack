@@ -79,7 +79,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("no active changes in stack: all changes are merged")
 	}
 
-	currentChange := stackCtx.FindChange(stackCtx.GetCurrentPositionUUID())
+	currentChange := stackCtx.FindChange(stackCtx.ChangeID())
 	if currentChange == nil {
 		return fmt.Errorf("current change is not a valid change in the stack")
 	}
