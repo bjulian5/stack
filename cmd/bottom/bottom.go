@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
@@ -20,17 +21,8 @@ type Command struct {
 	GH    *gh.Client
 }
 
-// Register registers the command with cobra
 func (c *Command) Register(parent *cobra.Command) {
-	var err error
-	c.Git, err = git.NewClient()
-	if err != nil {
-		panic(err)
-	}
-	c.GH = gh.NewClient()
-	c.Stack = stack.NewClient(c.Git, c.GH)
-
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "bottom",
 		Short: "Move to the bottom of the stack",
 		Long: `Move to the bottom of the stack (first change at position 1).
@@ -40,12 +32,17 @@ Can be used from any position in the stack to navigate to the first change.
 Example:
   stack bottom    # Move to position 1 from any position`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.Run(cmd.Context())
+		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			var err error
+			c.Git, c.GH, c.Stack, err = common.InitClients()
+			return err
+		},
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			return c.Run(cobraCmd.Context())
 		},
 	}
 
-	parent.AddCommand(cmd)
+	parent.AddCommand(command)
 }
 
 // Run executes the command

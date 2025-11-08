@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
@@ -21,15 +22,7 @@ type Command struct {
 }
 
 func (c *Command) Register(parent *cobra.Command) {
-	var err error
-	c.Git, err = git.NewClient()
-	if err != nil {
-		panic(err)
-	}
-	c.GH = gh.NewClient()
-	c.Stack = stack.NewClient(c.Git, c.GH)
-
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "delete [stack-name]",
 		Short: "Delete a stack and its branches",
 		Long: `Delete a stack by archiving its metadata and deleting all associated branches.
@@ -44,16 +37,21 @@ Example:
   stack delete auth-refactor    # Delete specific stack
   stack delete --force          # Skip confirmation prompt`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			var err error
+			c.Git, c.GH, c.Stack, err = common.InitClients()
+			return err
+		},
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				c.StackName = args[0]
 			}
-			return c.Run(cmd.Context())
+			return c.Run(cobraCmd.Context())
 		},
 	}
 
-	cmd.Flags().BoolVarP(&c.Force, "force", "f", false, "Skip confirmation prompt")
-	parent.AddCommand(cmd)
+	command.Flags().BoolVarP(&c.Force, "force", "f", false, "Skip confirmation prompt")
+	parent.AddCommand(command)
 }
 
 func (c *Command) Run(ctx context.Context) error {

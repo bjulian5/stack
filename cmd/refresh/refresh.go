@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
@@ -19,17 +20,8 @@ type Command struct {
 	GH    *gh.Client
 }
 
-// Register registers the command with cobra
 func (c *Command) Register(parent *cobra.Command) {
-	var err error
-	c.Git, err = git.NewClient()
-	if err != nil {
-		panic(err)
-	}
-	c.GH = gh.NewClient()
-	c.Stack = stack.NewClient(c.Git, c.GH)
-
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "refresh",
 		Short: "Sync stack with GitHub to detect merged PRs",
 		Long: `Sync the current stack with GitHub to detect merged PRs and update the stack state.
@@ -45,12 +37,17 @@ This command:
 Example:
   stack refresh`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.Run(cmd.Context())
+		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			var err error
+			c.Git, c.GH, c.Stack, err = common.InitClients()
+			return err
+		},
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			return c.Run(cobraCmd.Context())
 		},
 	}
 
-	parent.AddCommand(cmd)
+	parent.AddCommand(command)
 }
 
 // Run executes the command

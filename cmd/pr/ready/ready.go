@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/model"
 	"github.com/bjulian5/stack/internal/stack"
@@ -20,7 +21,7 @@ type Command struct {
 }
 
 func (c *Command) Register(parent *cobra.Command) {
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "ready",
 		Short: "Mark change(s) as ready for review",
 		Long: `Mark one or more changes as ready for review (not draft).
@@ -35,14 +36,19 @@ Otherwise, the ready/draft state is stored locally and applied during 'stack pus
 Example:
   stack pr ready         # Mark current change as ready
   stack pr ready --all   # Mark all changes in stack as ready`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.Run(cmd.Context())
+		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			var err error
+			c.Git, _, c.Stack, err = common.InitClients()
+			return err
+		},
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			return c.Run(cobraCmd.Context())
 		},
 	}
 
-	cmd.Flags().BoolVar(&c.All, "all", false, "Mark all changes in the stack as ready")
+	command.Flags().BoolVar(&c.All, "all", false, "Mark all changes in the stack as ready")
 
-	parent.AddCommand(cmd)
+	parent.AddCommand(command)
 }
 
 func (c *Command) Run(ctx context.Context) error {

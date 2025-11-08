@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/model"
@@ -22,21 +23,26 @@ type Command struct {
 }
 
 func (c *Command) Register(parent *cobra.Command) {
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "open",
 		Short: "Open a PR in the browser",
 		Long: `Opens the PR for the current change in your browser.
 
 Use --select to interactively choose which PR to open.`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.Run(cmd.Context())
+		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			var err error
+			c.Git, c.GH, c.Stack, err = common.InitClients()
+			return err
+		},
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			return c.Run(cobraCmd.Context())
 		},
 	}
 
-	cmd.Flags().BoolVarP(&c.UseSelect, "select", "s", false, "Interactively select which PR to open")
+	command.Flags().BoolVarP(&c.UseSelect, "select", "s", false, "Interactively select which PR to open")
 
-	parent.AddCommand(cmd)
+	parent.AddCommand(command)
 }
 
 func (c *Command) Run(ctx context.Context) error {

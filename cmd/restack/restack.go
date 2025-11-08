@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bjulian5/stack/internal/gh"
+	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
@@ -25,15 +25,7 @@ type Command struct {
 }
 
 func (c *Command) Register(parent *cobra.Command) {
-	var err error
-	c.Git, err = git.NewClient()
-	if err != nil {
-		panic(err)
-	}
-	ghClient := gh.NewClient()
-	c.Stack = stack.NewClient(c.Git, ghClient)
-
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "restack",
 		Short: "Rebase the stack on top of the latest base branch changes",
 		Long: `Rebase the stack on top of the latest base branch changes.
@@ -67,17 +59,22 @@ Examples:
   git rebase --abort
   stack restack --recover --retry`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.Run(cmd.Context())
+		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			var err error
+			c.Git, _, c.Stack, err = common.InitClients()
+			return err
+		},
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			return c.Run(cobraCmd.Context())
 		},
 	}
 
-	cmd.Flags().BoolVar(&c.Fetch, "fetch", false, "Fetch from remote before rebasing")
-	cmd.Flags().StringVar(&c.Onto, "onto", "", "Rebase stack onto a different base branch")
-	cmd.Flags().BoolVar(&c.Recover, "recover", false, "Recover from a failed or aborted rebase")
-	cmd.Flags().BoolVar(&c.Retry, "retry", false, "Retry the rebase (only valid with --recover)")
+	command.Flags().BoolVar(&c.Fetch, "fetch", false, "Fetch from remote before rebasing")
+	command.Flags().StringVar(&c.Onto, "onto", "", "Rebase stack onto a different base branch")
+	command.Flags().BoolVar(&c.Recover, "recover", false, "Recover from a failed or aborted rebase")
+	command.Flags().BoolVar(&c.Retry, "retry", false, "Retry the rebase (only valid with --recover)")
 
-	parent.AddCommand(cmd)
+	parent.AddCommand(command)
 }
 
 func (c *Command) Run(ctx context.Context) error {

@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bjulian5/stack/internal/gh"
+	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/hooks"
 	"github.com/bjulian5/stack/internal/stack"
@@ -18,15 +18,7 @@ type Command struct {
 }
 
 func (c *Command) Register(parent *cobra.Command) {
-	var err error
-	c.Git, err = git.NewClient()
-	if err != nil {
-		panic(err)
-	}
-	ghClient := gh.NewClient()
-	c.Stack = stack.NewClient(c.Git, ghClient)
-
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "install",
 		Short: "Install stack hooks and configure git",
 		Long: `Install stack's git hooks and configure git settings.
@@ -41,10 +33,20 @@ This command is idempotent and can be run multiple times safely.
 Example:
   stack install`,
 		Args: cobra.NoArgs,
+		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			var err error
+			c.Git, _, c.Stack, err = common.InitClients()
+			if err != nil {
+				ui.Println("")
+				ui.Info("The 'stack install' command must be run from within a git repository.")
+				ui.Info("Please navigate to your git repository and try again.")
+			}
+			return err
+		},
 		RunE: c.Run,
 	}
 
-	parent.AddCommand(cmd)
+	parent.AddCommand(command)
 }
 
 func (c *Command) Run(cmd *cobra.Command, args []string) error {

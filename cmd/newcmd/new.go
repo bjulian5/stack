@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bjulian5/stack/internal/gh"
+	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
@@ -25,17 +25,8 @@ type Command struct {
 	Stack *stack.Client
 }
 
-// Register registers the command with cobra
 func (c *Command) Register(parent *cobra.Command) {
-	var err error
-	c.Git, err = git.NewClient()
-	if err != nil {
-		panic(err)
-	}
-	ghClient := gh.NewClient()
-	c.Stack = stack.NewClient(c.Git, ghClient)
-
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "new <stack-name>",
 		Short: "Create a new stack",
 		Long: `Create a new stack for managing a set of stacked pull requests.
@@ -50,14 +41,19 @@ Example:
   stack new auth-refactor
   stack new feature-x --base develop`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			var err error
+			c.Git, _, c.Stack, err = common.InitClients()
+			return err
+		},
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
 			c.StackName = args[0]
-			return c.Run(cmd.Context())
+			return c.Run(cobraCmd.Context())
 		},
 	}
 
-	cmd.Flags().StringVar(&c.BaseBranch, "base", "", "Base branch for the stack (default: current branch)")
-	parent.AddCommand(cmd)
+	command.Flags().StringVar(&c.BaseBranch, "base", "", "Base branch for the stack (default: current branch)")
+	parent.AddCommand(command)
 }
 
 // Run executes the command

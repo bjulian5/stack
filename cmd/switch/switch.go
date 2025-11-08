@@ -7,6 +7,7 @@ import (
 	"github.com/ktr0731/go-fuzzyfinder"
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/model"
@@ -25,17 +26,8 @@ type Command struct {
 	GH    *gh.Client
 }
 
-// Register registers the command with cobra
 func (c *Command) Register(parent *cobra.Command) {
-	var err error
-	c.Git, err = git.NewClient()
-	if err != nil {
-		panic(err)
-	}
-	c.GH = gh.NewClient()
-	c.Stack = stack.NewClient(c.Git, c.GH)
-
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "switch [stack-name]",
 		Short: "Switch to a different stack",
 		Long: `Switch to a different stack. If no stack name is provided, opens an interactive fuzzy finder.
@@ -46,15 +38,20 @@ Example:
   stack switch                  # Interactive fuzzy finder
   stack switch auth-refactor    # Direct switch`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			var err error
+			c.Git, c.GH, c.Stack, err = common.InitClients()
+			return err
+		},
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				c.StackName = args[0]
 			}
-			return c.Run(cmd.Context())
+			return c.Run(cobraCmd.Context())
 		},
 	}
 
-	parent.AddCommand(cmd)
+	parent.AddCommand(command)
 }
 
 // Run executes the command

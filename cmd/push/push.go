@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/model"
@@ -24,17 +25,8 @@ type Command struct {
 	GH    *gh.Client
 }
 
-// Register registers the command with cobra
 func (c *Command) Register(parent *cobra.Command) {
-	var err error
-	c.Git, err = git.NewClient()
-	if err != nil {
-		panic(err)
-	}
-	c.GH = gh.NewClient()
-	c.Stack = stack.NewClient(c.Git, c.GH)
-
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "push",
 		Short: "Push PRs to GitHub",
 		Long: `Push all PRs in the current stack to GitHub.
@@ -50,15 +42,20 @@ Example:
   stack push              # Push all PRs (respects local draft/ready state)
   stack push --dry-run    # Show what would happen
   stack push --force      # Force push all PRs even if unchanged`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.Run(cmd.Context())
+		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			var err error
+			c.Git, c.GH, c.Stack, err = common.InitClients()
+			return err
+		},
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			return c.Run(cobraCmd.Context())
 		},
 	}
 
-	cmd.Flags().BoolVar(&c.DryRun, "dry-run", false, "Show what would happen without pushing")
-	cmd.Flags().BoolVar(&c.Force, "force", false, "Force push all PRs even if unchanged (bypass diff check)")
+	command.Flags().BoolVar(&c.DryRun, "dry-run", false, "Show what would happen without pushing")
+	command.Flags().BoolVar(&c.Force, "force", false, "Force push all PRs even if unchanged (bypass diff check)")
 
-	parent.AddCommand(cmd)
+	parent.AddCommand(command)
 }
 
 // pushPR pushes a single PR to GitHub and returns PR number, URL, and whether it was newly created
