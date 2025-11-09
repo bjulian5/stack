@@ -38,11 +38,11 @@ func createTestStackContext(t *testing.T, stackName string, changes []*model.Cha
 
 func TestGenerateStackVisualization(t *testing.T) {
 	tests := []struct {
-		name          string
-		stackName     string
-		changes       []*model.Change
-		currentPR     int
-		expectedViz   string
+		name        string
+		stackName   string
+		changes     []*model.Change
+		currentPR   int
+		expectedViz string
 	}{
 		{
 			name:      "all active changes with current PR marker",
@@ -358,9 +358,9 @@ func TestGetStatusDisplay(t *testing.T) {
 		{"merged", "🟣", "Merged"},
 		{"closed", "❌", "Closed"},
 		{"local", "⚪", "Local "},
-		{"", "⚪", "Local "}, // Default case
+		{"", "⚪", "Local "},        // Default case
 		{"unknown", "⚪", "Local "}, // Default case
-		{"OPEN", "⚪", "Local "}, // Case sensitive
+		{"OPEN", "⚪", "Local "},    // Case sensitive
 	}
 
 	for _, tt := range tests {
@@ -374,13 +374,12 @@ func TestGetStatusDisplay(t *testing.T) {
 
 func TestSyncCommentForPR(t *testing.T) {
 	tests := []struct {
-		name          string
-		pr            *model.PR
-		vizContent    string
-		setupMocks    func(*MockGithubClient, *model.PR, string)
-		expectError   bool
-		errorContains string
-		verify        func(*testing.T, *model.PR, *MockGithubClient)
+		name        string
+		pr          *model.PR
+		vizContent  string
+		setupMocks  func(*MockGithubClient, *model.PR, string)
+		expectError error
+		verify      func(*testing.T, *model.PR, *MockGithubClient)
 	}{
 		{
 			name: "with cached comment ID - success",
@@ -392,7 +391,6 @@ func TestSyncCommentForPR(t *testing.T) {
 			setupMocks: func(m *MockGithubClient, pr *model.PR, vizContent string) {
 				m.On("UpdatePRComment", "comment-123", vizContent).Return(nil)
 			},
-			expectError: false,
 			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
 				m.AssertCalled(t, "UpdatePRComment", "comment-123", "Test visualization content")
 				m.AssertNotCalled(t, "ListPRComments", mock.Anything)
@@ -416,7 +414,6 @@ func TestSyncCommentForPR(t *testing.T) {
 
 				m.On("UpdatePRComment", "comment-456", vizContent).Return(nil)
 			},
-			expectError: false,
 			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
 				assert.Equal(t, "comment-456", pr.VizCommentID)
 			},
@@ -435,7 +432,6 @@ func TestSyncCommentForPR(t *testing.T) {
 
 				m.On("CreatePRComment", 101, vizContent).Return("new-comment-789", nil)
 			},
-			expectError: false,
 			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
 				assert.Equal(t, "new-comment-789", pr.VizCommentID)
 			},
@@ -456,7 +452,6 @@ func TestSyncCommentForPR(t *testing.T) {
 
 				m.On("UpdatePRComment", "comment-456", vizContent).Return(nil)
 			},
-			expectError: false,
 			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
 				assert.Equal(t, "comment-456", pr.VizCommentID)
 			},
@@ -473,7 +468,6 @@ func TestSyncCommentForPR(t *testing.T) {
 
 				m.On("CreatePRComment", 101, vizContent).Return("new-comment-789", nil)
 			},
-			expectError: false,
 			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
 				assert.Equal(t, "new-comment-789", pr.VizCommentID)
 			},
@@ -488,8 +482,7 @@ func TestSyncCommentForPR(t *testing.T) {
 			setupMocks: func(m *MockGithubClient, pr *model.PR, vizContent string) {
 				m.On("ListPRComments", 101).Return(nil, fmt.Errorf("API error"))
 			},
-			expectError:   true,
-			errorContains: "failed to list comments",
+			expectError: fmt.Errorf("failed to list comments"),
 		},
 		{
 			name: "update comment fails",
@@ -506,8 +499,7 @@ func TestSyncCommentForPR(t *testing.T) {
 
 				m.On("UpdatePRComment", "comment-456", vizContent).Return(fmt.Errorf("API error"))
 			},
-			expectError:   true,
-			errorContains: "failed to update comment",
+			expectError: fmt.Errorf("failed to update comment"),
 		},
 		{
 			name: "create comment fails",
@@ -521,8 +513,7 @@ func TestSyncCommentForPR(t *testing.T) {
 
 				m.On("CreatePRComment", 101, vizContent).Return("", fmt.Errorf("API error"))
 			},
-			expectError:   true,
-			errorContains: "failed to create comment",
+			expectError: fmt.Errorf("failed to create comment"),
 		},
 		{
 			name: "multiple stack comments - finds correct one",
@@ -542,7 +533,6 @@ func TestSyncCommentForPR(t *testing.T) {
 
 				m.On("UpdatePRComment", "comment-333", vizContent).Return(nil)
 			},
-			expectError: false,
 			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
 				assert.Equal(t, "comment-333", pr.VizCommentID)
 			},
@@ -558,11 +548,8 @@ func TestSyncCommentForPR(t *testing.T) {
 
 			err := stackClient.syncCommentForPR(tt.pr, tt.vizContent)
 
-			if tt.expectError {
-				assert.Error(t, err)
-				if tt.errorContains != "" {
-					assert.Contains(t, err.Error(), tt.errorContains)
-				}
+			if tt.expectError != nil {
+				assert.ErrorContains(t, err, tt.expectError.Error())
 			} else {
 				assert.NoError(t, err)
 			}

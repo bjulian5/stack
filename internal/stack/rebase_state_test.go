@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -151,12 +152,11 @@ func TestSaveRebaseState(t *testing.T) {
 
 func TestLoadRebaseState(t *testing.T) {
 	tests := []struct {
-		name          string
-		stackName     string
-		setup         func(*testing.T, *Client)
-		expected      *RebaseState
-		expectError   bool
-		errorContains string
+		name        string
+		stackName   string
+		setup       func(*testing.T, *Client)
+		expected    *RebaseState
+		expectError error
 	}{
 		{
 			name:      "Success",
@@ -181,10 +181,9 @@ func TestLoadRebaseState(t *testing.T) {
 			},
 		},
 		{
-			name:          "NotExists",
-			stackName:     "nonexistent-stack",
-			expectError:   true,
-			errorContains: "no rebase state found",
+			name:        "NotExists",
+			stackName:   "nonexistent-stack",
+			expectError: fmt.Errorf("no rebase state found"),
 		},
 		{
 			name:      "MalformedJSON",
@@ -198,8 +197,7 @@ func TestLoadRebaseState(t *testing.T) {
 				err = os.WriteFile(statePath, []byte("invalid json{"), 0644)
 				require.NoError(t, err)
 			},
-			expectError:   true,
-			errorContains: "failed to parse rebase state",
+			expectError: fmt.Errorf("failed to parse rebase state"),
 		},
 	}
 
@@ -216,14 +214,12 @@ func TestLoadRebaseState(t *testing.T) {
 
 				loaded, err := stackClient.LoadRebaseState(tt.stackName)
 
-				if tt.expectError {
-					assert.Error(t, err)
-					assert.Contains(t, err.Error(), tt.errorContains)
+				if tt.expectError != nil {
+					assert.ErrorContains(t, err, tt.expectError.Error())
 				} else {
 					require.NoError(t, err)
 					assert.Equal(t, tt.expected, loaded)
 				}
-
 				mockGithubClient.AssertExpectations(t)
 			})
 		})
