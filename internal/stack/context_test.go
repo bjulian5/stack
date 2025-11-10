@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/model"
 )
 
@@ -170,10 +171,10 @@ func TestStackContext_Save(t *testing.T) {
 	})
 
 	t.Run("saves PRs and stack successfully", func(t *testing.T) {
-		mockGithubClient := &MockGithubClient{}
+		mockGithubClient := &gh.MockGithubClient{}
 		mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
-		stackClient := newTestStackClient(t, mockGithubClient)
+		stackClient := NewTestStack(t, mockGithubClient)
 		stack, err := stackClient.CreateStack("test-stack", "main")
 		require.NoError(t, err)
 
@@ -206,11 +207,11 @@ func TestStackContext_Save(t *testing.T) {
 		mockGithubClient.AssertExpectations(t)
 	})
 
-	t.Run("saves only changes with PRs", func(t *testing.T) {
-		mockGithubClient := &MockGithubClient{}
+	t.Run("saves only changh.ges with PRs", func(t *testing.T) {
+		mockGithubClient := &gh.MockGithubClient{}
 		mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
-		stackClient := newTestStackClient(t, mockGithubClient)
+		stackClient := NewTestStack(t, mockGithubClient)
 		stack, err := stackClient.CreateStack("test-stack", "main")
 		require.NoError(t, err)
 
@@ -477,10 +478,10 @@ func TestExtractUUIDFromBranch(t *testing.T) {
 
 func TestStackContext_Integration(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		mockGithubClient := &MockGithubClient{}
+		mockGithubClient := &gh.MockGithubClient{}
 		mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
-		stackClient := newTestStackClient(t, mockGithubClient)
+		stackClient := NewTestStack(t, mockGithubClient)
 		stack, err := stackClient.CreateStack("integration-test", "main")
 		require.NoError(t, err)
 

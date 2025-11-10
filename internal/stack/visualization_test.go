@@ -14,10 +14,10 @@ import (
 )
 
 func createTestStackContext(t *testing.T, stackName string, changes []*model.Change) *StackContext {
-	mockGithubClient := &MockGithubClient{}
+	mockGithubClient := &gh.MockGithubClient{}
 	mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 
-	stackClient := newTestStackClient(t, mockGithubClient)
+	stackClient := NewTestStack(t, mockGithubClient)
 	stack, err := stackClient.CreateStack(stackName, "main")
 	require.NoError(t, err)
 
@@ -377,9 +377,9 @@ func TestSyncCommentForPR(t *testing.T) {
 		name        string
 		pr          *model.PR
 		vizContent  string
-		setupMocks  func(*MockGithubClient, *model.PR, string)
+		setupMocks  func(*gh.MockGithubClient, *model.PR, string)
 		expectError error
-		verify      func(*testing.T, *model.PR, *MockGithubClient)
+		verify      func(*testing.T, *model.PR, *gh.MockGithubClient)
 	}{
 		{
 			name: "with cached comment ID - success",
@@ -388,10 +388,10 @@ func TestSyncCommentForPR(t *testing.T) {
 				VizCommentID: "comment-123",
 			},
 			vizContent: "Test visualization content",
-			setupMocks: func(m *MockGithubClient, pr *model.PR, vizContent string) {
+			setupMocks: func(m *gh.MockGithubClient, pr *model.PR, vizContent string) {
 				m.On("UpdatePRComment", "comment-123", vizContent).Return(nil)
 			},
-			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
+			verify: func(t *testing.T, pr *model.PR, m *gh.MockGithubClient) {
 				m.AssertNotCalled(t, "ListPRComments", mock.Anything)
 			},
 		},
@@ -402,7 +402,7 @@ func TestSyncCommentForPR(t *testing.T) {
 				VizCommentID: "old-comment-123",
 			},
 			vizContent: "Test visualization content",
-			setupMocks: func(m *MockGithubClient, pr *model.PR, vizContent string) {
+			setupMocks: func(m *gh.MockGithubClient, pr *model.PR, vizContent string) {
 				m.On("UpdatePRComment", "old-comment-123", vizContent).Return(fmt.Errorf("comment not found"))
 
 				existingComments := []gh.Comment{
@@ -413,7 +413,7 @@ func TestSyncCommentForPR(t *testing.T) {
 
 				m.On("UpdatePRComment", "comment-456", vizContent).Return(nil)
 			},
-			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
+			verify: func(t *testing.T, pr *model.PR, m *gh.MockGithubClient) {
 				assert.Equal(t, "comment-456", pr.VizCommentID)
 			},
 		},
@@ -424,14 +424,14 @@ func TestSyncCommentForPR(t *testing.T) {
 				VizCommentID: "old-comment-123",
 			},
 			vizContent: "Test visualization content",
-			setupMocks: func(m *MockGithubClient, pr *model.PR, vizContent string) {
+			setupMocks: func(m *gh.MockGithubClient, pr *model.PR, vizContent string) {
 				m.On("UpdatePRComment", "old-comment-123", vizContent).Return(fmt.Errorf("comment not found"))
 
 				m.On("ListPRComments", 101).Return([]gh.Comment{}, nil)
 
 				m.On("CreatePRComment", 101, vizContent).Return("new-comment-789", nil)
 			},
-			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
+			verify: func(t *testing.T, pr *model.PR, m *gh.MockGithubClient) {
 				assert.Equal(t, "new-comment-789", pr.VizCommentID)
 			},
 		},
@@ -442,7 +442,7 @@ func TestSyncCommentForPR(t *testing.T) {
 				VizCommentID: "",
 			},
 			vizContent: "Test visualization content",
-			setupMocks: func(m *MockGithubClient, pr *model.PR, vizContent string) {
+			setupMocks: func(m *gh.MockGithubClient, pr *model.PR, vizContent string) {
 				existingComments := []gh.Comment{
 					{ID: "comment-999", Body: "Some other comment"},
 					{ID: "comment-456", Body: "Stack info\n<!-- stack-visualization: test-stack -->"},
@@ -451,7 +451,7 @@ func TestSyncCommentForPR(t *testing.T) {
 
 				m.On("UpdatePRComment", "comment-456", vizContent).Return(nil)
 			},
-			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
+			verify: func(t *testing.T, pr *model.PR, m *gh.MockGithubClient) {
 				assert.Equal(t, "comment-456", pr.VizCommentID)
 			},
 		},
@@ -462,12 +462,12 @@ func TestSyncCommentForPR(t *testing.T) {
 				VizCommentID: "",
 			},
 			vizContent: "Test visualization content",
-			setupMocks: func(m *MockGithubClient, pr *model.PR, vizContent string) {
+			setupMocks: func(m *gh.MockGithubClient, pr *model.PR, vizContent string) {
 				m.On("ListPRComments", 101).Return([]gh.Comment{}, nil)
 
 				m.On("CreatePRComment", 101, vizContent).Return("new-comment-789", nil)
 			},
-			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
+			verify: func(t *testing.T, pr *model.PR, m *gh.MockGithubClient) {
 				assert.Equal(t, "new-comment-789", pr.VizCommentID)
 			},
 		},
@@ -478,7 +478,7 @@ func TestSyncCommentForPR(t *testing.T) {
 				VizCommentID: "",
 			},
 			vizContent: "Test visualization content",
-			setupMocks: func(m *MockGithubClient, pr *model.PR, vizContent string) {
+			setupMocks: func(m *gh.MockGithubClient, pr *model.PR, vizContent string) {
 				m.On("ListPRComments", 101).Return(nil, fmt.Errorf("API error"))
 			},
 			expectError: fmt.Errorf("failed to list comments"),
@@ -490,7 +490,7 @@ func TestSyncCommentForPR(t *testing.T) {
 				VizCommentID: "",
 			},
 			vizContent: "Test visualization content",
-			setupMocks: func(m *MockGithubClient, pr *model.PR, vizContent string) {
+			setupMocks: func(m *gh.MockGithubClient, pr *model.PR, vizContent string) {
 				existingComments := []gh.Comment{
 					{ID: "comment-456", Body: "<!-- stack-visualization: test-stack -->"},
 				}
@@ -507,7 +507,7 @@ func TestSyncCommentForPR(t *testing.T) {
 				VizCommentID: "",
 			},
 			vizContent: "Test visualization content",
-			setupMocks: func(m *MockGithubClient, pr *model.PR, vizContent string) {
+			setupMocks: func(m *gh.MockGithubClient, pr *model.PR, vizContent string) {
 				m.On("ListPRComments", 101).Return([]gh.Comment{}, nil)
 
 				m.On("CreatePRComment", 101, vizContent).Return("", fmt.Errorf("API error"))
@@ -521,7 +521,7 @@ func TestSyncCommentForPR(t *testing.T) {
 				VizCommentID: "",
 			},
 			vizContent: "Test visualization content",
-			setupMocks: func(m *MockGithubClient, pr *model.PR, vizContent string) {
+			setupMocks: func(m *gh.MockGithubClient, pr *model.PR, vizContent string) {
 				existingComments := []gh.Comment{
 					{ID: "comment-111", Body: "Regular comment"},
 					{ID: "comment-222", Body: "Another comment"},
@@ -532,7 +532,7 @@ func TestSyncCommentForPR(t *testing.T) {
 
 				m.On("UpdatePRComment", "comment-333", vizContent).Return(nil)
 			},
-			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
+			verify: func(t *testing.T, pr *model.PR, m *gh.MockGithubClient) {
 				assert.Equal(t, "comment-333", pr.VizCommentID)
 			},
 		},
@@ -540,8 +540,8 @@ func TestSyncCommentForPR(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockGithubClient := &MockGithubClient{}
-			stackClient := newTestStackClient(t, mockGithubClient)
+			mockGithubClient := &gh.MockGithubClient{}
+			stackClient := NewTestStack(t, mockGithubClient)
 
 			tt.setupMocks(mockGithubClient, tt.pr, tt.vizContent)
 
@@ -564,9 +564,9 @@ func TestSyncCommentForPR(t *testing.T) {
 
 func TestSyncVisualizationComments_Success(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		mockGithubClient := &MockGithubClient{}
+		mockGithubClient := &gh.MockGithubClient{}
 
-		stackClient := newTestStackClient(t, mockGithubClient)
+		stackClient := NewTestStack(t, mockGithubClient)
 
 		changes := []*model.Change{
 			{
@@ -620,9 +620,9 @@ func TestSyncVisualizationComments_Success(t *testing.T) {
 }
 
 func TestSyncVisualizationComments_WithLocalChanges(t *testing.T) {
-	mockGithubClient := &MockGithubClient{}
+	mockGithubClient := &gh.MockGithubClient{}
 
-	stackClient := newTestStackClient(t, mockGithubClient)
+	stackClient := NewTestStack(t, mockGithubClient)
 
 	changes := []*model.Change{
 		{
@@ -661,7 +661,7 @@ func TestSyncVisualizationComments(t *testing.T) {
 	tests := []struct {
 		name          string
 		changes       []*model.Change
-		setupMocks    func(*MockGithubClient)
+		setupMocks    func(*gh.MockGithubClient)
 		expectError   bool
 		errorContains string
 		verify        func(*testing.T, []*model.Change, error)
@@ -669,7 +669,7 @@ func TestSyncVisualizationComments(t *testing.T) {
 		{
 			name:        "empty stack",
 			changes:     []*model.Change{},
-			setupMocks:  func(m *MockGithubClient) {},
+			setupMocks:  func(m *gh.MockGithubClient) {},
 			expectError: false,
 		},
 		{
@@ -688,7 +688,7 @@ func TestSyncVisualizationComments(t *testing.T) {
 					PR:       nil,
 				},
 			},
-			setupMocks:  func(m *MockGithubClient) {},
+			setupMocks:  func(m *gh.MockGithubClient) {},
 			expectError: false,
 		},
 		{
@@ -713,7 +713,7 @@ func TestSyncVisualizationComments(t *testing.T) {
 					},
 				},
 			},
-			setupMocks: func(m *MockGithubClient) {
+			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("ListPRComments", 101).Return([]gh.Comment{}, nil)
 				m.On("CreatePRComment", 101, mock.AnythingOfType("string")).
 					Return("comment-101", nil)
@@ -745,7 +745,7 @@ func TestSyncVisualizationComments(t *testing.T) {
 					},
 				},
 			},
-			setupMocks: func(m *MockGithubClient) {
+			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("ListPRComments", 101).Return([]gh.Comment{}, nil)
 				m.On("CreatePRComment", 101, mock.AnythingOfType("string")).Return("comment-101", nil)
 
@@ -762,8 +762,8 @@ func TestSyncVisualizationComments(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockGithubClient := &MockGithubClient{}
-			stackClient := newTestStackClient(t, mockGithubClient)
+			mockGithubClient := &gh.MockGithubClient{}
+			stackClient := NewTestStack(t, mockGithubClient)
 
 			ctx := createTestStackContext(t, "test-stack", tt.changes)
 			ctx.AllChanges = tt.changes
@@ -792,8 +792,8 @@ func TestSyncVisualizationComments(t *testing.T) {
 
 func TestSyncVisualizationComments_Concurrent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		mockGithubClient := &MockGithubClient{}
-		stackClient := newTestStackClient(t, mockGithubClient)
+		mockGithubClient := &gh.MockGithubClient{}
+		stackClient := NewTestStack(t, mockGithubClient)
 
 		changes := make([]*model.Change, 10)
 		for i := 0; i < 10; i++ {

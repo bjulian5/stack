@@ -10,11 +10,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bjulian5/stack/internal/gh"
+	"github.com/bjulian5/stack/internal/testutil"
 )
 
 func TestGetRepositoryConfigPath(t *testing.T) {
-	gitClient := newTestClient(t)
-	client := NewClient(gitClient, &MockGithubClient{})
+	gitClient := testutil.NewTestGitClient(t)
+	client := NewClient(gitClient, &gh.MockGithubClient{})
 
 	expected := filepath.Join(client.gitRoot, ".git", "stack", "config.json")
 	actual := client.getRepositoryConfigPath()
@@ -23,8 +26,8 @@ func TestGetRepositoryConfigPath(t *testing.T) {
 }
 
 func TestLoadRepositoryConfig_NotExists(t *testing.T) {
-	gitClient := newTestClient(t)
-	client := NewClient(gitClient, &MockGithubClient{})
+	gitClient := testutil.NewTestGitClient(t)
+	client := NewClient(gitClient, &gh.MockGithubClient{})
 
 	config, err := client.loadRepositoryConfig()
 	require.NoError(t, err)
@@ -36,8 +39,8 @@ func TestLoadRepositoryConfig_NotExists(t *testing.T) {
 
 func TestSaveAndLoadRepositoryConfig(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		gitClient := newTestClient(t)
-		client := NewClient(gitClient, &MockGithubClient{})
+		gitClient := testutil.NewTestGitClient(t)
+		client := NewClient(gitClient, &gh.MockGithubClient{})
 
 		now := time.Now()
 		testConfig := &RepositoryConfig{
@@ -66,8 +69,8 @@ func TestSaveAndLoadRepositoryConfig(t *testing.T) {
 }
 
 func TestSaveRepositoryConfig_CreatesDirectory(t *testing.T) {
-	gitClient := newTestClient(t)
-	client := NewClient(gitClient, &MockGithubClient{})
+	gitClient := testutil.NewTestGitClient(t)
+	client := NewClient(gitClient, &gh.MockGithubClient{})
 
 	stackDir := client.getStacksRootDir()
 	_, err := os.Stat(stackDir)
@@ -85,8 +88,8 @@ func TestSaveRepositoryConfig_CreatesDirectory(t *testing.T) {
 }
 
 func TestLoadRepositoryConfig_MalformedJSON(t *testing.T) {
-	gitClient := newTestClient(t)
-	client := NewClient(gitClient, &MockGithubClient{})
+	gitClient := testutil.NewTestGitClient(t)
+	client := NewClient(gitClient, &gh.MockGithubClient{})
 
 	err := os.MkdirAll(client.getStacksRootDir(), 0755)
 	require.NoError(t, err)
@@ -113,8 +116,8 @@ func TestIsInstalled(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gitClient := newTestClient(t)
-			client := NewClient(gitClient, &MockGithubClient{})
+			gitClient := testutil.NewTestGitClient(t)
+			client := NewClient(gitClient, &gh.MockGithubClient{})
 
 			config := &RepositoryConfig{
 				HooksInstalled: tt.hooksInstalled,
@@ -132,8 +135,8 @@ func TestIsInstalled(t *testing.T) {
 
 func TestMarkInstalled_FirstTime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		gitClient := newTestClient(t)
-		client := NewClient(gitClient, &MockGithubClient{})
+		gitClient := testutil.NewTestGitClient(t)
+		client := NewClient(gitClient, &gh.MockGithubClient{})
 
 		now := time.Now()
 		err := client.MarkInstalled()
@@ -156,8 +159,8 @@ func TestMarkInstalled_FirstTime(t *testing.T) {
 
 func TestMarkInstalled_AlreadyInstalled(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		gitClient := newTestClient(t)
-		client := NewClient(gitClient, &MockGithubClient{})
+		gitClient := testutil.NewTestGitClient(t)
+		client := NewClient(gitClient, &gh.MockGithubClient{})
 
 		firstInstallTime := time.Now()
 

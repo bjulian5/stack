@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bjulian5/stack/internal/gh"
 )
 
 func TestSaveRebaseState(t *testing.T) {
@@ -129,8 +131,8 @@ func TestSaveRebaseState(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				if tt.setup != nil {
 					tt.setup(t, stackClient)
@@ -204,9 +206,9 @@ func TestLoadRebaseState(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
+				mockGithubClient := &gh.MockGithubClient{}
 
-				stackClient := newTestStackClient(t, mockGithubClient)
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				if tt.setup != nil {
 					tt.setup(t, stackClient)
@@ -228,8 +230,8 @@ func TestLoadRebaseState(t *testing.T) {
 
 func TestClearRebaseState(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		mockGithubClient := &MockGithubClient{}
-		stackClient := newTestStackClient(t, mockGithubClient)
+		mockGithubClient := &gh.MockGithubClient{}
+		stackClient := NewTestStack(t, mockGithubClient)
 
 		state := RebaseState{
 			OriginalStackHead: "abc123",
@@ -286,9 +288,9 @@ func TestHasRebaseState(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
+				mockGithubClient := &gh.MockGithubClient{}
 
-				stackClient := newTestStackClient(t, mockGithubClient)
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				if tt.setup != nil {
 					tt.setup(t, stackClient)

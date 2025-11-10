@@ -95,8 +95,8 @@ func TestIsChangeMerged(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockGithubClient := &MockGithubClient{}
-			stackClient := newTestStackClient(t, mockGithubClient)
+			mockGithubClient := &gh.MockGithubClient{}
+			stackClient := NewTestStack(t, mockGithubClient)
 
 			result := stackClient.IsChangeMerged(tt.change)
 			assert.Equal(t, tt.expected, result)
@@ -123,7 +123,7 @@ func TestMarkChangeStatus(t *testing.T) {
 		name           string
 		change         *model.Change
 		isDraft        bool
-		setupMocks     func(*MockGithubClient)
+		setupMocks     func(*gh.MockGithubClient)
 		expectedResult *MarkChangeStatusResult
 		expectedChange *model.Change
 		expectError    bool
@@ -137,7 +137,7 @@ func TestMarkChangeStatus(t *testing.T) {
 				PR:    nil,
 			},
 			isDraft: true,
-			setupMocks: func(m *MockGithubClient) {
+			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 			},
 			expectedResult: &MarkChangeStatusResult{
@@ -161,7 +161,7 @@ func TestMarkChangeStatus(t *testing.T) {
 				PR:    nil,
 			},
 			isDraft: false,
-			setupMocks: func(m *MockGithubClient) {
+			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 			},
 			expectedResult: &MarkChangeStatusResult{
@@ -190,7 +190,7 @@ func TestMarkChangeStatus(t *testing.T) {
 				},
 			},
 			isDraft: true,
-			setupMocks: func(m *MockGithubClient) {
+			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("MarkPRDraft", 101).Return(nil).Once()
 				m.On("ListPRComments", 101).Return([]gh.Comment{}, nil).Once()
@@ -225,7 +225,7 @@ func TestMarkChangeStatus(t *testing.T) {
 				},
 			},
 			isDraft: false,
-			setupMocks: func(m *MockGithubClient) {
+			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("MarkPRReady", 101).Return(nil).Once()
 				m.On("ListPRComments", 101).Return([]gh.Comment{}, nil).Once()
@@ -260,7 +260,7 @@ func TestMarkChangeStatus(t *testing.T) {
 				},
 			},
 			isDraft: false,
-			setupMocks: func(m *MockGithubClient) {
+			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("MarkPRReady", 102).Return(nil).Once()
 				m.On("ListPRComments", 102).Return([]gh.Comment{}, nil).Once()
@@ -295,7 +295,7 @@ func TestMarkChangeStatus(t *testing.T) {
 				},
 			},
 			isDraft: true,
-			setupMocks: func(m *MockGithubClient) {
+			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("ListPRComments", 103).Return([]gh.Comment{}, nil).Once()
 				m.On("CreatePRComment", 103, mock.AnythingOfType("string")).Return("comment-123", nil).Once()
@@ -329,7 +329,7 @@ func TestMarkChangeStatus(t *testing.T) {
 				},
 			},
 			isDraft: false,
-			setupMocks: func(m *MockGithubClient) {
+			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("ListPRComments", 104).Return([]gh.Comment{}, nil).Once()
 				m.On("CreatePRComment", 104, mock.AnythingOfType("string")).Return("comment-456", nil).Once()
@@ -363,7 +363,7 @@ func TestMarkChangeStatus(t *testing.T) {
 				},
 			},
 			isDraft: false,
-			setupMocks: func(m *MockGithubClient) {
+			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("ListPRComments", 105).Return([]gh.Comment{}, nil).Once()
 				m.On("CreatePRComment", 105, mock.AnythingOfType("string")).Return("comment-789", nil).Once()
@@ -397,7 +397,7 @@ func TestMarkChangeStatus(t *testing.T) {
 				},
 			},
 			isDraft: true,
-			setupMocks: func(m *MockGithubClient) {
+			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("MarkPRDraft", 106).Return(fmt.Errorf("network error")).Once()
 			},
@@ -417,7 +417,7 @@ func TestMarkChangeStatus(t *testing.T) {
 				},
 			},
 			isDraft: false,
-			setupMocks: func(m *MockGithubClient) {
+			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("MarkPRReady", 107).Return(fmt.Errorf("permission denied")).Once()
 			},
@@ -429,12 +429,12 @@ func TestMarkChangeStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
+				mockGithubClient := &gh.MockGithubClient{}
 				if tt.setupMocks != nil {
 					tt.setupMocks(mockGithubClient)
 				}
 
-				stackClient := newTestStackClient(t, mockGithubClient)
+				stackClient := NewTestStack(t, mockGithubClient)
 				stackCtx := createTestStackContextWithChange(t, stackClient, tt.change)
 
 				result, err := stackClient.markChangeStatus(stackCtx, tt.change, tt.isDraft)
@@ -458,13 +458,13 @@ func TestMarkChangeStatus(t *testing.T) {
 
 func TestMarkChangeDraft(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		mockGithubClient := &MockGithubClient{}
+		mockGithubClient := &gh.MockGithubClient{}
 		mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 		mockGithubClient.On("MarkPRDraft", 101).Return(nil).Once()
 		mockGithubClient.On("ListPRComments", 101).Return([]gh.Comment{}, nil).Once()
 		mockGithubClient.On("CreatePRComment", 101, mock.AnythingOfType("string")).Return("comment-123", nil).Once()
 
-		stackClient := newTestStackClient(t, mockGithubClient)
+		stackClient := NewTestStack(t, mockGithubClient)
 		stack, err := stackClient.CreateStack("test-stack", "main")
 		require.NoError(t, err)
 
@@ -504,13 +504,13 @@ func TestMarkChangeDraft(t *testing.T) {
 
 func TestMarkChangeReady(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		mockGithubClient := &MockGithubClient{}
+		mockGithubClient := &gh.MockGithubClient{}
 		mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 		mockGithubClient.On("MarkPRReady", 102).Return(nil).Once()
 		mockGithubClient.On("ListPRComments", 102).Return([]gh.Comment{}, nil).Once()
 		mockGithubClient.On("CreatePRComment", 102, mock.AnythingOfType("string")).Return("comment-456", nil).Once()
 
-		stackClient := newTestStackClient(t, mockGithubClient)
+		stackClient := NewTestStack(t, mockGithubClient)
 		stack, err := stackClient.CreateStack("test-stack", "main")
 		require.NoError(t, err)
 
@@ -552,14 +552,14 @@ func TestSyncPRMetadata(t *testing.T) {
 	tests := []struct {
 		name            string
 		changes         []*model.Change
-		setupMocks      func(*MockGithubClient, []*model.Change)
+		setupMocks      func(*gh.MockGithubClient, []*model.Change)
 		expectError     error
 		expectedResult  *RefreshResult
 		expectedChanges []*model.Change
 	}{
 		{
 			name: "empty stack - no changes",
-			setupMocks: func(m *MockGithubClient, changes []*model.Change) {
+			setupMocks: func(m *gh.MockGithubClient, changes []*model.Change) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 			},
 			expectedResult: &RefreshResult{
@@ -583,7 +583,7 @@ func TestSyncPRMetadata(t *testing.T) {
 					PR:    nil,
 				},
 			},
-			setupMocks: func(m *MockGithubClient, changes []*model.Change) {
+			setupMocks: func(m *gh.MockGithubClient, changes []*model.Change) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 			},
 			expectedResult: &RefreshResult{
@@ -619,7 +619,7 @@ func TestSyncPRMetadata(t *testing.T) {
 					},
 				},
 			},
-			setupMocks: func(m *MockGithubClient, changes []*model.Change) {
+			setupMocks: func(m *gh.MockGithubClient, changes []*model.Change) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("BatchGetPRs", "test-owner", "test-repo", []int{101}).Return(&gh.BatchPRsResult{
 					PRStates: map[int]*gh.PRState{
@@ -674,7 +674,7 @@ func TestSyncPRMetadata(t *testing.T) {
 					},
 				},
 			},
-			setupMocks: func(m *MockGithubClient, changes []*model.Change) {
+			setupMocks: func(m *gh.MockGithubClient, changes []*model.Change) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("BatchGetPRs", "test-owner", "test-repo", []int{101, 102}).Return(&gh.BatchPRsResult{
 					PRStates: map[int]*gh.PRState{
@@ -741,7 +741,7 @@ func TestSyncPRMetadata(t *testing.T) {
 					},
 				},
 			},
-			setupMocks: func(m *MockGithubClient, changes []*model.Change) {
+			setupMocks: func(m *gh.MockGithubClient, changes []*model.Change) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("BatchGetPRs", "test-owner", "test-repo", []int{101, 102}).Return(&gh.BatchPRsResult{
 					PRStates: map[int]*gh.PRState{
@@ -809,7 +809,7 @@ func TestSyncPRMetadata(t *testing.T) {
 					},
 				},
 			},
-			setupMocks: func(m *MockGithubClient, changes []*model.Change) {
+			setupMocks: func(m *gh.MockGithubClient, changes []*model.Change) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("BatchGetPRs", "test-owner", "test-repo", []int{101, 102}).Return(&gh.BatchPRsResult{
 					PRStates: map[int]*gh.PRState{
@@ -851,7 +851,7 @@ func TestSyncPRMetadata(t *testing.T) {
 					},
 				},
 			},
-			setupMocks: func(m *MockGithubClient, changes []*model.Change) {
+			setupMocks: func(m *gh.MockGithubClient, changes []*model.Change) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("BatchGetPRs", "test-owner", "test-repo", []int{101, 102}).Return(&gh.BatchPRsResult{
 					PRStates: map[int]*gh.PRState{
@@ -908,7 +908,7 @@ func TestSyncPRMetadata(t *testing.T) {
 					},
 				},
 			},
-			setupMocks: func(m *MockGithubClient, changes []*model.Change) {
+			setupMocks: func(m *gh.MockGithubClient, changes []*model.Change) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("BatchGetPRs", "test-owner", "test-repo", []int{101}).Return(&gh.BatchPRsResult{
 					PRStates: map[int]*gh.PRState{
@@ -950,7 +950,7 @@ func TestSyncPRMetadata(t *testing.T) {
 					},
 				},
 			},
-			setupMocks: func(m *MockGithubClient, changes []*model.Change) {
+			setupMocks: func(m *gh.MockGithubClient, changes []*model.Change) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("BatchGetPRs", "test-owner", "test-repo", []int{101}).Return(nil, fmt.Errorf("network error")).Once()
 			},
@@ -976,7 +976,7 @@ func TestSyncPRMetadata(t *testing.T) {
 					},
 				},
 			},
-			setupMocks: func(m *MockGithubClient, changes []*model.Change) {
+			setupMocks: func(m *gh.MockGithubClient, changes []*model.Change) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 
 				m.On("BatchGetPRs", "test-owner", "test-repo", []int{101, 102}).Return(&gh.BatchPRsResult{
@@ -1018,12 +1018,12 @@ func TestSyncPRMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
+				mockGithubClient := &gh.MockGithubClient{}
 				if tt.setupMocks != nil {
 					tt.setupMocks(mockGithubClient, tt.changes)
 				}
 
-				stackClient := newTestStackClient(t, mockGithubClient)
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				stack, err := stackClient.CreateStack("test-stack", "main")
 				require.NoError(t, err)

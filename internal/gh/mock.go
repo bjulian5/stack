@@ -1,21 +1,18 @@
-package stack
+package gh
 
-import (
-	"github.com/bjulian5/stack/internal/gh"
-	"github.com/stretchr/testify/mock"
-)
+import "github.com/stretchr/testify/mock"
 
 type MockGithubClient struct {
 	mock.Mock
 }
 
 // BatchGetPRs implements GithubClient.
-func (m *MockGithubClient) BatchGetPRs(owner string, repoName string, prNumbers []int) (*gh.BatchPRsResult, error) {
+func (m *MockGithubClient) BatchGetPRs(owner string, repoName string, prNumbers []int) (*BatchPRsResult, error) {
 	args := m.Called(owner, repoName, prNumbers)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*gh.BatchPRsResult), args.Error(1)
+	return args.Get(0).(*BatchPRsResult), args.Error(1)
 }
 
 // CreatePRComment implements GithubClient.
@@ -31,12 +28,12 @@ func (m *MockGithubClient) GetRepoInfo() (owner string, repoName string, err err
 }
 
 // ListPRComments implements GithubClient.
-func (m *MockGithubClient) ListPRComments(prNumber int) ([]gh.Comment, error) {
+func (m *MockGithubClient) ListPRComments(prNumber int) ([]Comment, error) {
 	args := m.Called(prNumber)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]gh.Comment), args.Error(1)
+	return args.Get(0).([]Comment), args.Error(1)
 }
 
 // MarkPRDraft implements GithubClient.

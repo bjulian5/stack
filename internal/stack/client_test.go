@@ -17,12 +17,13 @@ import (
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/model"
+	"github.com/bjulian5/stack/internal/testutil"
 )
 
 func TestClient(t *testing.T) {
 	t.Run("Install", func(t *testing.T) {
-		mockGithubClient := &MockGithubClient{}
-		mockGitClient := newTestClient(t)
+		mockGithubClient := &gh.MockGithubClient{}
+		mockGitClient := testutil.NewTestGitClient(t)
 		stackClient := NewClient(mockGitClient, mockGithubClient)
 
 		installed, err := stackClient.IsInstalled()
@@ -39,10 +40,10 @@ func TestClient(t *testing.T) {
 
 	t.Run("CreateStack", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
-			mockGithubClient := &MockGithubClient{}
+			mockGithubClient := &gh.MockGithubClient{}
 			mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
-			stackClient := newTestStackClient(t, mockGithubClient)
+			stackClient := NewTestStack(t, mockGithubClient)
 
 			v, err := stackClient.CreateStack("test-stack", "main")
 			assert.NoError(t, err, "CreateStack should not return an error")
@@ -64,10 +65,10 @@ func TestClient(t *testing.T) {
 }
 
 func TestGetStackContext_WithMultipleActiveChanges(t *testing.T) {
-	mockGithubClient := &MockGithubClient{}
+	mockGithubClient := &gh.MockGithubClient{}
 	mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
-	stackClient := newTestStackClient(t, mockGithubClient)
+	stackClient := NewTestStack(t, mockGithubClient)
 
 	// Create a stack
 	stack, err := stackClient.CreateStack("test-stack", "main")
@@ -78,17 +79,17 @@ func TestGetStackContext_WithMultipleActiveChanges(t *testing.T) {
 	uuid2 := "2222222222222222"
 	uuid3 := "3333333333333333"
 
-	_ = createCommitWithTrailers(t, stackClient.git.(*git.Client), "First change", "Description of first change", map[string]string{
+	_ = testutil.CreateCommitWithTrailers(t, stackClient.git.(*git.Client), "First change", "Description of first change", map[string]string{
 		"PR-UUID":  uuid1,
 		"PR-Stack": "test-stack",
 	})
 
-	_ = createCommitWithTrailers(t, stackClient.git.(*git.Client), "Second change", "Description of second change", map[string]string{
+	_ = testutil.CreateCommitWithTrailers(t, stackClient.git.(*git.Client), "Second change", "Description of second change", map[string]string{
 		"PR-UUID":  uuid2,
 		"PR-Stack": "test-stack",
 	})
 
-	_ = createCommitWithTrailers(t, stackClient.git.(*git.Client), "Third change", "Description of third change", map[string]string{
+	_ = testutil.CreateCommitWithTrailers(t, stackClient.git.(*git.Client), "Third change", "Description of third change", map[string]string{
 		"PR-UUID":  uuid3,
 		"PR-Stack": "test-stack",
 	})
@@ -145,10 +146,10 @@ func TestGetStackContext_WithMultipleActiveChanges(t *testing.T) {
 }
 
 func TestGetStackContext_WithMergedAndActiveChanges(t *testing.T) {
-	mockGithubClient := &MockGithubClient{}
+	mockGithubClient := &gh.MockGithubClient{}
 	mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
-	stackClient := newTestStackClient(t, mockGithubClient)
+	stackClient := NewTestStack(t, mockGithubClient)
 
 	// Create a stack
 	stack, err := stackClient.CreateStack("test-stack", "main")
@@ -159,17 +160,17 @@ func TestGetStackContext_WithMergedAndActiveChanges(t *testing.T) {
 	uuid2 := "bbbb222222222222"
 	uuid3 := "cccc333333333333"
 
-	hash1 := createCommitWithTrailers(t, stackClient.git.(*git.Client), "First change", "Description of first change", map[string]string{
+	hash1 := testutil.CreateCommitWithTrailers(t, stackClient.git.(*git.Client), "First change", "Description of first change", map[string]string{
 		"PR-UUID":  uuid1,
 		"PR-Stack": "test-stack",
 	})
 
-	_ = createCommitWithTrailers(t, stackClient.git.(*git.Client), "Second change", "Description of second change", map[string]string{
+	_ = testutil.CreateCommitWithTrailers(t, stackClient.git.(*git.Client), "Second change", "Description of second change", map[string]string{
 		"PR-UUID":  uuid2,
 		"PR-Stack": "test-stack",
 	})
 
-	_ = createCommitWithTrailers(t, stackClient.git.(*git.Client), "Third change", "Description of third change", map[string]string{
+	_ = testutil.CreateCommitWithTrailers(t, stackClient.git.(*git.Client), "Third change", "Description of third change", map[string]string{
 		"PR-UUID":  uuid3,
 		"PR-Stack": "test-stack",
 	})
@@ -278,10 +279,10 @@ func TestGetStackContext_WithMergedAndActiveChanges(t *testing.T) {
 }
 
 func TestGetStackContext_WithStaleMergedChanges(t *testing.T) {
-	mockGithubClient := &MockGithubClient{}
+	mockGithubClient := &gh.MockGithubClient{}
 	mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
-	stackClient := newTestStackClient(t, mockGithubClient)
+	stackClient := NewTestStack(t, mockGithubClient)
 
 	// Create a stack
 	stack, err := stackClient.CreateStack("test-stack", "main")
@@ -291,12 +292,12 @@ func TestGetStackContext_WithStaleMergedChanges(t *testing.T) {
 	uuid1 := "dddd111111111111"
 	uuid2 := "eeee222222222222"
 
-	hash1 := createCommitWithTrailers(t, stackClient.git.(*git.Client), "First change", "Description of first change", map[string]string{
+	hash1 := testutil.CreateCommitWithTrailers(t, stackClient.git.(*git.Client), "First change", "Description of first change", map[string]string{
 		"PR-UUID":  uuid1,
 		"PR-Stack": "test-stack",
 	})
 
-	hash2 := createCommitWithTrailers(t, stackClient.git.(*git.Client), "Second change", "Description of second change", map[string]string{
+	hash2 := testutil.CreateCommitWithTrailers(t, stackClient.git.(*git.Client), "Second change", "Description of second change", map[string]string{
 		"PR-UUID":  uuid2,
 		"PR-Stack": "test-stack",
 	})
@@ -385,14 +386,14 @@ func TestCheckSyncStatus(t *testing.T) {
 	tests := []struct {
 		name        string
 		stackName   string
-		setup       func(*testing.T, *Client, *MockGithubClient)
+		setup       func(*testing.T, *Client, *gh.MockGithubClient)
 		expected    *SyncStatus
 		expectError error
 	}{
 		{
 			name:      "NeverSynced",
 			stackName: "test-stack",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				// Create a stack with zero LastSynced time
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
@@ -413,7 +414,7 @@ func TestCheckSyncStatus(t *testing.T) {
 		{
 			name:      "HashMismatch",
 			stackName: "test-stack",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
@@ -426,7 +427,7 @@ func TestCheckSyncStatus(t *testing.T) {
 				require.NoError(t, err)
 
 				// Create a new commit to change the hash
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "New commit", "Body", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "New commit", "Body", map[string]string{
 					"PR-UUID":  "1111111111111111",
 					"PR-Stack": "test-stack",
 				})
@@ -440,7 +441,7 @@ func TestCheckSyncStatus(t *testing.T) {
 		{
 			name:      "Stale",
 			stackName: "test-stack",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
@@ -465,7 +466,7 @@ func TestCheckSyncStatus(t *testing.T) {
 		{
 			name:      "Fresh",
 			stackName: "test-stack",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
@@ -488,7 +489,7 @@ func TestCheckSyncStatus(t *testing.T) {
 		{
 			name:      "HashCheckFailed",
 			stackName: "test-stack",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
@@ -511,7 +512,7 @@ func TestCheckSyncStatus(t *testing.T) {
 		{
 			name:        "StackLoadFailed",
 			stackName:   "nonexistent-stack",
-			setup:       func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {},
+			setup:       func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {},
 			expectError: fmt.Errorf("failed to load stack"),
 		},
 	}
@@ -520,8 +521,8 @@ func TestCheckSyncStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Use synctest for all tests for consistency
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				if tt.setup != nil {
 					tt.setup(t, stackClient, mockGithubClient)
@@ -543,7 +544,7 @@ func TestCheckSyncStatus(t *testing.T) {
 }
 
 // Helper to create multiple stacks for testing
-func createTestStacks(t *testing.T, client *Client, mockGithubClient *MockGithubClient, stackNames []string) {
+func createTestStacks(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient, stackNames []string) {
 	if len(stackNames) == 0 {
 		return
 	}
@@ -563,7 +564,7 @@ func TestListStacks(t *testing.T) {
 	tests := []struct {
 		name               string
 		stacksToCreate     []string
-		setup              func(*testing.T, *Client, *MockGithubClient)
+		setup              func(*testing.T, *Client, *gh.MockGithubClient)
 		expectedStackNames []string
 		expectError        error
 	}{
@@ -585,7 +586,7 @@ func TestListStacks(t *testing.T) {
 		{
 			name:           "MixOfValidAndInvalidStacks",
 			stacksToCreate: []string{"valid-stack"},
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				// Create an invalid stack directory with malformed config
 				stacksRoot := client.getStacksRootDir()
 				invalidStackDir := filepath.Join(stacksRoot, "invalid-stack")
@@ -602,7 +603,7 @@ func TestListStacks(t *testing.T) {
 		{
 			name:           "NonDirectoryFilesInStacksDirectory",
 			stacksToCreate: []string{"valid-stack"},
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				// Create a file in the stacks directory (not a directory)
 				stacksRoot := client.getStacksRootDir()
 				filePath := filepath.Join(stacksRoot, "some-file.txt")
@@ -616,8 +617,8 @@ func TestListStacks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				createTestStacks(t, stackClient, mockGithubClient, tt.stacksToCreate)
 
@@ -656,12 +657,12 @@ func TestListStacks(t *testing.T) {
 func TestGetStackContext(t *testing.T) {
 	tests := []struct {
 		name        string
-		setup       func(*testing.T, *Client, *MockGithubClient) *StackContext
+		setup       func(*testing.T, *Client, *gh.MockGithubClient) *StackContext
 		expectError error
 	}{
 		{
 			name: "OnStackTOPBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				// Create a stack (already on the TOP branch)
@@ -669,7 +670,7 @@ func TestGetStackContext(t *testing.T) {
 				require.NoError(t, err)
 
 				// Create a commit with trailers
-				commitHash := createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				commitHash := testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  "1111111111111111",
 					"PR-Stack": "test-stack",
 				})
@@ -701,7 +702,7 @@ func TestGetStackContext(t *testing.T) {
 		},
 		{
 			name: "OnUUIDBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				// Create a stack
@@ -709,7 +710,7 @@ func TestGetStackContext(t *testing.T) {
 				require.NoError(t, err)
 
 				// Create a commit with trailers
-				commitHash := createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				commitHash := testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  "1111111111111111",
 					"PR-Stack": "test-stack",
 				})
@@ -746,7 +747,7 @@ func TestGetStackContext(t *testing.T) {
 		},
 		{
 			name: "OnRegularBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				// Stay on main branch (not a stack branch)
 				err := client.git.CheckoutBranch("main")
 				require.NoError(t, err)
@@ -757,7 +758,7 @@ func TestGetStackContext(t *testing.T) {
 		},
 		{
 			name: "StackLoadFails",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				// Create a stack
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
@@ -778,8 +779,8 @@ func TestGetStackContext(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				expected := tt.setup(t, stackClient, mockGithubClient)
 
@@ -802,14 +803,14 @@ func TestSwitchStack(t *testing.T) {
 	tests := []struct {
 		name           string
 		stackName      string
-		setup          func(*testing.T, *Client, *MockGithubClient)
+		setup          func(*testing.T, *Client, *gh.MockGithubClient)
 		expectedBranch string
 		expectError    error
 	}{
 		{
 			name:      "Success",
 			stackName: "test-stack",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				// Create a stack
@@ -825,7 +826,7 @@ func TestSwitchStack(t *testing.T) {
 		{
 			name:      "StackDoesNotExist",
 			stackName: "nonexistent-stack",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				// Don't create the stack
 			},
 			expectError: fmt.Errorf("failed to load stack"),
@@ -833,7 +834,7 @@ func TestSwitchStack(t *testing.T) {
 		{
 			name:      "CheckoutFails",
 			stackName: "test-stack",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				// Create a stack
@@ -857,8 +858,8 @@ func TestSwitchStack(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				if tt.setup != nil {
 					tt.setup(t, stackClient, mockGithubClient)
@@ -887,13 +888,13 @@ func TestSwitchStack(t *testing.T) {
 func TestCheckoutChangeForEditing(t *testing.T) {
 	tests := []struct {
 		name         string
-		setup        func(*testing.T, *Client, *MockGithubClient) (*StackContext, *model.Change)
+		setup        func(*testing.T, *Client, *gh.MockGithubClient) (*StackContext, *model.Change)
 		expectBranch string
 		expectError  error
 	}{
 		{
 			name: "CreateNewUUIDBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) (*StackContext, *model.Change) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) (*StackContext, *model.Change) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				// Create a stack with TWO changes so the first one isn't the top
@@ -902,12 +903,12 @@ func TestCheckoutChangeForEditing(t *testing.T) {
 
 				uuid1 := "1111111111111111"
 				uuid2 := "1111111111111112"
-				commitHash := createCommitWithTrailers(t, client.git.(*git.Client), "Test change 1", "Description 1", map[string]string{
+				commitHash := testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change 1", "Description 1", map[string]string{
 					"PR-UUID":  uuid1,
 					"PR-Stack": "test-stack",
 				})
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change 2", "Description 2", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change 2", "Description 2", map[string]string{
 					"PR-UUID":  uuid2,
 					"PR-Stack": "test-stack",
 				})
@@ -926,7 +927,7 @@ func TestCheckoutChangeForEditing(t *testing.T) {
 		},
 		{
 			name: "UUIDBranchExistsAtCorrectCommit",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) (*StackContext, *model.Change) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) (*StackContext, *model.Change) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("test-stack", "main")
@@ -934,13 +935,13 @@ func TestCheckoutChangeForEditing(t *testing.T) {
 
 				uuid1 := "2222222222222222"
 				uuid2 := "2222222222222223"
-				commitHash := createCommitWithTrailers(t, client.git.(*git.Client), "Test change 1", "Description 1", map[string]string{
+				commitHash := testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change 1", "Description 1", map[string]string{
 					"PR-UUID":  uuid1,
 					"PR-Stack": "test-stack",
 				})
 
 				// Add a second change so the first one isn't the top
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change 2", "Description 2", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change 2", "Description 2", map[string]string{
 					"PR-UUID":  uuid2,
 					"PR-Stack": "test-stack",
 				})
@@ -963,7 +964,7 @@ func TestCheckoutChangeForEditing(t *testing.T) {
 		},
 		{
 			name: "UUIDBranchExistsAtWrongCommit",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) (*StackContext, *model.Change) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) (*StackContext, *model.Change) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("test-stack", "main")
@@ -973,22 +974,22 @@ func TestCheckoutChangeForEditing(t *testing.T) {
 				uuid2 := "3333333333333334"
 
 				// Create first commit
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description", map[string]string{
 					"PR-UUID":  uuid1,
 					"PR-Stack": "test-stack",
 				})
 
 				// Create second commit so first is not at top
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description", map[string]string{
 					"PR-UUID":  uuid2,
 					"PR-Stack": "test-stack",
 				})
 
 				// Simulate a commit rewrite scenario where the UUID branch points to a stale commit
-				_ = simulateCommitRewrite(t, client, client.git.(*git.Client), "test-stack", uuid1)
+				_ = simulateCommitRewrite(t, client.git.(*git.Client), "test-stack", uuid1)
 
 				// Recreate the second commit after the rewrite
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description", map[string]string{
 					"PR-UUID":  uuid2,
 					"PR-Stack": "test-stack",
 				})
@@ -1004,7 +1005,7 @@ func TestCheckoutChangeForEditing(t *testing.T) {
 		},
 		{
 			name: "TopChange_CheckoutTOPBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) (*StackContext, *model.Change) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) (*StackContext, *model.Change) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("test-stack", "main")
@@ -1014,12 +1015,12 @@ func TestCheckoutChangeForEditing(t *testing.T) {
 				uuid1 := "4444444444444444"
 				uuid2 := "5555555555555555"
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
 					"PR-UUID":  uuid1,
 					"PR-Stack": "test-stack",
 				})
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
 					"PR-UUID":  uuid2,
 					"PR-Stack": "test-stack",
 				})
@@ -1041,8 +1042,8 @@ func TestCheckoutChangeForEditing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				stackCtx, change := tt.setup(t, stackClient, mockGithubClient)
 
@@ -1070,19 +1071,19 @@ func TestCheckoutChangeForEditing(t *testing.T) {
 func TestApplyRefresh(t *testing.T) {
 	tests := []struct {
 		name        string
-		setup       func(*testing.T, *Client, *MockGithubClient) *StackContext
+		setup       func(*testing.T, *Client, *gh.MockGithubClient) *StackContext
 		expectError error
 	}{
 		{
 			name: "Success_OnTOPBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
 				require.NoError(t, err)
 
 				// Create a change
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  "1111111111111111",
 					"PR-Stack": "test-stack",
 				})
@@ -1112,13 +1113,13 @@ func TestApplyRefresh(t *testing.T) {
 		},
 		{
 			name: "Error_NotOnTOPBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("test-stack", "main")
 				require.NoError(t, err)
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  "2222222222222222",
 					"PR-Stack": "test-stack",
 				})
@@ -1137,14 +1138,14 @@ func TestApplyRefresh(t *testing.T) {
 		},
 		{
 			name: "Error_OnUUIDBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("test-stack", "main")
 				require.NoError(t, err)
 
 				uuid := "3333333333333333"
-				commitHash := createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				commitHash := testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  uuid,
 					"PR-Stack": "test-stack",
 				})
@@ -1164,13 +1165,13 @@ func TestApplyRefresh(t *testing.T) {
 		},
 		{
 			name: "Error_UncommittedChanges",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
 				require.NoError(t, err)
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  "4444444444444444",
 					"PR-Stack": "test-stack",
 				})
@@ -1196,8 +1197,8 @@ func TestApplyRefresh(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				stackCtx := tt.setup(t, stackClient, mockGithubClient)
 
@@ -1225,18 +1226,18 @@ func TestApplyRefresh(t *testing.T) {
 func TestRestack(t *testing.T) {
 	tests := []struct {
 		name        string
-		setup       func(*testing.T, *Client, *MockGithubClient) (*StackContext, RestackOptions)
+		setup       func(*testing.T, *Client, *gh.MockGithubClient) (*StackContext, RestackOptions)
 		expectError error
 	}{
 		{
 			name: "Success_WithoutFetch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) (*StackContext, RestackOptions) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) (*StackContext, RestackOptions) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
 				require.NoError(t, err)
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  "1111111111111111",
 					"PR-Stack": "test-stack",
 				})
@@ -1255,13 +1256,13 @@ func TestRestack(t *testing.T) {
 		},
 		{
 			name: "Success_WithFetch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) (*StackContext, RestackOptions) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) (*StackContext, RestackOptions) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
 				require.NoError(t, err)
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  "2222222222222222",
 					"PR-Stack": "test-stack",
 				})
@@ -1292,8 +1293,8 @@ func TestRestack(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				stackCtx, opts := tt.setup(t, stackClient, mockGithubClient)
 
@@ -1357,8 +1358,8 @@ func TestUpdateLocalBaseRef(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				baseBranch := tt.setup(t, stackClient)
 
@@ -1380,18 +1381,18 @@ func TestUpdateLocalBaseRef(t *testing.T) {
 func TestDeleteStack(t *testing.T) {
 	tests := []struct {
 		name        string
-		setup       func(*testing.T, *Client, *MockGithubClient) string
+		setup       func(*testing.T, *Client, *gh.MockGithubClient) string
 		expectError error
 	}{
 		{
 			name: "Success_NotOnStackBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) string {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) string {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("test-stack", "main")
 				require.NoError(t, err)
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  "1111111111111111",
 					"PR-Stack": "test-stack",
 				})
@@ -1405,13 +1406,13 @@ func TestDeleteStack(t *testing.T) {
 		},
 		{
 			name: "Success_OnStackBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) string {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) string {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
 				require.NoError(t, err)
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  "2222222222222222",
 					"PR-Stack": "test-stack",
 				})
@@ -1425,7 +1426,7 @@ func TestDeleteStack(t *testing.T) {
 		},
 		{
 			name: "Error_StackLoadFails",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) string {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) string {
 				return "nonexistent-stack"
 			},
 			expectError: fmt.Errorf("failed to load stack"),
@@ -1435,8 +1436,8 @@ func TestDeleteStack(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				stackName := tt.setup(t, stackClient, mockGithubClient)
 
@@ -1486,13 +1487,13 @@ func TestDeleteStack(t *testing.T) {
 func TestIsStackEligibleForCleanup(t *testing.T) {
 	tests := []struct {
 		name           string
-		setup          func(*testing.T, *Client, *MockGithubClient) *StackContext
+		setup          func(*testing.T, *Client, *gh.MockGithubClient) *StackContext
 		expectEligible bool
 		expectReason   string
 	}{
 		{
 			name: "EmptyStack",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("empty-stack", "main")
@@ -1508,7 +1509,7 @@ func TestIsStackEligibleForCleanup(t *testing.T) {
 		},
 		{
 			name: "AllChangesMerged",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("merged-stack", "main")
@@ -1517,12 +1518,12 @@ func TestIsStackEligibleForCleanup(t *testing.T) {
 				uuid1 := "1111111111111111"
 				uuid2 := "2222222222222222"
 
-				hash1 := createCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
+				hash1 := testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
 					"PR-UUID":  uuid1,
 					"PR-Stack": "merged-stack",
 				})
 
-				hash2 := createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
+				hash2 := testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
 					"PR-UUID":  uuid2,
 					"PR-Stack": "merged-stack",
 				})
@@ -1578,7 +1579,7 @@ func TestIsStackEligibleForCleanup(t *testing.T) {
 		},
 		{
 			name: "SomeChangesNotMerged",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("partial-stack", "main")
@@ -1587,12 +1588,12 @@ func TestIsStackEligibleForCleanup(t *testing.T) {
 				uuid1 := "3333333333333333"
 				uuid2 := "4444444444444444"
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
 					"PR-UUID":  uuid1,
 					"PR-Stack": "partial-stack",
 				})
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
 					"PR-UUID":  uuid2,
 					"PR-Stack": "partial-stack",
 				})
@@ -1624,13 +1625,13 @@ func TestIsStackEligibleForCleanup(t *testing.T) {
 		},
 		{
 			name: "LocalChangesOnly",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("local-stack", "main")
 				require.NoError(t, err)
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Local change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Local change", "Description", map[string]string{
 					"PR-UUID":  "5555555555555555",
 					"PR-Stack": "local-stack",
 				})
@@ -1648,8 +1649,8 @@ func TestIsStackEligibleForCleanup(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				stackCtx := tt.setup(t, stackClient, mockGithubClient)
 
@@ -1667,21 +1668,21 @@ func TestIsStackEligibleForCleanup(t *testing.T) {
 func TestGetCleanupCandidates(t *testing.T) {
 	tests := []struct {
 		name                 string
-		setup                func(*testing.T, *Client, *MockGithubClient)
+		setup                func(*testing.T, *Client, *gh.MockGithubClient)
 		expectedCandidates   []string
 		expectedReasons      map[string]string
 		expectedChangeCounts map[string]int
 	}{
 		{
 			name: "NoStacks",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				// Don't create any stacks
 			},
 			expectedCandidates: []string{},
 		},
 		{
 			name: "MultipleStacks_SomeEligible",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Times(3)
 
 				// Create empty stack (eligible)
@@ -1697,7 +1698,7 @@ func TestGetCleanupCandidates(t *testing.T) {
 				require.NoError(t, err)
 
 				uuid := "1111111111111111"
-				hash := createCommitWithTrailers(t, client.git.(*git.Client), "Merged change", "Description", map[string]string{
+				hash := testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Merged change", "Description", map[string]string{
 					"PR-UUID":  uuid,
 					"PR-Stack": "merged-stack",
 				})
@@ -1738,7 +1739,7 @@ func TestGetCleanupCandidates(t *testing.T) {
 				_, err = client.CreateStack("active-stack", "main")
 				require.NoError(t, err)
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Active change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Active change", "Description", map[string]string{
 					"PR-UUID":  "2222222222222222",
 					"PR-Stack": "active-stack",
 				})
@@ -1763,7 +1764,7 @@ func TestGetCleanupCandidates(t *testing.T) {
 		},
 		{
 			name: "AllStacksEligible",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Times(2)
 
 				_, err := client.CreateStack("empty-1", "main")
@@ -1787,13 +1788,13 @@ func TestGetCleanupCandidates(t *testing.T) {
 		},
 		{
 			name: "NoStacksEligible",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("active-stack", "main")
 				require.NoError(t, err)
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Active change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Active change", "Description", map[string]string{
 					"PR-UUID":  "3333333333333333",
 					"PR-Stack": "active-stack",
 				})
@@ -1805,8 +1806,8 @@ func TestGetCleanupCandidates(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				tt.setup(t, stackClient, mockGithubClient)
 
@@ -1842,12 +1843,12 @@ func TestGetCleanupCandidates(t *testing.T) {
 func TestRefreshStackMetadata(t *testing.T) {
 	tests := []struct {
 		name        string
-		setup       func(*testing.T, *Client, *MockGithubClient) *StackContext
+		setup       func(*testing.T, *Client, *gh.MockGithubClient) *StackContext
 		expectError error
 	}{
 		{
 			name: "Success_NoChanges",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("test-stack", "main")
@@ -1862,7 +1863,7 @@ func TestRefreshStackMetadata(t *testing.T) {
 		},
 		{
 			name: "Success_WithPRs_AllOpen",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("test-stack", "main")
@@ -1872,12 +1873,12 @@ func TestRefreshStackMetadata(t *testing.T) {
 				uuid1 := "1111111111111111"
 				uuid2 := "2222222222222222"
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
 					"PR-UUID":  uuid1,
 					"PR-Stack": "test-stack",
 				})
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
 					"PR-UUID":  uuid2,
 					"PR-Stack": "test-stack",
 				})
@@ -1921,7 +1922,7 @@ func TestRefreshStackMetadata(t *testing.T) {
 		},
 		{
 			name: "Success_WithPRs_OneMerged",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("test-stack", "main")
@@ -1931,12 +1932,12 @@ func TestRefreshStackMetadata(t *testing.T) {
 				uuid1 := "3333333333333333"
 				uuid2 := "4444444444444444"
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
 					"PR-UUID":  uuid1,
 					"PR-Stack": "test-stack",
 				})
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
 					"PR-UUID":  uuid2,
 					"PR-Stack": "test-stack",
 				})
@@ -1980,7 +1981,7 @@ func TestRefreshStackMetadata(t *testing.T) {
 		},
 		{
 			name: "Error_BatchGetPRsFails",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				_, err := client.CreateStack("test-stack", "main")
@@ -1989,7 +1990,7 @@ func TestRefreshStackMetadata(t *testing.T) {
 				// Create a change with a PR
 				uuid := "5555555555555555"
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  uuid,
 					"PR-Stack": "test-stack",
 				})
@@ -2025,8 +2026,8 @@ func TestRefreshStackMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				stackCtx := tt.setup(t, stackClient, mockGithubClient)
 
@@ -2060,13 +2061,13 @@ func TestRefreshStackMetadata(t *testing.T) {
 func TestMaybeRefreshStackMetadata(t *testing.T) {
 	tests := []struct {
 		name             string
-		setup            func(*testing.T, *Client, *MockGithubClient) *StackContext
+		setup            func(*testing.T, *Client, *gh.MockGithubClient) *StackContext
 		expectSyncCalled bool
 		expectError      error
 	}{
 		{
 			name: "AlreadyFresh_NoSyncNeeded",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
@@ -2092,7 +2093,7 @@ func TestMaybeRefreshStackMetadata(t *testing.T) {
 		},
 		{
 			name: "NeverSynced_SyncCalled",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
@@ -2113,7 +2114,7 @@ func TestMaybeRefreshStackMetadata(t *testing.T) {
 		},
 		{
 			name: "HashMismatch_SyncCalled",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
@@ -2126,7 +2127,7 @@ func TestMaybeRefreshStackMetadata(t *testing.T) {
 				require.NoError(t, err)
 
 				// Create a commit to change the hash
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "New commit", "Body", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "New commit", "Body", map[string]string{
 					"PR-UUID":  "1111111111111111",
 					"PR-Stack": "test-stack",
 				})
@@ -2141,7 +2142,7 @@ func TestMaybeRefreshStackMetadata(t *testing.T) {
 		},
 		{
 			name: "Stale_SyncCalled",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
@@ -2167,7 +2168,7 @@ func TestMaybeRefreshStackMetadata(t *testing.T) {
 		},
 		{
 			name: "StaleWithPRs_SyncCalledAndSucceeds",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
@@ -2176,7 +2177,7 @@ func TestMaybeRefreshStackMetadata(t *testing.T) {
 				// Create a change with PR
 				uuid := "2222222222222222"
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  uuid,
 					"PR-Stack": "test-stack",
 				})
@@ -2222,7 +2223,7 @@ func TestMaybeRefreshStackMetadata(t *testing.T) {
 		},
 		{
 			name: "StaleWithPRs_SyncFails",
-			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
 				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
 
 				stack, err := client.CreateStack("test-stack", "main")
@@ -2231,7 +2232,7 @@ func TestMaybeRefreshStackMetadata(t *testing.T) {
 				// Create a change with PR
 				uuid := "3333333333333333"
 
-				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
 					"PR-UUID":  uuid,
 					"PR-Stack": "test-stack",
 				})
@@ -2278,8 +2279,8 @@ func TestMaybeRefreshStackMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &MockGithubClient{}
-				stackClient := newTestStackClient(t, mockGithubClient)
+				mockGithubClient := &gh.MockGithubClient{}
+				stackClient := NewTestStack(t, mockGithubClient)
 
 				stackCtx := tt.setup(t, stackClient, mockGithubClient)
 
