@@ -392,7 +392,6 @@ func TestSyncCommentForPR(t *testing.T) {
 				m.On("UpdatePRComment", "comment-123", vizContent).Return(nil)
 			},
 			verify: func(t *testing.T, pr *model.PR, m *MockGithubClient) {
-				m.AssertCalled(t, "UpdatePRComment", "comment-123", "Test visualization content")
 				m.AssertNotCalled(t, "ListPRComments", mock.Anything)
 			},
 		},

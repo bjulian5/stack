@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -77,6 +78,11 @@ func NewClient(gitOps GitClient, ghClient GithubClient) *Client {
 		gitRoot:  gitOps.GitRoot(),
 		username: username,
 	}
+}
+
+// SetUsernameForTesting sets the username for testing purposes
+func (c *Client) SetUsernameForTesting(username string) {
+	c.username = username
 }
 
 func (c *Client) getStackDir(stackName string) string {
@@ -827,8 +833,7 @@ func (c *Client) ApplyRefresh(stackCtx *StackContext, merged []*model.Change) er
 	// Validate on TOP branch (not editing a specific change)
 	if !stackCtx.IsStack() || stackCtx.OnUUIDBranch() {
 		currentBranch, _ := c.git.GetCurrentBranch()
-		return fmt.Errorf("must be on TOP branch (%s) to apply refresh, currently on %s",
-			stackCtx.Stack.Branch, currentBranch)
+		return fmt.Errorf("must be on TOP branch to apply refresh, currently on %s", currentBranch)
 	}
 
 	hasChanges, err := c.git.HasUncommittedChanges()
@@ -1179,7 +1184,14 @@ func (c *Client) DeleteStack(stackName string, skipConfirm bool) error {
 		return fmt.Errorf("failed to get stack branches: %w", err)
 	}
 
-	if err := c.checkoutBaseBranchIfNeeded(stack, branches); err != nil {
+	// Ensure TOP branch is in the list (GetStackBranches might not include it)
+	topBranchIncluded := slices.Contains(branches, stack.Branch)
+	if !topBranchIncluded {
+		branches = append(branches, stack.Branch)
+	}
+
+	// Ensure it's safe to delete branches (checkout base if needed)
+	if err := c.ensureSafeForDeletion(stack, branches); err != nil {
 		return err
 	}
 
@@ -1189,29 +1201,37 @@ func (c *Client) DeleteStack(stackName string, skipConfirm bool) error {
 
 	ui.Successf("Archived stack metadata to .git/stack/.archived/%s-*", stackName)
 
-	c.deleteBranches(branches)
+	if err := c.deleteBranches(branches); err != nil {
+		return fmt.Errorf("failed to delete branches: %w", err)
+	}
 	return nil
 }
 
-func (c *Client) checkoutBaseBranchIfNeeded(stack *model.Stack, branches []string) error {
+// ensureSafeForDeletion ensures we're not on any stack branch before deletion
+// If we are, it checks out the base branch. This is the single point of safety
+// validation before deleting stack branches.
+func (c *Client) ensureSafeForDeletion(stack *model.Stack, branches []string) error {
 	currentBranch, err := c.git.GetCurrentBranch()
 	if err != nil {
 		return fmt.Errorf("failed to get current branch: %w", err)
 	}
 
-	for _, branch := range branches {
-		if branch == currentBranch {
-			ui.Infof("Currently on stack branch '%s', checking out base branch '%s'...", currentBranch, stack.Base)
-			if err := c.git.CheckoutBranch(stack.Base); err != nil {
-				return fmt.Errorf("failed to checkout base branch: %w", err)
-			}
-			break
+	// Use BranchMatcher to check if we're on a stack branch
+	matcher := NewBranchMatcher(stack, branches)
+
+	if matcher.IsStackBranch(currentBranch) {
+		ui.Infof("Currently on stack branch '%s', checking out base branch '%s'...", currentBranch, stack.Base)
+		if err := c.git.CheckoutBranch(stack.Base); err != nil {
+			return fmt.Errorf("failed to checkout base branch: %w", err)
 		}
 	}
+
 	return nil
 }
 
-func (c *Client) deleteBranches(branches []string) {
+// deleteBranches deletes the specified branches (local and remote)
+// Assumes safety checks have already been performed by caller (e.g., ensureSafeForDeletion)
+func (c *Client) deleteBranches(branches []string) error {
 	deletedLocal, deletedRemote := 0, 0
 
 	for _, branch := range branches {
@@ -1238,6 +1258,8 @@ func (c *Client) deleteBranches(branches []string) {
 	if deletedRemote > 0 {
 		ui.Successf("Deleted %d remote branch(es)", deletedRemote)
 	}
+
+	return nil
 }
 
 type CleanupCandidate struct {

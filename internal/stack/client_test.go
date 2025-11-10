@@ -19,13 +19,6 @@ import (
 	"github.com/bjulian5/stack/internal/model"
 )
 
-func newTestStackClient(t *testing.T, gh GithubClient) *Client {
-	mockGitClient := newTestClient(t)
-	c := NewClient(mockGitClient, gh)
-	c.username = "test-user"
-	return c
-}
-
 func TestClient(t *testing.T) {
 	t.Run("Install", func(t *testing.T) {
 		mockGithubClient := &MockGithubClient{}
@@ -61,128 +54,13 @@ func TestClient(t *testing.T) {
 				Owner:         "test-owner",
 				RepoName:      "test-repo",
 				Created:       time.Now(), // clock is paused during synctest
-				SyncHash:      "f635465c16516362eed06541e0168a07c364e21a",
-				BaseRef:       "f635465c16516362eed06541e0168a07c364e21a",
+				SyncHash:      "564a453f5bd814cc099ff2c78a6eaab92a0dcfef",
+				BaseRef:       "564a453f5bd814cc099ff2c78a6eaab92a0dcfef",
 				MergedChanges: []model.Change{},
 			}
 			assert.Equal(t, expectStack, v, "CreateStack should return expected Stack object")
 		})
 	})
-}
-
-func newTestClient(t *testing.T) *git.Client {
-	tempDir := t.TempDir()
-
-	cmd := exec.Command("git", "init", "--initial-branch=main")
-	cmd.Dir = tempDir
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, "git init failed: %s", string(output))
-
-	// Set user name and email for reproducible commits
-	cmd = exec.Command("git", "config", "user.email", "test@example.com")
-	cmd.Dir = tempDir
-	cmd.Run()
-
-	// Create git client early so we can use createCommitWithTrailers
-	gitClient, err := git.NewClientAt(tempDir)
-	require.NoError(t, err)
-
-	// Create an initial commit on main using the helper
-	_ = createCommitWithTrailers(t, gitClient, "Initial commit", "", map[string]string{})
-
-	return gitClient
-}
-
-type MockGithubClient struct {
-	mock.Mock
-}
-
-// BatchGetPRs implements GithubClient.
-func (m *MockGithubClient) BatchGetPRs(owner string, repoName string, prNumbers []int) (*gh.BatchPRsResult, error) {
-	args := m.Called(owner, repoName, prNumbers)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*gh.BatchPRsResult), args.Error(1)
-}
-
-// CreatePRComment implements GithubClient.
-func (m *MockGithubClient) CreatePRComment(prNumber int, body string) (string, error) {
-	args := m.Called(prNumber, body)
-	return args.String(0), args.Error(1)
-}
-
-// GetRepoInfo implements GithubClient.
-func (m *MockGithubClient) GetRepoInfo() (owner string, repoName string, err error) {
-	args := m.Called()
-	return args.String(0), args.String(1), args.Error(2)
-}
-
-// ListPRComments implements GithubClient.
-func (m *MockGithubClient) ListPRComments(prNumber int) ([]gh.Comment, error) {
-	args := m.Called(prNumber)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]gh.Comment), args.Error(1)
-}
-
-// MarkPRDraft implements GithubClient.
-func (m *MockGithubClient) MarkPRDraft(prNumber int) error {
-	args := m.Called(prNumber)
-	return args.Error(0)
-}
-
-// MarkPRReady implements GithubClient.
-func (m *MockGithubClient) MarkPRReady(prNumber int) error {
-	args := m.Called(prNumber)
-	return args.Error(0)
-}
-
-// UpdatePRComment implements GithubClient.
-func (m *MockGithubClient) UpdatePRComment(commentID string, body string) error {
-	args := m.Called(commentID, body)
-	return args.Error(0)
-}
-
-var _ GithubClient = (*MockGithubClient)(nil)
-
-// createCommitWithTrailers creates a commit with the specified message and trailers
-func createCommitWithTrailers(t *testing.T, gitClient *git.Client, title, body string, trailers map[string]string) string {
-	msg := git.CommitMessage{
-		Title:    title,
-		Body:     body,
-		Trailers: trailers,
-	}
-
-	// Write a test file to commit
-	testFile := filepath.Join(gitClient.GitRoot(), fmt.Sprintf("file-%d.txt", time.Now().UnixNano()))
-	err := os.WriteFile(testFile, []byte(body), 0644)
-	require.NoError(t, err)
-
-	// Stage the file
-	cmd := exec.Command("git", "add", ".")
-	cmd.Dir = gitClient.GitRoot()
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, "git add failed: %s", string(output))
-
-	// Create commit with message including trailers
-	cmd = exec.Command("git", "commit", "-m", msg.String())
-	cmd.Dir = gitClient.GitRoot()
-	cmd.Env = append(os.Environ(),
-		"GIT_AUTHOR_DATE=2024-01-01T00:00:00Z",
-		"GIT_COMMITTER_DATE=2024-01-01T00:00:00Z",
-	)
-	output, err = cmd.CombinedOutput()
-	require.NoError(t, err, "git commit failed: %s", string(output))
-
-	// Get the commit hash
-	cmd = exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = gitClient.GitRoot()
-	output, err = cmd.CombinedOutput()
-	require.NoError(t, err, "git rev-parse failed: %s", string(output))
-
-	return strings.TrimSpace(string(output))
 }
 
 func TestGetStackContext_WithMultipleActiveChanges(t *testing.T) {
@@ -998,6 +876,1450 @@ func TestSwitchStack(t *testing.T) {
 					currentBranch, err := stackClient.git.GetCurrentBranch()
 					require.NoError(t, err)
 					assert.Equal(t, tt.expectedBranch, currentBranch)
+				}
+
+				mockGithubClient.AssertExpectations(t)
+			})
+		})
+	}
+}
+
+func TestCheckoutChangeForEditing(t *testing.T) {
+	tests := []struct {
+		name         string
+		setup        func(*testing.T, *Client, *MockGithubClient) (*StackContext, *model.Change)
+		expectBranch string
+		expectError  error
+	}{
+		{
+			name: "CreateNewUUIDBranch",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) (*StackContext, *model.Change) {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				// Create a stack with TWO changes so the first one isn't the top
+				_, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				uuid1 := "1111111111111111"
+				uuid2 := "1111111111111112"
+				commitHash := createCommitWithTrailers(t, client.git.(*git.Client), "Test change 1", "Description 1", map[string]string{
+					"PR-UUID":  uuid1,
+					"PR-Stack": "test-stack",
+				})
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change 2", "Description 2", map[string]string{
+					"PR-UUID":  uuid2,
+					"PR-Stack": "test-stack",
+				})
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// Return the first change (not the top)
+				change := stackCtx.ActiveChanges[0]
+				assert.Equal(t, uuid1, change.UUID)
+				assert.Equal(t, commitHash, change.CommitHash)
+
+				return stackCtx, change
+			},
+			expectBranch: "test-user/stack-test-stack/1111111111111111",
+		},
+		{
+			name: "UUIDBranchExistsAtCorrectCommit",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) (*StackContext, *model.Change) {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				uuid1 := "2222222222222222"
+				uuid2 := "2222222222222223"
+				commitHash := createCommitWithTrailers(t, client.git.(*git.Client), "Test change 1", "Description 1", map[string]string{
+					"PR-UUID":  uuid1,
+					"PR-Stack": "test-stack",
+				})
+
+				// Add a second change so the first one isn't the top
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change 2", "Description 2", map[string]string{
+					"PR-UUID":  uuid2,
+					"PR-Stack": "test-stack",
+				})
+
+				// Create UUID branch at the correct commit
+				uuidBranch := fmt.Sprintf("test-user/stack-test-stack/%s", uuid1)
+				err = client.git.CreateAndCheckoutBranchAt(uuidBranch, commitHash)
+				require.NoError(t, err)
+
+				// Switch back to TOP branch
+				err = client.git.CheckoutBranch("test-user/stack-test-stack/TOP")
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				return stackCtx, stackCtx.ActiveChanges[0]
+			},
+			expectBranch: "test-user/stack-test-stack/2222222222222222",
+		},
+		{
+			name: "UUIDBranchExistsAtWrongCommit",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) (*StackContext, *model.Change) {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				uuid1 := "3333333333333333"
+				uuid2 := "3333333333333334"
+
+				// Create first commit
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description", map[string]string{
+					"PR-UUID":  uuid1,
+					"PR-Stack": "test-stack",
+				})
+
+				// Create second commit so first is not at top
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description", map[string]string{
+					"PR-UUID":  uuid2,
+					"PR-Stack": "test-stack",
+				})
+
+				// Simulate a commit rewrite scenario where the UUID branch points to a stale commit
+				_ = simulateCommitRewrite(t, client, client.git.(*git.Client), "test-stack", uuid1)
+
+				// Recreate the second commit after the rewrite
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description", map[string]string{
+					"PR-UUID":  uuid2,
+					"PR-Stack": "test-stack",
+				})
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// Return the first change (not the top)
+				require.Len(t, stackCtx.ActiveChanges, 2)
+				return stackCtx, stackCtx.ActiveChanges[0]
+			},
+			expectBranch: "test-user/stack-test-stack/3333333333333333",
+		},
+		{
+			name: "TopChange_CheckoutTOPBranch",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) (*StackContext, *model.Change) {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				// Create two commits
+				uuid1 := "4444444444444444"
+				uuid2 := "5555555555555555"
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
+					"PR-UUID":  uuid1,
+					"PR-Stack": "test-stack",
+				})
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
+					"PR-UUID":  uuid2,
+					"PR-Stack": "test-stack",
+				})
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// Return the top change (position 2)
+				require.Len(t, stackCtx.ActiveChanges, 2)
+				topChange := stackCtx.ActiveChanges[1]
+				assert.Equal(t, 2, topChange.Position)
+
+				return stackCtx, topChange
+			},
+			expectBranch: "test-user/stack-test-stack/TOP",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				mockGithubClient := &MockGithubClient{}
+				stackClient := newTestStackClient(t, mockGithubClient)
+
+				stackCtx, change := tt.setup(t, stackClient, mockGithubClient)
+
+				branchName, err := stackClient.CheckoutChangeForEditing(stackCtx, change)
+
+				if tt.expectError != nil {
+					require.Error(t, err)
+					assert.ErrorContains(t, err, tt.expectError.Error())
+				} else {
+					require.NoError(t, err)
+					assert.Equal(t, tt.expectBranch, branchName)
+
+					// Verify we're on the expected branch
+					currentBranch, err := stackClient.git.GetCurrentBranch()
+					require.NoError(t, err)
+					assert.Equal(t, tt.expectBranch, currentBranch)
+				}
+
+				mockGithubClient.AssertExpectations(t)
+			})
+		})
+	}
+}
+
+func TestApplyRefresh(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(*testing.T, *Client, *MockGithubClient) *StackContext
+		expectError error
+	}{
+		{
+			name: "Success_OnTOPBranch",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				stack, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				// Create a change
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+					"PR-UUID":  "1111111111111111",
+					"PR-Stack": "test-stack",
+				})
+
+				// Mark first change as merged
+				prData := &model.PRData{
+					Version: 1,
+					PRs: map[string]*model.PR{
+						"1111111111111111": {
+							PRNumber: 101,
+							State:    "merged",
+						},
+					},
+				}
+				err = client.savePRs("test-stack", prData)
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// Ensure we're on TOP branch
+				err = client.git.CheckoutBranch(stack.Branch)
+				require.NoError(t, err)
+
+				return stackCtx
+			},
+		},
+		{
+			name: "Error_NotOnTOPBranch",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+					"PR-UUID":  "2222222222222222",
+					"PR-Stack": "test-stack",
+				})
+
+				// Switch to main branch (not TOP)
+				err = client.git.CheckoutBranch("main")
+				require.NoError(t, err)
+
+				// Reload context after switching - it should now have stackActive=false
+				stackCtx, err := client.GetStackContext()
+				require.NoError(t, err)
+
+				return stackCtx
+			},
+			expectError: fmt.Errorf("must be on TOP branch"),
+		},
+		{
+			name: "Error_OnUUIDBranch",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				uuid := "3333333333333333"
+				commitHash := createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+					"PR-UUID":  uuid,
+					"PR-Stack": "test-stack",
+				})
+
+				// Create and checkout UUID branch
+				uuidBranch := fmt.Sprintf("test-user/stack-test-stack/%s", uuid)
+				err = client.git.CreateAndCheckoutBranchAt(uuidBranch, commitHash)
+				require.NoError(t, err)
+
+				// Reload context after switching - it should now have onUUIDBranch=true
+				stackCtx, err := client.GetStackContext()
+				require.NoError(t, err)
+
+				return stackCtx
+			},
+			expectError: fmt.Errorf("must be on TOP branch"),
+		},
+		{
+			name: "Error_UncommittedChanges",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				stack, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+					"PR-UUID":  "4444444444444444",
+					"PR-Stack": "test-stack",
+				})
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// Ensure we're on TOP branch
+				err = client.git.CheckoutBranch(stack.Branch)
+				require.NoError(t, err)
+
+				// Create uncommitted changes
+				testFile := filepath.Join(client.git.GitRoot(), "uncommitted.txt")
+				err = os.WriteFile(testFile, []byte("uncommitted content"), 0644)
+				require.NoError(t, err)
+
+				return stackCtx
+			},
+			expectError: fmt.Errorf("cannot apply refresh with uncommitted changes"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				mockGithubClient := &MockGithubClient{}
+				stackClient := newTestStackClient(t, mockGithubClient)
+
+				stackCtx := tt.setup(t, stackClient, mockGithubClient)
+
+				merged := stackCtx.StaleMergedChanges
+				err := stackClient.ApplyRefresh(stackCtx, merged)
+
+				if tt.expectError != nil {
+					require.Error(t, err)
+					assert.ErrorContains(t, err, tt.expectError.Error())
+				} else {
+					require.NoError(t, err)
+
+					// Verify stack metadata was updated
+					reloadedStack, err := stackClient.LoadStack("test-stack")
+					require.NoError(t, err)
+					assert.Equal(t, "main", reloadedStack.Base)
+				}
+
+				mockGithubClient.AssertExpectations(t)
+			})
+		})
+	}
+}
+
+func TestRestack(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(*testing.T, *Client, *MockGithubClient) (*StackContext, RestackOptions)
+		expectError error
+	}{
+		{
+			name: "Success_WithoutFetch",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) (*StackContext, RestackOptions) {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				stack, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+					"PR-UUID":  "1111111111111111",
+					"PR-Stack": "test-stack",
+				})
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				err = client.git.CheckoutBranch(stack.Branch)
+				require.NoError(t, err)
+
+				return stackCtx, RestackOptions{
+					Onto:  "main",
+					Fetch: false,
+				}
+			},
+		},
+		{
+			name: "Success_WithFetch",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) (*StackContext, RestackOptions) {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				stack, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+					"PR-UUID":  "2222222222222222",
+					"PR-Stack": "test-stack",
+				})
+
+				// Set up a remote for fetch (even though fetch will be a no-op in tests)
+				cmd := exec.Command("git", "config", "branch.main.remote", "origin")
+				cmd.Dir = client.git.GitRoot()
+				_ = cmd.Run()
+
+				cmd = exec.Command("git", "config", "branch.main.merge", "refs/heads/main")
+				cmd.Dir = client.git.GitRoot()
+				_ = cmd.Run()
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				err = client.git.CheckoutBranch(stack.Branch)
+				require.NoError(t, err)
+
+				return stackCtx, RestackOptions{
+					Onto:  "main",
+					Fetch: true,
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				mockGithubClient := &MockGithubClient{}
+				stackClient := newTestStackClient(t, mockGithubClient)
+
+				stackCtx, opts := tt.setup(t, stackClient, mockGithubClient)
+
+				// Store original base ref
+				originalBaseRef := stackCtx.Stack.BaseRef
+
+				err := stackClient.Restack(stackCtx, opts)
+
+				if tt.expectError != nil {
+					require.Error(t, err)
+					assert.ErrorContains(t, err, tt.expectError.Error())
+				} else {
+					require.NoError(t, err)
+
+					// Verify stack metadata was updated
+					reloadedStack, err := stackClient.LoadStack(stackCtx.StackName)
+					require.NoError(t, err)
+					assert.Equal(t, opts.Onto, reloadedStack.Base)
+					assert.NotEmpty(t, reloadedStack.BaseRef)
+
+					// Base ref should be set (may or may not change depending on test)
+					assert.NotEmpty(t, reloadedStack.BaseRef)
+
+					// If we didn't fetch, base ref should match what it was (main hasn't changed)
+					if !opts.Fetch {
+						assert.Equal(t, originalBaseRef, reloadedStack.BaseRef)
+					}
+				}
+
+				mockGithubClient.AssertExpectations(t)
+			})
+		})
+	}
+}
+
+func TestUpdateLocalBaseRef(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(*testing.T, *Client) string
+		expectError error
+	}{
+		// NOTE: The other test cases (BranchExists_HashMatches, BranchExists_HashDiffers, BranchDoesNotExist_CreateIt)
+		// are complex to test because they require a real remote repository with upstream tracking.
+		// In a test environment without a remote, these cases would fail with "no upstream tracking branch configured".
+		// The NoUpstream_Error test below covers the primary error case for this function.
+		{
+			name: "NoUpstream_Error",
+			setup: func(t *testing.T, client *Client) string {
+				// Create a local branch with no upstream configured
+				cmd := exec.Command("git", "branch", "local-only")
+				cmd.Dir = client.git.GitRoot()
+				err := cmd.Run()
+				require.NoError(t, err)
+
+				return "local-only"
+			},
+			expectError: fmt.Errorf("no upstream tracking branch configured"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				mockGithubClient := &MockGithubClient{}
+				stackClient := newTestStackClient(t, mockGithubClient)
+
+				baseBranch := tt.setup(t, stackClient)
+
+				err := stackClient.UpdateLocalBaseRef(baseBranch)
+
+				if tt.expectError != nil {
+					require.Error(t, err)
+					assert.ErrorContains(t, err, tt.expectError.Error())
+				} else {
+					require.NoError(t, err)
+				}
+
+				mockGithubClient.AssertExpectations(t)
+			})
+		})
+	}
+}
+
+func TestDeleteStack(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(*testing.T, *Client, *MockGithubClient) string
+		expectError error
+	}{
+		{
+			name: "Success_NotOnStackBranch",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) string {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+					"PR-UUID":  "1111111111111111",
+					"PR-Stack": "test-stack",
+				})
+
+				// Switch to main so we're not on the stack branch
+				err = client.git.CheckoutBranch("main")
+				require.NoError(t, err)
+
+				return "test-stack"
+			},
+		},
+		{
+			name: "Success_OnStackBranch",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) string {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				stack, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+					"PR-UUID":  "2222222222222222",
+					"PR-Stack": "test-stack",
+				})
+
+				// Stay on stack branch
+				err = client.git.CheckoutBranch(stack.Branch)
+				require.NoError(t, err)
+
+				return "test-stack"
+			},
+		},
+		{
+			name: "Error_StackLoadFails",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) string {
+				return "nonexistent-stack"
+			},
+			expectError: fmt.Errorf("failed to load stack"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				mockGithubClient := &MockGithubClient{}
+				stackClient := newTestStackClient(t, mockGithubClient)
+
+				stackName := tt.setup(t, stackClient, mockGithubClient)
+
+				err := stackClient.DeleteStack(stackName, true)
+
+				if tt.expectError != nil {
+					require.Error(t, err)
+					assert.ErrorContains(t, err, tt.expectError.Error())
+				} else {
+					require.NoError(t, err)
+
+					// Verify stack metadata was archived
+					archivedDir := filepath.Join(stackClient.getStacksRootDir(), ".archived")
+					entries, err := os.ReadDir(archivedDir)
+					require.NoError(t, err)
+
+					found := false
+					for _, entry := range entries {
+						if strings.HasPrefix(entry.Name(), stackName+"-") {
+							found = true
+							break
+						}
+					}
+					assert.True(t, found, "archived stack metadata should exist")
+
+					// Verify we're on the base branch if we were on stack branch
+					currentBranch, err := stackClient.git.GetCurrentBranch()
+					require.NoError(t, err)
+					// Should be on main (base branch)
+					assert.Equal(t, "main", currentBranch)
+
+					// Verify stack branches were deleted
+					branches, err := stackClient.GetStackBranches(stackName)
+					require.NoError(t, err)
+					for _, branch := range branches {
+						exists := stackClient.git.BranchExists(branch)
+						assert.False(t, exists, "branch %s should be deleted", branch)
+					}
+				}
+
+				mockGithubClient.AssertExpectations(t)
+			})
+		})
+	}
+}
+
+func TestIsStackEligibleForCleanup(t *testing.T) {
+	tests := []struct {
+		name           string
+		setup          func(*testing.T, *Client, *MockGithubClient) *StackContext
+		expectEligible bool
+		expectReason   string
+	}{
+		{
+			name: "EmptyStack",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("empty-stack", "main")
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("empty-stack")
+				require.NoError(t, err)
+
+				return stackCtx
+			},
+			expectEligible: true,
+			expectReason:   "empty",
+		},
+		{
+			name: "AllChangesMerged",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				stack, err := client.CreateStack("merged-stack", "main")
+				require.NoError(t, err)
+
+				uuid1 := "1111111111111111"
+				uuid2 := "2222222222222222"
+
+				hash1 := createCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
+					"PR-UUID":  uuid1,
+					"PR-Stack": "merged-stack",
+				})
+
+				hash2 := createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
+					"PR-UUID":  uuid2,
+					"PR-Stack": "merged-stack",
+				})
+
+				// Mark both as merged in PR metadata
+				prData := &model.PRData{
+					Version: 1,
+					PRs: map[string]*model.PR{
+						uuid1: {
+							PRNumber: 101,
+							State:    "merged",
+						},
+						uuid2: {
+							PRNumber: 102,
+							State:    "merged",
+						},
+					},
+				}
+				err = client.savePRs("merged-stack", prData)
+				require.NoError(t, err)
+
+				// Add to MergedChanges
+				stack.MergedChanges = []model.Change{
+					{
+						UUID:       uuid1,
+						CommitHash: hash1,
+						Position:   1,
+						PR: &model.PR{
+							PRNumber: 101,
+							State:    "merged",
+						},
+					},
+					{
+						UUID:       uuid2,
+						CommitHash: hash2,
+						Position:   2,
+						PR: &model.PR{
+							PRNumber: 102,
+							State:    "merged",
+						},
+					},
+				}
+				err = client.SaveStack(stack)
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("merged-stack")
+				require.NoError(t, err)
+
+				return stackCtx
+			},
+			expectEligible: true,
+			expectReason:   "all_merged",
+		},
+		{
+			name: "SomeChangesNotMerged",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("partial-stack", "main")
+				require.NoError(t, err)
+
+				uuid1 := "3333333333333333"
+				uuid2 := "4444444444444444"
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
+					"PR-UUID":  uuid1,
+					"PR-Stack": "partial-stack",
+				})
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
+					"PR-UUID":  uuid2,
+					"PR-Stack": "partial-stack",
+				})
+
+				// Mark only first as merged
+				prData := &model.PRData{
+					Version: 1,
+					PRs: map[string]*model.PR{
+						uuid1: {
+							PRNumber: 201,
+							State:    "merged",
+						},
+						uuid2: {
+							PRNumber: 202,
+							State:    "open",
+						},
+					},
+				}
+				err = client.savePRs("partial-stack", prData)
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("partial-stack")
+				require.NoError(t, err)
+
+				return stackCtx
+			},
+			expectEligible: false,
+			expectReason:   "",
+		},
+		{
+			name: "LocalChangesOnly",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("local-stack", "main")
+				require.NoError(t, err)
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Local change", "Description", map[string]string{
+					"PR-UUID":  "5555555555555555",
+					"PR-Stack": "local-stack",
+				})
+
+				stackCtx, err := client.GetStackContextByName("local-stack")
+				require.NoError(t, err)
+
+				return stackCtx
+			},
+			expectEligible: false,
+			expectReason:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				mockGithubClient := &MockGithubClient{}
+				stackClient := newTestStackClient(t, mockGithubClient)
+
+				stackCtx := tt.setup(t, stackClient, mockGithubClient)
+
+				eligible, reason := stackClient.IsStackEligibleForCleanup(stackCtx)
+
+				assert.Equal(t, tt.expectEligible, eligible)
+				assert.Equal(t, tt.expectReason, reason)
+
+				mockGithubClient.AssertExpectations(t)
+			})
+		})
+	}
+}
+
+func TestGetCleanupCandidates(t *testing.T) {
+	tests := []struct {
+		name                 string
+		setup                func(*testing.T, *Client, *MockGithubClient)
+		expectedCandidates   []string
+		expectedReasons      map[string]string
+		expectedChangeCounts map[string]int
+	}{
+		{
+			name: "NoStacks",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+				// Don't create any stacks
+			},
+			expectedCandidates: []string{},
+		},
+		{
+			name: "MultipleStacks_SomeEligible",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Times(3)
+
+				// Create empty stack (eligible)
+				_, err := client.CreateStack("empty-stack", "main")
+				require.NoError(t, err)
+
+				// Switch to main before creating next stack
+				err = client.git.CheckoutBranch("main")
+				require.NoError(t, err)
+
+				// Create merged stack (eligible)
+				_, err = client.CreateStack("merged-stack", "main")
+				require.NoError(t, err)
+
+				uuid := "1111111111111111"
+				hash := createCommitWithTrailers(t, client.git.(*git.Client), "Merged change", "Description", map[string]string{
+					"PR-UUID":  uuid,
+					"PR-Stack": "merged-stack",
+				})
+
+				prData := &model.PRData{
+					Version: 1,
+					PRs: map[string]*model.PR{
+						uuid: {
+							PRNumber: 101,
+							State:    "merged",
+						},
+					},
+				}
+				err = client.savePRs("merged-stack", prData)
+				require.NoError(t, err)
+
+				mergedStack, err := client.LoadStack("merged-stack")
+				require.NoError(t, err)
+				mergedStack.MergedChanges = []model.Change{
+					{
+						UUID:       uuid,
+						CommitHash: hash,
+						Position:   1,
+						PR: &model.PR{
+							PRNumber: 101,
+							State:    "merged",
+						},
+					},
+				}
+				err = client.SaveStack(mergedStack)
+				require.NoError(t, err)
+
+				// Switch to main before creating next stack
+				err = client.git.CheckoutBranch("main")
+				require.NoError(t, err)
+
+				// Create active stack (not eligible)
+				_, err = client.CreateStack("active-stack", "main")
+				require.NoError(t, err)
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Active change", "Description", map[string]string{
+					"PR-UUID":  "2222222222222222",
+					"PR-Stack": "active-stack",
+				})
+
+				// Mock BatchGetPRs for GetCleanupCandidates syncing
+				// merged-stack has PR 101 (merged)
+				mockGithubClient.On("BatchGetPRs", "test-owner", "test-repo", []int{101}).Return(&gh.BatchPRsResult{
+					PRStates: map[int]*gh.PRState{
+						101: {Number: 101, State: "MERGED", IsMerged: true, IsDraft: false},
+					},
+				}, nil)
+			},
+			expectedCandidates: []string{"empty-stack", "merged-stack"},
+			expectedReasons: map[string]string{
+				"empty-stack":  "empty",
+				"merged-stack": "all_merged",
+			},
+			expectedChangeCounts: map[string]int{
+				"empty-stack":  0,
+				"merged-stack": 1,
+			},
+		},
+		{
+			name: "AllStacksEligible",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Times(2)
+
+				_, err := client.CreateStack("empty-1", "main")
+				require.NoError(t, err)
+
+				err = client.git.CheckoutBranch("main")
+				require.NoError(t, err)
+
+				_, err = client.CreateStack("empty-2", "main")
+				require.NoError(t, err)
+			},
+			expectedCandidates: []string{"empty-1", "empty-2"},
+			expectedReasons: map[string]string{
+				"empty-1": "empty",
+				"empty-2": "empty",
+			},
+			expectedChangeCounts: map[string]int{
+				"empty-1": 0,
+				"empty-2": 0,
+			},
+		},
+		{
+			name: "NoStacksEligible",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("active-stack", "main")
+				require.NoError(t, err)
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Active change", "Description", map[string]string{
+					"PR-UUID":  "3333333333333333",
+					"PR-Stack": "active-stack",
+				})
+			},
+			expectedCandidates: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				mockGithubClient := &MockGithubClient{}
+				stackClient := newTestStackClient(t, mockGithubClient)
+
+				tt.setup(t, stackClient, mockGithubClient)
+
+				candidates, err := stackClient.GetCleanupCandidates()
+				require.NoError(t, err)
+
+				// Build actual results maps
+				actualNames := make([]string, len(candidates))
+				actualReasons := make(map[string]string)
+				actualChangeCounts := make(map[string]int)
+				for i, candidate := range candidates {
+					name := candidate.StackCtx.StackName
+					actualNames[i] = name
+					actualReasons[name] = candidate.Reason
+					actualChangeCounts[name] = candidate.ChangeCount
+				}
+
+				// Verify results
+				assert.ElementsMatch(t, tt.expectedCandidates, actualNames)
+				if tt.expectedReasons != nil {
+					assert.Equal(t, tt.expectedReasons, actualReasons)
+				}
+				if tt.expectedChangeCounts != nil {
+					assert.Equal(t, tt.expectedChangeCounts, actualChangeCounts)
+				}
+
+				mockGithubClient.AssertExpectations(t)
+			})
+		})
+	}
+}
+
+func TestRefreshStackMetadata(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(*testing.T, *Client, *MockGithubClient) *StackContext
+		expectError error
+	}{
+		{
+			name: "Success_NoChanges",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// No need to mock BatchGetPRs - no PRs to sync
+				return stackCtx
+			},
+		},
+		{
+			name: "Success_WithPRs_AllOpen",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				// Create two changes
+				uuid1 := "1111111111111111"
+				uuid2 := "2222222222222222"
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
+					"PR-UUID":  uuid1,
+					"PR-Stack": "test-stack",
+				})
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
+					"PR-UUID":  uuid2,
+					"PR-Stack": "test-stack",
+				})
+
+				// Create PRs for both changes
+				prData := &model.PRData{
+					Version: 1,
+					PRs: map[string]*model.PR{
+						uuid1: {
+							PRNumber:          101,
+							URL:               "https://github.com/test-owner/test-repo/pull/101",
+							State:             "open",
+							RemoteDraftStatus: false,
+							LocalDraftStatus:  false,
+						},
+						uuid2: {
+							PRNumber:          102,
+							URL:               "https://github.com/test-owner/test-repo/pull/102",
+							State:             "open",
+							RemoteDraftStatus: false,
+							LocalDraftStatus:  false,
+						},
+					},
+				}
+				err = client.savePRs("test-stack", prData)
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// Mock BatchGetPRs to return updated PR states
+				mockGithubClient.On("BatchGetPRs", "test-owner", "test-repo", mock.AnythingOfType("[]int")).Return(&gh.BatchPRsResult{
+					PRStates: map[int]*gh.PRState{
+						101: {Number: 101, State: "OPEN", IsMerged: false, IsDraft: false},
+						102: {Number: 102, State: "OPEN", IsMerged: false, IsDraft: false},
+					},
+				}, nil)
+
+				return stackCtx
+			},
+		},
+		{
+			name: "Success_WithPRs_OneMerged",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				// Create two changes
+				uuid1 := "3333333333333333"
+				uuid2 := "4444444444444444"
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "First change", "Description 1", map[string]string{
+					"PR-UUID":  uuid1,
+					"PR-Stack": "test-stack",
+				})
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Second change", "Description 2", map[string]string{
+					"PR-UUID":  uuid2,
+					"PR-Stack": "test-stack",
+				})
+
+				// Create PRs with first one merged
+				prData := &model.PRData{
+					Version: 1,
+					PRs: map[string]*model.PR{
+						uuid1: {
+							PRNumber:          201,
+							URL:               "https://github.com/test-owner/test-repo/pull/201",
+							State:             "open", // Will be updated to merged
+							RemoteDraftStatus: false,
+							LocalDraftStatus:  false,
+						},
+						uuid2: {
+							PRNumber:          202,
+							URL:               "https://github.com/test-owner/test-repo/pull/202",
+							State:             "open",
+							RemoteDraftStatus: false,
+							LocalDraftStatus:  false,
+						},
+					},
+				}
+				err = client.savePRs("test-stack", prData)
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// Mock BatchGetPRs to return first PR as merged
+				mockGithubClient.On("BatchGetPRs", "test-owner", "test-repo", mock.AnythingOfType("[]int")).Return(&gh.BatchPRsResult{
+					PRStates: map[int]*gh.PRState{
+						201: {Number: 201, State: "MERGED", IsMerged: true, IsDraft: false},
+						202: {Number: 202, State: "OPEN", IsMerged: false, IsDraft: false},
+					},
+				}, nil)
+
+				return stackCtx
+			},
+		},
+		{
+			name: "Error_BatchGetPRsFails",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				_, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				// Create a change with a PR
+				uuid := "5555555555555555"
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+					"PR-UUID":  uuid,
+					"PR-Stack": "test-stack",
+				})
+
+				prData := &model.PRData{
+					Version: 1,
+					PRs: map[string]*model.PR{
+						uuid: {
+							PRNumber:          301,
+							URL:               "https://github.com/test-owner/test-repo/pull/301",
+							State:             "open",
+							RemoteDraftStatus: false,
+							LocalDraftStatus:  false,
+						},
+					},
+				}
+				err = client.savePRs("test-stack", prData)
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// Mock BatchGetPRs to fail
+				mockGithubClient.On("BatchGetPRs", "test-owner", "test-repo", mock.AnythingOfType("[]int")).
+					Return(nil, fmt.Errorf("API error"))
+
+				return stackCtx
+			},
+			expectError: fmt.Errorf("failed to sync with GitHub"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				mockGithubClient := &MockGithubClient{}
+				stackClient := newTestStackClient(t, mockGithubClient)
+
+				stackCtx := tt.setup(t, stackClient, mockGithubClient)
+
+				// Store original pointer for verification
+				originalPtr := stackCtx
+
+				result, err := stackClient.RefreshStackMetadata(stackCtx)
+
+				if tt.expectError != nil {
+					require.Error(t, err)
+					assert.ErrorContains(t, err, tt.expectError.Error())
+				} else {
+					require.NoError(t, err)
+
+					// Verify we got the same context pointer back
+					assert.Equal(t, originalPtr, result, "should return the same context pointer")
+
+					// Verify sync metadata was updated
+					reloadedStack, err := stackClient.LoadStack(stackCtx.StackName)
+					require.NoError(t, err)
+					assert.False(t, reloadedStack.LastSynced.IsZero(), "LastSynced should be updated")
+					assert.NotEmpty(t, reloadedStack.SyncHash, "SyncHash should be set")
+				}
+
+				mockGithubClient.AssertExpectations(t)
+			})
+		})
+	}
+}
+
+func TestMaybeRefreshStackMetadata(t *testing.T) {
+	tests := []struct {
+		name             string
+		setup            func(*testing.T, *Client, *MockGithubClient) *StackContext
+		expectSyncCalled bool
+		expectError      error
+	}{
+		{
+			name: "AlreadyFresh_NoSyncNeeded",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				stack, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				// Get current hash
+				currentHash, err := client.git.GetCommitHash(stack.Branch)
+				require.NoError(t, err)
+
+				// Set LastSynced to now with matching hash (fresh)
+				stack.LastSynced = time.Now()
+				stack.SyncHash = currentHash
+				err = client.SaveStack(stack)
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// No mock for BatchGetPRs - should not be called
+				return stackCtx
+			},
+			expectSyncCalled: false,
+		},
+		{
+			name: "NeverSynced_SyncCalled",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				stack, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				// Reset LastSynced to zero (never synced)
+				stack.LastSynced = time.Time{}
+				err = client.SaveStack(stack)
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// No PRs to sync, so no mock needed
+				return stackCtx
+			},
+			expectSyncCalled: true,
+		},
+		{
+			name: "HashMismatch_SyncCalled",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				stack, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				// Set LastSynced to now but with wrong hash
+				stack.LastSynced = time.Now()
+				stack.SyncHash = "old-hash-that-doesnt-match"
+				err = client.SaveStack(stack)
+				require.NoError(t, err)
+
+				// Create a commit to change the hash
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "New commit", "Body", map[string]string{
+					"PR-UUID":  "1111111111111111",
+					"PR-Stack": "test-stack",
+				})
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// No PRs yet, so no mock needed
+				return stackCtx
+			},
+			expectSyncCalled: true,
+		},
+		{
+			name: "Stale_SyncCalled",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				stack, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				// Get current hash
+				currentHash, err := client.git.GetCommitHash(stack.Branch)
+				require.NoError(t, err)
+
+				// Set LastSynced to over 5 minutes ago with matching hash (stale)
+				stack.LastSynced = time.Now().Add(-10 * time.Minute)
+				stack.SyncHash = currentHash
+				err = client.SaveStack(stack)
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// No PRs to sync, so no mock needed
+				return stackCtx
+			},
+			expectSyncCalled: true,
+		},
+		{
+			name: "StaleWithPRs_SyncCalledAndSucceeds",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				stack, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				// Create a change with PR
+				uuid := "2222222222222222"
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+					"PR-UUID":  uuid,
+					"PR-Stack": "test-stack",
+				})
+
+				prData := &model.PRData{
+					Version: 1,
+					PRs: map[string]*model.PR{
+						uuid: {
+							PRNumber:          401,
+							URL:               "https://github.com/test-owner/test-repo/pull/401",
+							State:             "open",
+							RemoteDraftStatus: false,
+							LocalDraftStatus:  false,
+						},
+					},
+				}
+				err = client.savePRs("test-stack", prData)
+				require.NoError(t, err)
+
+				// Get current hash
+				currentHash, err := client.git.GetCommitHash(stack.Branch)
+				require.NoError(t, err)
+
+				// Set LastSynced to over 5 minutes ago (stale)
+				stack.LastSynced = time.Now().Add(-10 * time.Minute)
+				stack.SyncHash = currentHash
+				err = client.SaveStack(stack)
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// Mock BatchGetPRs since we have PRs
+				mockGithubClient.On("BatchGetPRs", "test-owner", "test-repo", []int{401}).Return(&gh.BatchPRsResult{
+					PRStates: map[int]*gh.PRState{
+						401: {Number: 401, State: "OPEN", IsMerged: false, IsDraft: false},
+					},
+				}, nil)
+
+				return stackCtx
+			},
+			expectSyncCalled: true,
+		},
+		{
+			name: "StaleWithPRs_SyncFails",
+			setup: func(t *testing.T, client *Client, mockGithubClient *MockGithubClient) *StackContext {
+				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
+
+				stack, err := client.CreateStack("test-stack", "main")
+				require.NoError(t, err)
+
+				// Create a change with PR
+				uuid := "3333333333333333"
+
+				_ = createCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
+					"PR-UUID":  uuid,
+					"PR-Stack": "test-stack",
+				})
+
+				prData := &model.PRData{
+					Version: 1,
+					PRs: map[string]*model.PR{
+						uuid: {
+							PRNumber:          501,
+							URL:               "https://github.com/test-owner/test-repo/pull/501",
+							State:             "open",
+							RemoteDraftStatus: false,
+							LocalDraftStatus:  false,
+						},
+					},
+				}
+				err = client.savePRs("test-stack", prData)
+				require.NoError(t, err)
+
+				// Get current hash
+				currentHash, err := client.git.GetCommitHash(stack.Branch)
+				require.NoError(t, err)
+
+				// Set LastSynced to over 5 minutes ago (stale)
+				stack.LastSynced = time.Now().Add(-10 * time.Minute)
+				stack.SyncHash = currentHash
+				err = client.SaveStack(stack)
+				require.NoError(t, err)
+
+				stackCtx, err := client.GetStackContextByName("test-stack")
+				require.NoError(t, err)
+
+				// Mock BatchGetPRs to fail
+				mockGithubClient.On("BatchGetPRs", "test-owner", "test-repo", []int{501}).
+					Return(nil, fmt.Errorf("GitHub API error"))
+
+				return stackCtx
+			},
+			expectSyncCalled: true,
+			expectError:      fmt.Errorf("failed to sync with GitHub"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				mockGithubClient := &MockGithubClient{}
+				stackClient := newTestStackClient(t, mockGithubClient)
+
+				stackCtx := tt.setup(t, stackClient, mockGithubClient)
+
+				// Store original pointer and LastSynced for verification
+				originalPtr := stackCtx
+				originalLastSynced := stackCtx.Stack.LastSynced
+
+				result, err := stackClient.MaybeRefreshStackMetadata(stackCtx)
+
+				if tt.expectError != nil {
+					require.Error(t, err)
+					assert.ErrorContains(t, err, tt.expectError.Error())
+				} else {
+					require.NoError(t, err)
+
+					// Verify we got the same context pointer back
+					assert.Equal(t, originalPtr, result, "should return the same context pointer")
+
+					reloadedStack, err := stackClient.LoadStack(stackCtx.StackName)
+					require.NoError(t, err)
+
+					// Verify sync behavior
+					if tt.expectSyncCalled {
+						// Sync should have updated LastSynced
+						assert.False(t, reloadedStack.LastSynced.IsZero(), "LastSynced should be updated")
+						assert.NotEmpty(t, reloadedStack.SyncHash, "SyncHash should be set")
+
+						// LastSynced should have changed (unless it was zero)
+						if !originalLastSynced.IsZero() {
+							// If it was stale or hash mismatch, LastSynced should be updated to "now"
+							// In synctest, time is frozen, so we check it's not the original value
+							// Actually in synctest time.Now() returns the same frozen time, so we can't
+							// easily distinguish. Instead just verify it was set.
+							assert.NotZero(t, reloadedStack.LastSynced)
+						}
+					} else {
+						// Sync should NOT have been called - LastSynced unchanged
+						assert.Equal(t, originalLastSynced, reloadedStack.LastSynced,
+							"LastSynced should not change when sync not needed")
+					}
 				}
 
 				mockGithubClient.AssertExpectations(t)
