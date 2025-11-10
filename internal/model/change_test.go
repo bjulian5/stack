@@ -653,29 +653,7 @@ func TestChange_UpdateFromPush(t *testing.T) {
 			tt.change.UpdateFromPush(tt.ghPR, tt.branch)
 
 			require.NotNil(t, tt.change.PR)
-			assert.Equal(t, tt.expected.PRNumber, tt.change.PR.PRNumber)
-			assert.Equal(t, tt.expected.URL, tt.change.PR.URL)
-			assert.Equal(t, tt.expected.State, tt.change.PR.State)
-			assert.Equal(t, tt.expected.Branch, tt.change.PR.Branch)
-			assert.Equal(t, tt.expected.CommitHash, tt.change.PR.CommitHash)
-			assert.Equal(t, tt.expected.CreatedAt, tt.change.PR.CreatedAt)
-			assert.Equal(t, tt.expected.LastPushed, tt.change.PR.LastPushed)
-			assert.Equal(t, tt.expected.LocalDraftStatus, tt.change.PR.LocalDraftStatus)
-			assert.Equal(t, tt.expected.RemoteDraftStatus, tt.change.PR.RemoteDraftStatus)
-
-			// If we're testing metadata preservation, check those fields too
-			if tt.expected.Title != "" {
-				assert.Equal(t, tt.expected.Title, tt.change.PR.Title)
-			}
-			if tt.expected.Body != "" {
-				assert.Equal(t, tt.expected.Body, tt.change.PR.Body)
-			}
-			if tt.expected.Base != "" {
-				assert.Equal(t, tt.expected.Base, tt.change.PR.Base)
-			}
-			if tt.expected.VizCommentID != "" {
-				assert.Equal(t, tt.expected.VizCommentID, tt.change.PR.VizCommentID)
-			}
+			assert.Equal(t, tt.expected, tt.change.PR)
 		})
 	}
 }
@@ -687,7 +665,7 @@ func TestChange_UpdateTitle(t *testing.T) {
 		title       string
 		description string
 		base        string
-		verify      func(*testing.T, *Change)
+		expected    *Change
 	}{
 		{
 			name: "updates all fields when PR exists",
@@ -707,11 +685,18 @@ func TestChange_UpdateTitle(t *testing.T) {
 			title:       "New Title",
 			description: "New Description",
 			base:        "new-base",
-			verify: func(t *testing.T, c *Change) {
-				require.NotNil(t, c.PR)
-				assert.Equal(t, "New Title", c.PR.Title)
-				assert.Equal(t, "New Description", c.PR.Body)
-				assert.Equal(t, "new-base", c.PR.Base)
+			expected: &Change{
+				UUID:        "test-uuid",
+				Title:       "Original Title",
+				Description: "Original Description",
+				CommitHash:  "abc123",
+				PR: &PR{
+					PRNumber:   123,
+					Title:      "New Title",
+					Body:       "New Description",
+					Base:       "new-base",
+					CommitHash: "abc123",
+				},
 			},
 		},
 		{
@@ -726,8 +711,12 @@ func TestChange_UpdateTitle(t *testing.T) {
 			title:       "New Title",
 			description: "New Description",
 			base:        "new-base",
-			verify: func(t *testing.T, c *Change) {
-				assert.Nil(t, c.PR)
+			expected: &Change{
+				UUID:        "test-uuid",
+				Title:       "Original Title",
+				Description: "Original Description",
+				CommitHash:  "abc123",
+				PR:          nil,
 			},
 		},
 		{
@@ -748,11 +737,18 @@ func TestChange_UpdateTitle(t *testing.T) {
 			title:       "",
 			description: "",
 			base:        "",
-			verify: func(t *testing.T, c *Change) {
-				require.NotNil(t, c.PR)
-				assert.Equal(t, "", c.PR.Title)
-				assert.Equal(t, "", c.PR.Body)
-				assert.Equal(t, "", c.PR.Base)
+			expected: &Change{
+				UUID:        "test-uuid",
+				Title:       "Original Title",
+				Description: "Original Description",
+				CommitHash:  "abc123",
+				PR: &PR{
+					PRNumber:   123,
+					Title:      "",
+					Body:       "",
+					Base:       "",
+					CommitHash: "abc123",
+				},
 			},
 		},
 		{
@@ -781,23 +777,26 @@ func TestChange_UpdateTitle(t *testing.T) {
 			title:       "Updated Title",
 			description: "Updated Description",
 			base:        "updated-base",
-			verify: func(t *testing.T, c *Change) {
-				require.NotNil(t, c.PR)
-				// Updated fields
-				assert.Equal(t, "Updated Title", c.PR.Title)
-				assert.Equal(t, "Updated Description", c.PR.Body)
-				assert.Equal(t, "updated-base", c.PR.Base)
-				// Preserved fields
-				assert.Equal(t, 123, c.PR.PRNumber)
-				assert.Equal(t, "https://github.com/owner/repo/pull/123", c.PR.URL)
-				assert.Equal(t, "open", c.PR.State)
-				assert.Equal(t, "user/stack-test/TOP", c.PR.Branch)
-				assert.Equal(t, "abc123", c.PR.CommitHash)
-				assert.Equal(t, "comment-123", c.PR.VizCommentID)
-				assert.Equal(t, true, c.PR.LocalDraftStatus)
-				assert.Equal(t, true, c.PR.RemoteDraftStatus)
-				assert.Equal(t, time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC), c.PR.CreatedAt)
-				assert.Equal(t, time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC), c.PR.LastPushed)
+			expected: &Change{
+				UUID:        "test-uuid",
+				Title:       "Original Title",
+				Description: "Original Description",
+				CommitHash:  "abc123",
+				PR: &PR{
+					PRNumber:          123,
+					URL:               "https://github.com/owner/repo/pull/123",
+					State:             "open",
+					Branch:            "user/stack-test/TOP",
+					Title:             "Updated Title",
+					Body:              "Updated Description",
+					Base:              "updated-base",
+					CommitHash:        "abc123",
+					VizCommentID:      "comment-123",
+					LocalDraftStatus:  true,
+					RemoteDraftStatus: true,
+					CreatedAt:         time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+					LastPushed:        time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC),
+				},
 			},
 		},
 		{
@@ -817,11 +816,17 @@ func TestChange_UpdateTitle(t *testing.T) {
 			title:       "New Title",
 			description: "Line 1\nLine 2\nLine 3",
 			base:        "main",
-			verify: func(t *testing.T, c *Change) {
-				require.NotNil(t, c.PR)
-				assert.Equal(t, "New Title", c.PR.Title)
-				assert.Equal(t, "Line 1\nLine 2\nLine 3", c.PR.Body)
-				assert.Equal(t, "main", c.PR.Base)
+			expected: &Change{
+				UUID:        "test-uuid",
+				Title:       "Original Title",
+				Description: "Original Description",
+				CommitHash:  "abc123",
+				PR: &PR{
+					PRNumber: 123,
+					Title:    "New Title",
+					Body:     "Line 1\nLine 2\nLine 3",
+					Base:     "main",
+				},
 			},
 		},
 	}
@@ -829,7 +834,7 @@ func TestChange_UpdateTitle(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.change.UpdateTitle(tt.title, tt.description, tt.base)
-			tt.verify(t, tt.change)
+			assert.Equal(t, tt.expected, tt.change)
 		})
 	}
 }
