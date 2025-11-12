@@ -20,6 +20,12 @@ func NewTestStack(t *testing.T, gh GithubClient) *Client {
 	return c
 }
 
+func NewTestStackWithClients(t *testing.T, gh GithubClient, gitClient *git.Client) *Client {
+	c := NewClient(gitClient, gh)
+	c.username = "test-user"
+	return c
+}
+
 // simulateCommitRewrite simulates the scenario where a commit has been amended/rewritten,
 // causing the UUID branch to point to a stale commit hash.
 // This is used to test the CheckoutChangeForEditing flow when a UUID branch exists but

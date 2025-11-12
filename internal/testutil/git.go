@@ -75,3 +75,10 @@ func CreateCommitWithTrailers(t *testing.T, gitClient *git.Client, title, body s
 
 	return strings.TrimSpace(string(output))
 }
+
+// WriteFile writes a file to the git repository (for creating uncommitted changes)
+func WriteFile(t *testing.T, gitRoot, filename, content string) {
+	filePath := filepath.Join(gitRoot, filename)
+	err := os.WriteFile(filePath, []byte(content), 0644)
+	require.NoError(t, err, "failed to write file: %s", filename)
+}

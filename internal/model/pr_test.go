@@ -82,4 +82,3 @@ func TestPR_IsMerged(t *testing.T) {
 		})
 	}
 }
-
