@@ -13,7 +13,7 @@ import (
 	"github.com/bjulian5/stack/internal/testutil"
 )
 
-func Test(t *testing.T) {
+func TestBottom(t *testing.T) {
 	testCases := []struct {
 		desc        string
 		setup       func(t *testing.T, ghClient *gh.MockGithubClient, gitClient *git.Client, stackClient *stack.Client)

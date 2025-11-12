@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bjulian5/stack/internal/common"
-	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
@@ -18,7 +17,6 @@ type Command struct {
 	// Clients (can be mocked in tests)
 	Git   *git.Client
 	Stack *stack.Client
-	GH    *gh.Client
 }
 
 func (c *Command) Register(parent *cobra.Command) {
@@ -35,7 +33,7 @@ Example:
 		Args: cobra.NoArgs,
 		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
 			var err error
-			c.Git, c.GH, c.Stack, err = common.InitClients()
+			c.Git, _, c.Stack, err = common.InitClients()
 			return err
 		},
 		RunE: func(cobraCmd *cobra.Command, args []string) error {
