@@ -318,7 +318,6 @@ if err != nil {
 
 ## Key Files to Reference
 
-- **DESIGN.md**: Comprehensive design document with full workflow details, implementation phases, and user stories
 - **go.mod**: Dependencies include cobra (CLI), go-git (git operations), go-fuzzyfinder (interactive selection), lipgloss (terminal styling)
 
 ## Notes on Naming

@@ -417,13 +417,10 @@ Stack uses git hooks to automate metadata management. When you commit, hooks aut
 
 Stack stores metadata in `.git/stack/<stack-name>/` and uses the `gh` CLI for all GitHub operations.
 
-For architecture details, see [DESIGN.md](./DESIGN.md).
-
 ---
 
 ## Further Reading
 
-- [DESIGN.md](./DESIGN.md) - Detailed architecture and design decisions
 - [GitHub Issues](https://github.com/bjulian5/stack/issues) - Report bugs or request features
 - [Gerrit Code Review](https://www.gerritcodereview.com/) - Inspiration for the one-commit-per-PR model
 
