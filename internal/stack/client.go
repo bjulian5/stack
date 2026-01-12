@@ -818,11 +818,22 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 		return nil, fmt.Errorf("failed to save stack context: %w", err)
 	}
 
-	remainingCount := len(stackCtx.ActiveChanges) - len(stackCtx.StaleMergedChanges)
+	// Recompute stale merged changes after updating PR states from GitHub.
+	// The original StaleMergedChanges was computed using cached PR data before
+	// we queried GitHub, so we need to recompute based on the fresh states.
+	var freshStaleMerged []*model.Change
+	for _, change := range stackCtx.ActiveChanges {
+		if change.PR != nil && change.PR.IsMerged() {
+			freshStaleMerged = append(freshStaleMerged, change)
+		}
+	}
+	stackCtx.StaleMergedChanges = freshStaleMerged
+
+	remainingCount := len(stackCtx.ActiveChanges) - len(freshStaleMerged)
 	return &RefreshResult{
-		StaleMergedCount:   len(stackCtx.StaleMergedChanges),
+		StaleMergedCount:   len(freshStaleMerged),
 		RemainingCount:     remainingCount,
-		StaleMergedChanges: stackCtx.StaleMergedChanges,
+		StaleMergedChanges: freshStaleMerged,
 	}, nil
 }
 

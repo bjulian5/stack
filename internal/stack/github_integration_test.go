@@ -550,12 +550,13 @@ func TestMarkChangeReady(t *testing.T) {
 
 func TestSyncPRMetadata(t *testing.T) {
 	tests := []struct {
-		name            string
-		changes         []*model.Change
-		setupMocks      func(*gh.MockGithubClient, []*model.Change)
-		expectError     error
-		expectedResult  *RefreshResult
-		expectedChanges []*model.Change
+		name                     string
+		changes                  []*model.Change
+		setupMocks               func(*gh.MockGithubClient, []*model.Change)
+		expectError              error
+		expectedResult           *RefreshResult
+		expectedChanges          []*model.Change
+		expectedStaleMergedUUIDs []string // UUIDs of expected stale merged changes
 	}{
 		{
 			name: "empty stack - no changes",
@@ -760,11 +761,12 @@ func TestSyncPRMetadata(t *testing.T) {
 					},
 				}, nil).Once()
 			},
+			// After querying GitHub, we correctly detect the merged PR as stale merged
 			expectedResult: &RefreshResult{
-				StaleMergedCount:   0,
-				RemainingCount:     2,
-				StaleMergedChanges: nil,
+				StaleMergedCount: 1,
+				RemainingCount:   1,
 			},
+			expectedStaleMergedUUIDs: []string{"1111111111111111"},
 			expectedChanges: []*model.Change{
 				{
 					UUID:     "1111111111111111",
@@ -869,11 +871,12 @@ func TestSyncPRMetadata(t *testing.T) {
 					},
 				}, nil).Once()
 			},
+			// PR 1 is merged but still in ActiveChanges, so it's stale merged
 			expectedResult: &RefreshResult{
-				StaleMergedCount:   0,
-				RemainingCount:     2,
-				StaleMergedChanges: nil,
+				StaleMergedCount: 1,
+				RemainingCount:   1,
 			},
+			expectedStaleMergedUUIDs: []string{"1111111111111111"},
 			expectedChanges: []*model.Change{
 				{
 					UUID:     "1111111111111111",
@@ -1059,7 +1062,19 @@ func TestSyncPRMetadata(t *testing.T) {
 
 				require.NoError(t, err)
 				require.NotNil(t, result)
-				assert.Equal(t, tt.expectedResult, result)
+				assert.Equal(t, tt.expectedResult.StaleMergedCount, result.StaleMergedCount)
+				assert.Equal(t, tt.expectedResult.RemainingCount, result.RemainingCount)
+
+				// Verify stale merged UUIDs if expected
+				if len(tt.expectedStaleMergedUUIDs) > 0 {
+					actualUUIDs := make([]string, len(result.StaleMergedChanges))
+					for i, change := range result.StaleMergedChanges {
+						actualUUIDs[i] = change.UUID
+					}
+					assert.Equal(t, tt.expectedStaleMergedUUIDs, actualUUIDs)
+				} else {
+					assert.Empty(t, result.StaleMergedChanges)
+				}
 
 				assert.False(t, stackCtx.Stack.LastSynced.IsZero())
 
