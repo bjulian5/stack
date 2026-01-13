@@ -151,7 +151,7 @@ stack/
 │   ├── list/list.go                 # stack list command
 │   ├── status/status.go             # stack status command
 │   ├── edit/edit.go                 # stack edit command (interactive fuzzy finder only)
-│   ├── fixup/fixup.go               # stack fixup command
+│   ├── amend/amend.go               # stack amend command (amend staged changes into any commit)
 │   ├── switch/switch.go             # stack switch command (package: switchcmd)
 │   ├── top/top.go                   # stack top command
 │   ├── bottom/bottom.go             # stack bottom command
@@ -251,7 +251,7 @@ The codebase has completed **Phase 1** (Foundation), **Phase 2** (Git Hooks), **
 **Phase 5 - Sync & Refresh (✅ Completed):**
 - ✅ `stack refresh` - Detect and handle merged PRs
 - ✅ `stack restack` - Rebase on base branch with recovery system
-- ✅ `stack fixup` - Interactive fixup commits with autosquash
+- ✅ `stack amend` - Amend staged changes into any commit (interactive or by position)
 - ✅ Rebase state management for conflict recovery
 - ✅ Bottom-up merge validation
 

@@ -12,7 +12,6 @@ import (
 	"github.com/bjulian5/stack/cmd/delete"
 	"github.com/bjulian5/stack/cmd/down"
 	"github.com/bjulian5/stack/cmd/edit"
-	"github.com/bjulian5/stack/cmd/fixup"
 	"github.com/bjulian5/stack/cmd/hook"
 	"github.com/bjulian5/stack/cmd/install"
 	"github.com/bjulian5/stack/cmd/list"
@@ -54,7 +53,6 @@ func init() {
 		&status.Command{},
 		&edit.Command{},
 		&amend.Command{},
-		&fixup.Command{},
 		&up.Command{},
 		&down.Command{},
 		&top.Command{},

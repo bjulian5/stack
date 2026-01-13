@@ -72,6 +72,23 @@ Examples:
 	command.Flags().BoolVarP(&c.interactive, "interactive", "i", false, "Use interactive fuzzy finder (default when no position given)")
 
 	parent.AddCommand(command)
+
+	// Hidden alias for backwards compatibility
+	fixupAlias := &cobra.Command{
+		Use:    "fixup [position]",
+		Hidden: true,
+		Args:   cobra.MaximumNArgs(1),
+		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
+			var err error
+			c.Git, c.GH, c.Stack, err = common.InitClients()
+			return err
+		},
+		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			return c.Run(cobraCmd.Context(), args)
+		},
+	}
+	fixupAlias.Flags().BoolVarP(&c.interactive, "interactive", "i", false, "Use interactive fuzzy finder")
+	parent.AddCommand(fixupAlias)
 }
 
 // Run executes the command
