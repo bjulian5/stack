@@ -284,6 +284,63 @@ func (c *Client) RebaseInteractiveAutosquash(fromCommit string) error {
 	return nil
 }
 
+// RebaseInteractive runs an interactive rebase, opening the user's editor for the rebase plan.
+// Returns nil on success or if the user aborts the rebase cleanly.
+func (c *Client) RebaseInteractive(onto string) error {
+	cmd := exec.Command("git", "rebase", "-i", onto)
+	cmd.Dir = c.gitRoot
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		// Check if rebase was aborted or has conflicts
+		if c.IsRebaseInProgress() {
+			return fmt.Errorf("rebase has conflicts - resolve them and run 'git rebase --continue'")
+		}
+		// User may have aborted cleanly or saved empty todo
+		return nil
+	}
+	return nil
+}
+
+// CheckRebaseConflicts checks if rebasing onto the target would cause conflicts.
+// Uses git merge-tree to simulate the merge without modifying the working directory.
+// Returns a list of conflicting file paths, or empty slice if no conflicts.
+func (c *Client) CheckRebaseConflicts(onto string) ([]string, error) {
+	// Get the merge base
+	mergeBaseCmd := exec.Command("git", "merge-base", "HEAD", onto)
+	mergeBaseCmd.Dir = c.gitRoot
+	mergeBaseOutput, err := mergeBaseCmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to find merge base: %w", err)
+	}
+	mergeBase := strings.TrimSpace(string(mergeBaseOutput))
+
+	// Use git merge-tree to check for conflicts
+	cmd := exec.Command("git", "merge-tree", "--write-tree", mergeBase, "HEAD", onto)
+	cmd.Dir = c.gitRoot
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Parse the output to find conflicting files
+		lines := strings.Split(string(output), "\n")
+		var conflicts []string
+		for _, line := range lines {
+			// Look for lines indicating conflicts
+			if strings.Contains(line, "CONFLICT") {
+				// Extract filename if present
+				conflicts = append(conflicts, line)
+			}
+		}
+		if len(conflicts) > 0 {
+			return conflicts, nil
+		}
+		// Some other error
+		return nil, fmt.Errorf("merge-tree failed: %w\n%s", err, string(output))
+	}
+	return nil, nil
+}
+
 func (c *Client) Push(branch string, force bool) error {
 	args := []string{"push"}
 

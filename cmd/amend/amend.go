@@ -24,6 +24,7 @@ type Command struct {
 
 	// Flags
 	interactive bool
+	force       bool
 }
 
 func (c *Command) Register(parent *cobra.Command) {
@@ -46,6 +47,9 @@ Requirements:
 
 After successful rebase, you will remain on the TOP branch.
 
+If amending a commit with many subsequent commits, the command will warn about
+potential conflicts. Use --force to skip this warning.
+
 Examples:
   # Interactive mode (default)
   git add .
@@ -55,9 +59,9 @@ Examples:
   git add .
   stack amend 2
 
-  # Explicit interactive mode
+  # Force amend even with potential conflicts
   git add .
-  stack amend -i`,
+  stack amend 2 --force`,
 		Args: cobra.MaximumNArgs(1),
 		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
 			var err error
@@ -70,6 +74,7 @@ Examples:
 	}
 
 	command.Flags().BoolVarP(&c.interactive, "interactive", "i", false, "Use interactive fuzzy finder (default when no position given)")
+	command.Flags().BoolVarP(&c.force, "force", "f", false, "Skip conflict warnings and proceed with amend")
 
 	parent.AddCommand(command)
 
@@ -88,6 +93,7 @@ Examples:
 		},
 	}
 	fixupAlias.Flags().BoolVarP(&c.interactive, "interactive", "i", false, "Use interactive fuzzy finder")
+	fixupAlias.Flags().BoolVarP(&c.force, "force", "f", false, "Skip conflict warnings")
 	parent.AddCommand(fixupAlias)
 }
 
@@ -165,6 +171,22 @@ func (c *Command) Run(ctx context.Context, args []string) error {
 	// Validate the change has a commit hash
 	if selectedChange.CommitHash == "" {
 		return fmt.Errorf("cannot amend change #%d: missing commit hash", selectedChange.ActivePosition)
+	}
+
+	// Calculate how many commits will be rebased
+	commitsToRebase := len(stackCtx.ActiveChanges) - selectedChange.ActivePosition
+	if commitsToRebase > 0 && !c.force {
+		ui.Warningf("%d commit(s) will be rebased after this amend", commitsToRebase)
+		if commitsToRebase >= 3 {
+			ui.Info("This may cause conflicts. Use --force to skip this warning.")
+			ui.Printf("Continue? [y/N]: ")
+			var response string
+			fmt.Scanln(&response)
+			if response != "y" && response != "Y" {
+				ui.Info("Aborted.")
+				return nil
+			}
+		}
 	}
 
 	// Create fixup commit

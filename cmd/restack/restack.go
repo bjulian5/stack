@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bjulian5/stack/internal/common"
+	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
@@ -16,12 +17,14 @@ import (
 type Command struct {
 	Git   *git.Client
 	Stack *stack.Client
+	GH    *gh.Client
 
 	// Flags
-	Fetch   bool
-	Onto    string
-	Recover bool
-	Retry   bool
+	Fetch       bool
+	Onto        string
+	Recover     bool
+	Retry       bool
+	Interactive bool
 }
 
 func (c *Command) Register(parent *cobra.Command) {
@@ -34,6 +37,9 @@ By default, this command fetches from the remote and rebases your stack on top
 of the updated base branch. This is the typical workflow for pulling in upstream
 changes before pushing your stack.
 
+Use -i/--interactive to open an interactive rebase where you can reorder, drop,
+or squash commits. If you drop a commit, the associated PR will be closed on GitHub.
+
 Use --onto to move your stack to a different base branch (e.g., from main to develop).
 When using --onto, fetching is NOT automatic - add --fetch if needed.
 
@@ -43,6 +49,9 @@ aborted rebase. Use --recover --retry to automatically retry a failed rebase.
 Examples:
   # Fetch and rebase on latest origin/main (most common)
   stack restack
+
+  # Interactive rebase - reorder, drop, or squash commits
+  stack restack -i
 
   # Move stack to a different base branch
   stack restack --onto develop
@@ -61,7 +70,7 @@ Examples:
 		Args: cobra.NoArgs,
 		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
 			var err error
-			c.Git, _, c.Stack, err = common.InitClients()
+			c.Git, c.GH, c.Stack, err = common.InitClients()
 			return err
 		},
 		RunE: func(cobraCmd *cobra.Command, args []string) error {
@@ -69,6 +78,7 @@ Examples:
 		},
 	}
 
+	command.Flags().BoolVarP(&c.Interactive, "interactive", "i", false, "Interactive rebase to reorder, drop, or squash commits")
 	command.Flags().BoolVar(&c.Fetch, "fetch", false, "Fetch from remote before rebasing")
 	command.Flags().StringVar(&c.Onto, "onto", "", "Rebase stack onto a different base branch")
 	command.Flags().BoolVar(&c.Recover, "recover", false, "Recover from a failed or aborted rebase")
@@ -110,6 +120,11 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("you have uncommitted changes. Commit or stash them before restacking.")
 	}
 
+	// Handle interactive mode
+	if c.Interactive {
+		return c.runInteractive(stackCtx)
+	}
+
 	// Determine target base: use --onto if specified, otherwise current base
 	targetBase := c.Onto
 	fetch := c.Fetch
@@ -117,6 +132,15 @@ func (c *Command) Run(ctx context.Context) error {
 	if targetBase == "" {
 		targetBase = stackCtx.Stack.Base
 		fetch = true
+	}
+
+	// Check for potential conflicts before restacking
+	if conflicts, err := c.Git.CheckRebaseConflicts("origin/" + targetBase); err == nil && len(conflicts) > 0 {
+		ui.Warning("Potential conflicts detected:")
+		for _, conflict := range conflicts {
+			ui.Printf("  %s\n", conflict)
+		}
+		ui.Println("")
 	}
 
 	ui.Info("Checking PR merge status on GitHub...")
@@ -133,6 +157,103 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	ui.Successf("Restacked on %s", targetBase)
+	return nil
+}
+
+func (c *Command) runInteractive(stackCtx *stack.StackContext) error {
+	// Sync metadata first
+	ui.Info("Checking PR merge status on GitHub...")
+	if _, err := c.Stack.SyncPRMetadata(stackCtx); err != nil {
+		return fmt.Errorf("failed to sync PR metadata: %w", err)
+	}
+
+	// Save the UUIDs before rebase to detect dropped commits
+	uuidsBefore := make(map[string]int) // UUID -> PR number
+	for _, change := range stackCtx.ActiveChanges {
+		if change.PR != nil && change.PR.PRNumber > 0 {
+			uuidsBefore[change.UUID] = change.PR.PRNumber
+		}
+	}
+
+	// Get the base for interactive rebase
+	targetBase := c.Onto
+	if targetBase == "" {
+		targetBase = stackCtx.Stack.Base
+	}
+
+	// Fetch if needed
+	if c.Fetch || c.Onto == "" {
+		remote, err := c.Git.GetRemoteName()
+		if err != nil {
+			return fmt.Errorf("failed to get remote name: %w", err)
+		}
+		ui.Infof("Fetching %s...", remote)
+		if err := c.Git.Fetch(remote); err != nil {
+			return fmt.Errorf("failed to fetch: %w", err)
+		}
+	}
+
+	// Get the remote name for rebase target
+	remote, err := c.Git.GetRemoteName()
+	if err != nil {
+		return fmt.Errorf("failed to get remote name: %w", err)
+	}
+
+	ui.Info("Opening interactive rebase...")
+	ui.Info("(You can reorder, drop, squash, or edit commits)")
+	ui.Println("")
+
+	// Run interactive rebase
+	if err := c.Git.RebaseInteractive(remote + "/" + targetBase); err != nil {
+		return err
+	}
+
+	// Check if rebase is still in progress (conflicts)
+	if c.Git.IsRebaseInProgress() {
+		return fmt.Errorf("rebase has conflicts - resolve them and run 'git rebase --continue', then 'stack restack --recover'")
+	}
+
+	// Reload stack context to see the new state
+	newStackCtx, err := c.Stack.GetStackContext()
+	if err != nil {
+		return fmt.Errorf("failed to reload stack context: %w", err)
+	}
+
+	// Build set of UUIDs after rebase
+	uuidsAfter := make(map[string]bool)
+	for _, change := range newStackCtx.ActiveChanges {
+		uuidsAfter[change.UUID] = true
+	}
+
+	// Find dropped commits and close their PRs
+	var closedPRs []int
+	for uuid, prNumber := range uuidsBefore {
+		if !uuidsAfter[uuid] {
+			ui.Infof("Closing PR #%d (commit was dropped)...", prNumber)
+			if err := c.GH.ClosePR(prNumber); err != nil {
+				ui.Warningf("Failed to close PR #%d: %v", prNumber, err)
+			} else {
+				closedPRs = append(closedPRs, prNumber)
+			}
+		}
+	}
+
+	// Update UUID branches
+	updatedCount, err := c.Stack.UpdateUUIDBranches(stackCtx.StackName)
+	if err != nil {
+		ui.Warningf("Failed to update UUID branches: %v", err)
+	}
+
+	// Summary
+	ui.Println("")
+	ui.Success("Interactive rebase completed!")
+	if len(closedPRs) > 0 {
+		ui.Successf("Closed %d PR(s) for dropped commits", len(closedPRs))
+	}
+	if updatedCount > 0 {
+		ui.Successf("Updated %d UUID branch(es)", updatedCount)
+	}
+
 	return nil
 }
 

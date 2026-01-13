@@ -474,3 +474,12 @@ func (c *Client) MarkPRDraft(prNumber int) error {
 	}
 	return nil
 }
+
+// ClosePR closes a pull request without merging
+func (c *Client) ClosePR(prNumber int) error {
+	_, err := c.execGH("pr", "close", fmt.Sprintf("%d", prNumber))
+	if err != nil {
+		return fmt.Errorf("failed to close PR #%d: %w", prNumber, err)
+	}
+	return nil
+}
