@@ -1,12 +1,15 @@
 package gh
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/cenkalti/backoff/v5"
 )
 
 type Client struct{}
@@ -156,15 +159,29 @@ func (c *Client) parsePRJSON(data []byte) (*PR, error) {
 }
 
 func (c *Client) execGH(args ...string) ([]byte, error) {
-	cmd := exec.Command("gh", args...)
-	output, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("gh CLI error: %s", string(exitErr.Stderr))
+	return backoff.Retry(context.Background(), func() ([]byte, error) {
+		cmd := exec.Command("gh", args...)
+		output, err := cmd.Output()
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				stderr := string(exitErr.Stderr)
+				ghErr := fmt.Errorf("gh CLI error: %s", stderr)
+				if isRetryableError(stderr) {
+					return nil, ghErr
+				}
+				return nil, backoff.Permanent(ghErr)
+			}
+			return nil, backoff.Permanent(fmt.Errorf("failed to execute gh: %w", err))
 		}
-		return nil, fmt.Errorf("failed to execute gh: %w", err)
-	}
-	return output, nil
+		return output, nil
+	}, backoff.WithMaxTries(4))
+}
+
+func isRetryableError(stderr string) bool {
+	return strings.Contains(stderr, "HTTP 429") ||
+		strings.Contains(stderr, "HTTP 502") ||
+		strings.Contains(stderr, "HTTP 503") ||
+		strings.Contains(stderr, "HTTP 504")
 }
 
 func (c *Client) getPRByHead(head string) (*PR, error) {
@@ -328,7 +345,7 @@ func (c *Client) buildBatchPRQuery(prNumbers []int) string {
 `
 
 	for _, num := range prNumbers {
-		sb.WriteString(fmt.Sprintf(fragment, num, num))
+		fmt.Fprintf(&sb, fragment, num, num)
 	}
 
 	sb.WriteString(`  }
