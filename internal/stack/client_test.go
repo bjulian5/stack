@@ -408,7 +408,7 @@ func TestCheckSyncStatus(t *testing.T) {
 			expected: &SyncStatus{
 				NeedsSync: true,
 				Reason:    "never_synced",
-				Warning:   "Stack has never been synced with GitHub. Run 'stack refresh' to check for merged PRs.",
+				Warning:   "Stack has never been synced with GitHub. Run 'stack restack' to check for merged PRs.",
 			},
 		},
 		{
@@ -435,7 +435,7 @@ func TestCheckSyncStatus(t *testing.T) {
 			expected: &SyncStatus{
 				NeedsSync: true,
 				Reason:    "commits_changed",
-				Warning:   "Stack has new commits since last sync. Run 'stack refresh' to ensure consistency with GitHub.",
+				Warning:   "Stack has new commits since last sync. Run 'stack restack' to ensure consistency with GitHub.",
 			},
 		},
 		{
@@ -460,7 +460,7 @@ func TestCheckSyncStatus(t *testing.T) {
 			expected: &SyncStatus{
 				NeedsSync: true,
 				Reason:    "stale",
-				Warning:   "Stack sync is stale. Run 'stack refresh' to check for merged PRs.",
+				Warning:   "Stack sync is stale. Run 'stack restack' to check for merged PRs.",
 			},
 		},
 		{
@@ -506,7 +506,7 @@ func TestCheckSyncStatus(t *testing.T) {
 			expected: &SyncStatus{
 				NeedsSync: true,
 				Reason:    "hash_check_failed",
-				Warning:   "Could not verify stack sync status. Run 'stack refresh' to ensure consistency.",
+				Warning:   "Could not verify stack sync status. Run 'stack restack' to ensure consistency.",
 			},
 		},
 		{
@@ -1060,161 +1060,6 @@ func TestCheckoutChangeForEditing(t *testing.T) {
 					currentBranch, err := stackClient.git.GetCurrentBranch()
 					require.NoError(t, err)
 					assert.Equal(t, tt.expectBranch, currentBranch)
-				}
-
-				mockGithubClient.AssertExpectations(t)
-			})
-		})
-	}
-}
-
-func TestApplyRefresh(t *testing.T) {
-	tests := []struct {
-		name        string
-		setup       func(*testing.T, *Client, *gh.MockGithubClient) *StackContext
-		expectError error
-	}{
-		{
-			name: "Success_OnTOPBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
-				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
-
-				stack, err := client.CreateStack("test-stack", "main")
-				require.NoError(t, err)
-
-				// Create a change
-				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
-					"PR-UUID":  "1111111111111111",
-					"PR-Stack": "test-stack",
-				})
-
-				// Mark first change as merged
-				prData := &model.PRData{
-					Version: 1,
-					PRs: map[string]*model.PR{
-						"1111111111111111": {
-							PRNumber: 101,
-							State:    "merged",
-						},
-					},
-				}
-				err = client.savePRs("test-stack", prData)
-				require.NoError(t, err)
-
-				stackCtx, err := client.GetStackContextByName("test-stack")
-				require.NoError(t, err)
-
-				// Ensure we're on TOP branch
-				err = client.git.CheckoutBranch(stack.Branch)
-				require.NoError(t, err)
-
-				return stackCtx
-			},
-		},
-		{
-			name: "Error_NotOnTOPBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
-				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
-
-				_, err := client.CreateStack("test-stack", "main")
-				require.NoError(t, err)
-
-				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
-					"PR-UUID":  "2222222222222222",
-					"PR-Stack": "test-stack",
-				})
-
-				// Switch to main branch (not TOP)
-				err = client.git.CheckoutBranch("main")
-				require.NoError(t, err)
-
-				// Reload context after switching - it should now have stackActive=false
-				stackCtx, err := client.GetStackContext()
-				require.NoError(t, err)
-
-				return stackCtx
-			},
-			expectError: fmt.Errorf("must be on TOP branch"),
-		},
-		{
-			name: "Error_OnUUIDBranch",
-			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
-				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
-
-				_, err := client.CreateStack("test-stack", "main")
-				require.NoError(t, err)
-
-				uuid := "3333333333333333"
-				commitHash := testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
-					"PR-UUID":  uuid,
-					"PR-Stack": "test-stack",
-				})
-
-				// Create and checkout UUID branch
-				uuidBranch := fmt.Sprintf("test-user/stack-test-stack/%s", uuid)
-				err = client.git.CreateAndCheckoutBranchAt(uuidBranch, commitHash)
-				require.NoError(t, err)
-
-				// Reload context after switching - it should now have onUUIDBranch=true
-				stackCtx, err := client.GetStackContext()
-				require.NoError(t, err)
-
-				return stackCtx
-			},
-			expectError: fmt.Errorf("must be on TOP branch"),
-		},
-		{
-			name: "Error_UncommittedChanges",
-			setup: func(t *testing.T, client *Client, mockGithubClient *gh.MockGithubClient) *StackContext {
-				mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil)
-
-				stack, err := client.CreateStack("test-stack", "main")
-				require.NoError(t, err)
-
-				_ = testutil.CreateCommitWithTrailers(t, client.git.(*git.Client), "Test change", "Description", map[string]string{
-					"PR-UUID":  "4444444444444444",
-					"PR-Stack": "test-stack",
-				})
-
-				stackCtx, err := client.GetStackContextByName("test-stack")
-				require.NoError(t, err)
-
-				// Ensure we're on TOP branch
-				err = client.git.CheckoutBranch(stack.Branch)
-				require.NoError(t, err)
-
-				// Create uncommitted changes
-				testFile := filepath.Join(client.git.GitRoot(), "uncommitted.txt")
-				err = os.WriteFile(testFile, []byte("uncommitted content"), 0644)
-				require.NoError(t, err)
-
-				return stackCtx
-			},
-			expectError: fmt.Errorf("cannot apply refresh with uncommitted changes"),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				mockGithubClient := &gh.MockGithubClient{}
-				stackClient := NewTestStack(t, mockGithubClient)
-
-				stackCtx := tt.setup(t, stackClient, mockGithubClient)
-
-				merged := stackCtx.StaleMergedChanges
-				err := stackClient.ApplyRefresh(stackCtx, merged)
-
-				if tt.expectError != nil {
-					require.Error(t, err)
-					assert.ErrorContains(t, err, tt.expectError.Error())
-				} else {
-					require.NoError(t, err)
-
-					// Verify stack metadata was updated
-					reloadedStack, err := stackClient.LoadStack("test-stack")
-					require.NoError(t, err)
-					assert.Equal(t, "main", reloadedStack.Base)
 				}
 
 				mockGithubClient.AssertExpectations(t)

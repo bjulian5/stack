@@ -40,7 +40,7 @@ func (c *Client) SyncPR(spec PRSpec) (*PR, error) {
 
 	if strings.ToLower(existingPR.State) == "merged" {
 		return nil, fmt.Errorf(
-			"PR #%d is already merged. Run 'stack refresh' to sync merged PRs",
+			"PR #%d is already merged. Run 'stack restack' to sync merged PRs",
 			existingPR.Number,
 		)
 	}

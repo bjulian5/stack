@@ -18,7 +18,6 @@ import (
 	"github.com/bjulian5/stack/cmd/newcmd"
 	"github.com/bjulian5/stack/cmd/pr"
 	"github.com/bjulian5/stack/cmd/push"
-	"github.com/bjulian5/stack/cmd/refresh"
 	"github.com/bjulian5/stack/cmd/restack"
 	"github.com/bjulian5/stack/cmd/status"
 	switchcmd "github.com/bjulian5/stack/cmd/switch"
@@ -59,7 +58,6 @@ func init() {
 		&bottom.Command{},
 		&switchcmd.Command{},
 		&push.Command{},
-		&refresh.Command{},
 		&restack.Command{},
 		&delete.Command{},
 		&cleanup.Command{},

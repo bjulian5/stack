@@ -140,8 +140,8 @@ func (c *Command) Run(ctx context.Context) error {
 	if res.StaleMergedCount > 0 {
 		ui.Println("")
 		ui.Warning("One or more PRs have been merged on GitHub.")
-		ui.Print("Please run 'stack refresh' to sync your stack before pushing.")
-		return fmt.Errorf("stack out of sync - run 'stack refresh' first")
+		ui.Print("Please run 'stack restack' to sync your stack before pushing.")
+		return fmt.Errorf("stack out of sync - run 'stack restack' first")
 	}
 
 	if c.DryRun {

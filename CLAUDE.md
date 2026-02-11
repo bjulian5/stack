@@ -158,8 +158,7 @@ stack/
 │   ├── up/up.go                     # stack up command
 │   ├── down/down.go                 # stack down command
 │   ├── push/push.go                 # stack push command (--dry-run, --force flags)
-│   ├── refresh/refresh.go           # stack refresh command
-│   ├── restack/restack.go           # stack restack command
+│   ├── restack/restack.go           # stack restack command (alias: refresh)
 │   ├── delete/delete.go             # stack delete command
 │   ├── cleanup/cleanup.go           # stack cleanup command
 │   ├── pr/
@@ -249,8 +248,8 @@ The codebase has completed **Phase 1** (Foundation), **Phase 2** (Git Hooks), **
 - ✅ Draft status tracking (local vs remote)
 
 **Phase 5 - Sync & Refresh (✅ Completed):**
-- ✅ `stack refresh` - Detect and handle merged PRs
-- ✅ `stack restack` - Rebase on base branch with recovery system
+- ✅ `stack restack` - Sync merged PRs from GitHub and rebase on base branch (alias: `refresh`)
+
 - ✅ `stack fixup` - Interactive fixup commits with autosquash
 - ✅ Rebase state management for conflict recovery
 - ✅ Bottom-up merge validation

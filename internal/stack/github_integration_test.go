@@ -1078,6 +1078,17 @@ func TestSyncPRMetadata(t *testing.T) {
 
 				assert.False(t, stackCtx.Stack.LastSynced.IsZero())
 
+				// Verify MergedAt is propagated for merged PRs
+				for _, change := range stackCtx.AllChanges {
+					if change.PR != nil && change.PR.IsMerged() {
+						assert.False(t, change.MergedAt.IsZero(), "MergedAt should be set for merged PR #%d", change.PR.PRNumber)
+					}
+				}
+
+				// Zero out MergedAt for comparison since it uses time.Now() in mocks
+				for _, change := range stackCtx.AllChanges {
+					change.MergedAt = time.Time{}
+				}
 				assert.Equal(t, tt.expectedChanges, stackCtx.AllChanges)
 
 				mockGithubClient.AssertExpectations(t)

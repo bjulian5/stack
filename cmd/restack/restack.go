@@ -26,13 +26,14 @@ type Command struct {
 
 func (c *Command) Register(parent *cobra.Command) {
 	command := &cobra.Command{
-		Use:   "restack",
-		Short: "Rebase the stack on top of the latest base branch changes",
+		Use:     "restack",
+		Aliases: []string{"refresh"},
+		Short:   "Rebase the stack on top of the latest base branch changes",
 		Long: `Rebase the stack on top of the latest base branch changes.
 
-By default, this command fetches from the remote and rebases your stack on top
-of the updated base branch. This is the typical workflow for pulling in upstream
-changes before pushing your stack.
+This command syncs PR merge status from GitHub, detects merged PRs, and rebases
+your stack on top of the updated base branch. Merged PRs are automatically
+removed from the stack during the rebase.
 
 Use --onto to move your stack to a different base branch (e.g., from main to develop).
 When using --onto, fetching is NOT automatic - add --fetch if needed.
@@ -120,7 +121,8 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	ui.Info("Checking PR merge status on GitHub...")
-	if _, err := c.Stack.SyncPRMetadata(stackCtx); err != nil {
+	result, err := c.Stack.SyncPRMetadata(stackCtx)
+	if err != nil {
 		return fmt.Errorf("failed to sync PR metadata: %w", err)
 	}
 
@@ -133,6 +135,17 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	ui.Successf("Restacked on %s", targetBase)
+
+	if result.StaleMergedCount > 0 {
+		ui.Println("")
+		ui.Print(ui.RenderMergedPRsInline(result.StaleMergedChanges))
+		ui.Successf("Stack restacked: %d merged, %d remaining", result.StaleMergedCount, result.RemainingCount)
+		if result.RemainingCount > 0 {
+			ui.Println("")
+			ui.Info("Run 'stack push' to update PR base branches on GitHub")
+		}
+	}
+
 	return nil
 }
 

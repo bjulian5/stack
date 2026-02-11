@@ -91,7 +91,7 @@ stack top
 stack push
 
 # 7. After PRs merge, sync your stack
-stack refresh
+stack restack
 ```
 
 ---
@@ -134,7 +134,7 @@ Trailers travel with commits through rebase and amend operations, creating an im
 
 ### Bottom-Up Merging
 
-PRs must merge in order from bottom to top. Merging out of order breaks dependencies, so Stack validates this when you run `stack refresh`.
+PRs must merge in order from bottom to top. Merging out of order breaks dependencies, so Stack validates this when you run `stack restack`.
 
 ---
 
@@ -250,7 +250,7 @@ stack push
 ### Handling Merged PRs
 
 ```bash
-stack refresh
+stack restack
 ```
 
 Stack automatically:
@@ -323,8 +323,7 @@ stack cleanup             # Clean up merged stacks
 
 ### GitHub Integration
 - `stack push [--dry-run] [--force]` - Push stack to GitHub
-- `stack refresh` - Sync with GitHub and detect merged PRs
-- `stack restack [--fetch] [--onto <branch>] [--recover]` - Rebase on base branch
+- `stack restack [--fetch] [--onto <branch>] [--recover]` - Sync merged PRs and rebase on base branch
 
 ### PR Management
 - `stack pr ready [--all]` - Mark changes as ready for review

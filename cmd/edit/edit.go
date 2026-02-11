@@ -92,7 +92,7 @@ func (c *Command) Run(ctx context.Context) error {
 	// Error if trying to edit a merged change
 	if c.Stack.IsChangeMerged(selectedChange) {
 		return fmt.Errorf(
-			"cannot edit change #%d - it has been merged on GitHub\nRun 'stack refresh' to sync your stack",
+			"cannot edit change #%d - it has been merged on GitHub\nRun 'stack restack' to sync your stack",
 			selectedChange.Position,
 		)
 	}

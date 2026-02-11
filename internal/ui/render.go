@@ -183,37 +183,27 @@ func RenderPushSummary(created, updated, skipped int) string {
 	return output.String()
 }
 
-// RenderMergedPRsTable renders a table of merged PRs for the refresh command
-func RenderMergedPRsTable(mergedChanges []*model.Change) string {
+// RenderMergedPRsInline renders one line per merged PR in a compact inline format.
+func RenderMergedPRsInline(mergedChanges []*model.Change) string {
 	if len(mergedChanges) == 0 {
 		return ""
 	}
 
-	rows := make([][]string, len(mergedChanges))
-	for i, change := range mergedChanges {
-		prLabel := "-"
+	var output strings.Builder
+	for _, change := range mergedChanges {
+		prLabel := ""
 		if !change.IsLocal() {
-			prLabel = StatusMergedStyle.Render(fmt.Sprintf("#%d", change.PR.PRNumber))
+			prLabel = fmt.Sprintf("#%d ", change.PR.PRNumber)
 		}
 
-		mergedAt := "-"
+		mergedAt := ""
 		if !change.MergedAt.IsZero() {
-			mergedAt = change.MergedAt.Format("2006-01-02 15:04")
+			mergedAt = " (merged " + change.MergedAt.Format("2006-01-02 15:04") + ")"
 		}
 
-		rows[i] = []string{
-			fmt.Sprintf("%d", i+1),
-			prLabel,
-			Truncate(change.Title, 40),
-			mergedAt,
-		}
+		output.WriteString(StatusMergedStyle.Render("✓ "+prLabel+Truncate(change.Title, 50)+mergedAt) + "\n")
 	}
-
-	t := NewStackTable().
-		Headers("#", "PR", "TITLE", "MERGED AT").
-		Rows(rows...)
-
-	return "\n" + t.String() + "\n"
+	return output.String()
 }
 
 // RenderStackDetailsTable renders a detailed table view of a single stack

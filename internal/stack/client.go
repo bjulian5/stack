@@ -154,7 +154,7 @@ func (c *Client) CheckSyncStatus(stackName string) (*SyncStatus, error) {
 		return &SyncStatus{
 			NeedsSync: true,
 			Reason:    "never_synced",
-			Warning:   "Stack has never been synced with GitHub. Run 'stack refresh' to check for merged PRs.",
+			Warning:   "Stack has never been synced with GitHub. Run 'stack restack' to check for merged PRs.",
 		}, nil
 	}
 
@@ -163,7 +163,7 @@ func (c *Client) CheckSyncStatus(stackName string) (*SyncStatus, error) {
 		return &SyncStatus{
 			NeedsSync: true,
 			Reason:    "hash_check_failed",
-			Warning:   "Could not verify stack sync status. Run 'stack refresh' to ensure consistency.",
+			Warning:   "Could not verify stack sync status. Run 'stack restack' to ensure consistency.",
 		}, nil
 	}
 
@@ -171,7 +171,7 @@ func (c *Client) CheckSyncStatus(stackName string) (*SyncStatus, error) {
 		return &SyncStatus{
 			NeedsSync: true,
 			Reason:    "commits_changed",
-			Warning:   "Stack has new commits since last sync. Run 'stack refresh' to ensure consistency with GitHub.",
+			Warning:   "Stack has new commits since last sync. Run 'stack restack' to ensure consistency with GitHub.",
 		}, nil
 	}
 
@@ -179,7 +179,7 @@ func (c *Client) CheckSyncStatus(stackName string) (*SyncStatus, error) {
 		return &SyncStatus{
 			NeedsSync: true,
 			Reason:    "stale",
-			Warning:   "Stack sync is stale. Run 'stack refresh' to check for merged PRs.",
+			Warning:   "Stack sync is stale. Run 'stack restack' to check for merged PRs.",
 		}, nil
 	}
 
@@ -774,6 +774,7 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 			// merged from closed. Use the IsMerged flag to set the canonical state.
 			if prState.IsMerged {
 				change.PR.State = "merged"
+				change.MergedAt = prState.MergedAt
 			} else {
 				change.PR.State = strings.ToLower(prState.State)
 			}
@@ -835,35 +836,6 @@ func (c *Client) SyncPRMetadata(stackCtx *StackContext) (*RefreshResult, error) 
 		RemainingCount:     remainingCount,
 		StaleMergedChanges: freshStaleMerged,
 	}, nil
-}
-
-// ApplyRefresh applies a refresh by rebasing the TOP branch onto the latest base.
-// Requires: current branch is TOP, no uncommitted changes.
-// This performs the git operations to actually apply merged PR removals.
-func (c *Client) ApplyRefresh(stackCtx *StackContext, merged []*model.Change) error {
-	// Validate on TOP branch (not editing a specific change)
-	if !stackCtx.IsStack() || stackCtx.OnUUIDBranch() {
-		currentBranch, _ := c.git.GetCurrentBranch()
-		return fmt.Errorf("must be on TOP branch to apply refresh, currently on %s", currentBranch)
-	}
-
-	hasChanges, err := c.git.HasUncommittedChanges()
-	if err != nil {
-		return fmt.Errorf("failed to check working tree: %w", err)
-	}
-	if hasChanges {
-		return fmt.Errorf("cannot apply refresh with uncommitted changes - commit or stash first")
-	}
-
-	// Rebase TOP branch using Restack (handles fetch + update-ref + rebase)
-	if err := c.Restack(stackCtx, RestackOptions{
-		Onto:  stackCtx.Stack.Base,
-		Fetch: true,
-	}); err != nil {
-		return fmt.Errorf("failed to rebase TOP: %w", err)
-	}
-
-	return nil
 }
 
 // RefreshStackMetadata syncs metadata from GitHub without staleness threshold.
