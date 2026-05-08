@@ -250,7 +250,7 @@ The codebase has completed **Phase 1** (Foundation), **Phase 2** (Git Hooks), **
 **Phase 5 - Sync & Refresh (✅ Completed):**
 - ✅ `stack restack` - Sync merged PRs from GitHub and rebase on base branch (alias: `refresh`)
 
-- ✅ `stack fixup` - Interactive fixup commits with autosquash
+- ✅ `stack fixup [commit]` - Interactive or direct commit-ref fixup commits with autosquash
 - ✅ Rebase state management for conflict recovery
 - ✅ Bottom-up merge validation
 

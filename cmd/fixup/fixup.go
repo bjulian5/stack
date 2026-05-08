@@ -9,6 +9,7 @@ import (
 	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
+	"github.com/bjulian5/stack/internal/model"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
 )
@@ -16,20 +17,24 @@ import (
 // Command creates a fixup commit for a selected change in the stack
 type Command struct {
 	// Clients (can be mocked in tests)
-	Git   *git.Client
-	Stack *stack.Client
-	GH    *gh.Client
+	Git          *git.Client
+	Stack        *stack.Client
+	GH           *gh.Client
+	TargetCommit string
 }
 
 func (c *Command) Register(parent *cobra.Command) {
 	command := &cobra.Command{
-		Use:   "fixup",
+		Use:   "fixup [commit]",
 		Short: "Create a fixup commit for a change in the stack",
-		Long: `Interactively select a change to fixup using a fuzzy finder.
+		Long: `Create a fixup commit for a change in the stack.
+
+With no argument, interactively select a change to fixup using a fuzzy finder.
+With a commit argument, resolve it as a git commit reference and verify it belongs to an active change in the current stack.
 
 Creates a fixup commit for the selected change and automatically squashes it using an autosquash rebase.
 This is similar to 'git commit --fixup <commit> && git rebase -i --autosquash <commit>^' but with
-an interactive fuzzy finder for change selection.
+stack-aware change selection and validation.
 
 Requirements:
 - Must be on a stack TOP branch
@@ -39,14 +44,20 @@ After successful rebase, you will remain on the TOP branch.
 
 Example:
   git add .
-  stack fixup`,
-		Args: cobra.NoArgs,
+  stack fixup
+  stack fixup HEAD~1
+  stack fixup abc1234`,
+		Args: cobra.MaximumNArgs(1),
 		PreRunE: func(cobraCmd *cobra.Command, args []string) error {
 			var err error
 			c.Git, c.GH, c.Stack, err = common.InitClients()
 			return err
 		},
 		RunE: func(cobraCmd *cobra.Command, args []string) error {
+			c.TargetCommit = ""
+			if len(args) > 0 {
+				c.TargetCommit = args[0]
+			}
 			return c.Run(cobraCmd.Context())
 		},
 	}
@@ -96,8 +107,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("no active changes to fixup: all changes are merged")
 	}
 
-	// Use fuzzy finder to select a change to fixup
-	selectedChange, err := ui.SelectChange(stackCtx.ActiveChanges)
+	selectedChange, err := c.selectChange(stackCtx)
 	if err != nil {
 		return err
 	}
@@ -142,4 +152,23 @@ func (c *Command) Run(ctx context.Context) error {
 	ui.Info("You are now on the TOP branch with the updated stack.")
 
 	return nil
+}
+
+func (c *Command) selectChange(stackCtx *stack.StackContext) (*model.Change, error) {
+	if c.TargetCommit == "" {
+		return ui.SelectChange(stackCtx.ActiveChanges)
+	}
+
+	targetHash, err := c.Git.ResolveCommitHash(c.TargetCommit)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, change := range stackCtx.ActiveChanges {
+		if change.CommitHash == targetHash {
+			return change, nil
+		}
+	}
+
+	return nil, fmt.Errorf("commit %s is not an active change in stack '%s'", c.TargetCommit, stackCtx.StackName)
 }

@@ -93,6 +93,16 @@ func (c *Client) GetCommitHash(ref string) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
+func (c *Client) ResolveCommitHash(ref string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--verify", ref+"^{commit}")
+	cmd.Dir = c.gitRoot
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve commit %s: %w\nOutput: %s", ref, err, string(output))
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 func (c *Client) GetCommits(branch string, base string) ([]Commit, error) {
 	cmd := exec.Command("git", "rev-list", "--reverse", fmt.Sprintf("%s..%s", base, branch))
 	cmd.Dir = c.gitRoot

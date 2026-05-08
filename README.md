@@ -240,8 +240,9 @@ stack push
 vim src/auth.go
 git add src/auth.go
 
-# Use fixup to squash into earlier commit
-stack fixup  # Select target commit from fuzzy finder
+# Use fixup to squash into an earlier commit
+stack fixup          # Select target commit from fuzzy finder
+stack fixup HEAD~1   # Or pass a commit ref directly
 
 # Push updates
 stack push
@@ -319,7 +320,7 @@ stack cleanup             # Clean up merged stacks
 ### Editing
 - `git commit` - Add a new change
 - `git commit --amend` - Update current change
-- `stack fixup` - Create fixup commit
+- `stack fixup [commit]` - Create fixup commit
 
 ### GitHub Integration
 - `stack push [--dry-run] [--force]` - Push stack to GitHub
@@ -422,4 +423,3 @@ Stack stores metadata in `.git/stack/<stack-name>/` and uses the `gh` CLI for al
 
 - [GitHub Issues](https://github.com/bjulian5/stack/issues) - Report bugs or request features
 - [Gerrit Code Review](https://www.gerritcodereview.com/) - Inspiration for the one-commit-per-PR model
-
