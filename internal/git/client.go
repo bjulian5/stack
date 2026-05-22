@@ -10,25 +10,62 @@ import (
 
 // Client provides git operations for a repository
 type Client struct {
-	gitRoot string
+	gitRoot      string // working tree root (from `git rev-parse --show-toplevel`)
+	gitDir       string // per-worktree git dir (from `git rev-parse --git-dir`)
+	gitCommonDir string // shared git dir across worktrees (from `git rev-parse --git-common-dir`)
 }
 
 // NewClient creates a new git client for the current directory
 func NewClient() (*Client, error) {
-	gitRoot, err := getGitRoot()
+	gitRoot, err := getGitRoot("")
 	if err != nil {
 		return nil, err
 	}
-	return &Client{gitRoot: gitRoot}, nil
+	return newClientAt(gitRoot)
 }
 
+// NewClientAt creates a git client rooted at the given path.
+// The path should be the working tree root (or any directory inside a worktree);
+// git dir and common dir are resolved via `git rev-parse` so worktrees are handled correctly.
 func NewClientAt(path string) (*Client, error) {
-	return &Client{gitRoot: path}, nil
+	return newClientAt(path)
 }
 
-// GitRoot returns the root directory of the git repository
+func newClientAt(gitRoot string) (*Client, error) {
+	gitDir, err := revParseAbsolute(gitRoot, "--git-dir")
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve git dir: %w", err)
+	}
+	gitCommonDir, err := revParseAbsolute(gitRoot, "--git-common-dir")
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve git common dir: %w", err)
+	}
+	return &Client{
+		gitRoot:      gitRoot,
+		gitDir:       gitDir,
+		gitCommonDir: gitCommonDir,
+	}, nil
+}
+
+// GitRoot returns the working tree root of the repository (or current worktree).
 func (c *Client) GitRoot() string {
 	return c.gitRoot
+}
+
+// GitDir returns the per-worktree git directory.
+// In the main checkout this is `<root>/.git`; in a linked worktree it is
+// `<main>/.git/worktrees/<name>`. Use this for state that git itself scopes
+// per-worktree (rebase-merge, rebase-apply, HEAD, index, etc).
+func (c *Client) GitDir() string {
+	return c.gitDir
+}
+
+// GitCommonDir returns the shared git directory across all worktrees of the
+// repository — always the main repo's `.git`. Use this for metadata that
+// should be visible from any worktree (refs, hooks, packed objects, and the
+// stack tool's own metadata).
+func (c *Client) GitCommonDir() string {
+	return c.gitCommonDir
 }
 
 func (c *Client) GetCurrentBranch() (string, error) {
@@ -148,12 +185,29 @@ func (c *Client) GetCommit(hash string) (Commit, error) {
 	}, nil
 }
 
-// getGitRoot is a private helper to get the git root directory
-func getGitRoot() (string, error) {
+// getGitRoot returns the working tree root. If dir is empty the lookup runs
+// from the current working directory.
+func getGitRoot(dir string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	if dir != "" {
+		cmd.Dir = dir
+	}
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("not in a git repository: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// revParseAbsolute resolves a `git rev-parse` path query into an absolute path.
+// We pass `--path-format=absolute` (git ≥ 2.31) so the result never depends on
+// the caller's cwd, and we still set `cmd.Dir` so worktree detection works.
+func revParseAbsolute(dir, flag string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--path-format=absolute", flag)
+	cmd.Dir = dir
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse %s failed: %w", flag, err)
 	}
 	return strings.TrimSpace(string(output)), nil
 }
@@ -226,8 +280,8 @@ func (c *Client) CommitTree(treeHash string, parentHash string, message string) 
 }
 
 func (c *Client) IsRebaseInProgress() bool {
-	rebaseMerge := filepath.Join(c.gitRoot, ".git", "rebase-merge")
-	rebaseApply := filepath.Join(c.gitRoot, ".git", "rebase-apply")
+	rebaseMerge := filepath.Join(c.gitDir, "rebase-merge")
+	rebaseApply := filepath.Join(c.gitDir, "rebase-apply")
 
 	if _, err := os.Stat(rebaseMerge); err == nil {
 		return true

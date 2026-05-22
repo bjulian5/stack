@@ -33,6 +33,7 @@ type GitClient interface {
 	GetCommits(branch, base string) ([]git.Commit, error)
 	GetCommitHash(ref string) (string, error)
 	GitRoot() string
+	GitCommonDir() string
 	GetRemoteName() (string, error)
 	Fetch(remote string) error
 	Rebase(onto string) error
@@ -59,10 +60,11 @@ type GithubClient interface {
 
 // Client provides stack operations
 type Client struct {
-	git      GitClient
-	gh       GithubClient
-	gitRoot  string
-	username string
+	git          GitClient
+	gh           GithubClient
+	gitRoot      string
+	gitCommonDir string
+	username     string
 }
 
 // NewClient creates a new stack client
@@ -73,10 +75,11 @@ func NewClient(gitOps GitClient, ghClient GithubClient) *Client {
 		panic(fmt.Sprintf("failed to get username: %v", err))
 	}
 	return &Client{
-		git:      gitOps,
-		gh:       ghClient,
-		gitRoot:  gitOps.GitRoot(),
-		username: username,
+		git:          gitOps,
+		gh:           ghClient,
+		gitRoot:      gitOps.GitRoot(),
+		gitCommonDir: gitOps.GitCommonDir(),
+		username:     username,
 	}
 }
 
@@ -85,12 +88,17 @@ func (c *Client) SetUsernameForTesting(username string) {
 	c.username = username
 }
 
+// getStackDir returns the on-disk directory for a single stack's metadata.
+// Stack metadata is stored under the shared git common dir so it is visible
+// from any worktree of the repository.
 func (c *Client) getStackDir(stackName string) string {
-	return filepath.Join(c.gitRoot, ".git", "stack", stackName)
+	return filepath.Join(c.gitCommonDir, "stack", stackName)
 }
 
+// getStacksRootDir returns the root directory holding every stack's metadata.
+// Lives under the shared git common dir for the same reason as getStackDir.
 func (c *Client) getStacksRootDir() string {
-	return filepath.Join(c.gitRoot, ".git", "stack")
+	return filepath.Join(c.gitCommonDir, "stack")
 }
 
 func (c *Client) LoadStack(name string) (*model.Stack, error) {

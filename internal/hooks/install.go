@@ -17,8 +17,13 @@ exec stack hook %s "$@"
 `, name, name)
 }
 
-func InstallHooks(gitRoot string) error {
-	hooksDir := filepath.Join(gitRoot, ".git", "hooks")
+// InstallHooks installs stack's git hooks into the repository's shared hooks
+// directory. The caller must pass the common git directory (from
+// `git rev-parse --git-common-dir`) so that hooks installed from a linked
+// worktree still land in the main repo's `.git/hooks` and fire for every
+// worktree.
+func InstallHooks(gitCommonDir string) error {
+	hooksDir := filepath.Join(gitCommonDir, "hooks")
 
 	if err := os.MkdirAll(hooksDir, 0755); err != nil {
 		return fmt.Errorf("failed to create hooks directory: %w", err)
@@ -33,8 +38,8 @@ func InstallHooks(gitRoot string) error {
 	return nil
 }
 
-func UninstallHooks(gitRoot string) error {
-	hooksDir := filepath.Join(gitRoot, ".git", "hooks")
+func UninstallHooks(gitCommonDir string) error {
+	hooksDir := filepath.Join(gitCommonDir, "hooks")
 
 	for _, hook := range stackHooks {
 		hookPath := filepath.Join(hooksDir, hook)
@@ -59,8 +64,8 @@ func UninstallHooks(gitRoot string) error {
 	return nil
 }
 
-func CheckHooksInstalled(gitRoot string) bool {
-	hooksDir := filepath.Join(gitRoot, ".git", "hooks")
+func CheckHooksInstalled(gitCommonDir string) bool {
+	hooksDir := filepath.Join(gitCommonDir, "hooks")
 
 	for _, hook := range stackHooks {
 		hookPath := filepath.Join(hooksDir, hook)

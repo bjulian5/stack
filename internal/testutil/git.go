@@ -82,3 +82,21 @@ func WriteFile(t *testing.T, gitRoot, filename, content string) {
 	err := os.WriteFile(filePath, []byte(content), 0644)
 	require.NoError(t, err, "failed to write file: %s", filename)
 }
+
+// NewWorktree creates a linked git worktree on a fresh branch off of the given
+// base client and returns a git.Client rooted at the new worktree. The worktree
+// is created on a new branch so it does not conflict with whatever is checked
+// out in the main repo. Cleanup is handled by t.TempDir().
+func NewWorktree(t *testing.T, base *git.Client, branchName string) *git.Client {
+	t.Helper()
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+
+	cmd := exec.Command("git", "worktree", "add", "-b", branchName, worktreePath)
+	cmd.Dir = base.GitRoot()
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git worktree add failed: %s", string(output))
+
+	wtClient, err := git.NewClientAt(worktreePath)
+	require.NoError(t, err, "failed to construct git client for worktree at %s", worktreePath)
+	return wtClient
+}

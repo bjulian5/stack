@@ -19,7 +19,7 @@ func TestGetRepositoryConfigPath(t *testing.T) {
 	gitClient := testutil.NewTestGitClient(t)
 	client := NewClient(gitClient, &gh.MockGithubClient{})
 
-	expected := filepath.Join(client.gitRoot, ".git", "stack", "config.json")
+	expected := filepath.Join(client.gitCommonDir, "stack", "config.json")
 	actual := client.getRepositoryConfigPath()
 
 	assert.Equal(t, expected, actual)

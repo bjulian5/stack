@@ -60,7 +60,7 @@ func (c *Command) Run(cmd *cobra.Command, args []string) error {
 		ui.Info("Reinstalling...")
 	}
 
-	if err := hooks.InstallHooks(c.Git.GitRoot()); err != nil {
+	if err := hooks.InstallHooks(c.Git.GitCommonDir()); err != nil {
 		return fmt.Errorf("failed to install git hooks: %w", err)
 	}
 	ui.Success("Git hooks installed")
