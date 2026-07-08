@@ -2,7 +2,9 @@ package stack
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -95,4 +97,73 @@ func TestStackClient_IsInstalledInWorktree(t *testing.T) {
 	installed, err := wtStack.IsInstalled()
 	require.NoError(t, err, "IsInstalled in a worktree must not error")
 	assert.False(t, installed)
+}
+
+func TestRestackFetchFromWorktreeDoesNotMoveCheckedOutBaseBranch(t *testing.T) {
+	main := testutil.NewTestGitClient(t)
+	originalMain, err := main.GetCommitHash("main")
+	require.NoError(t, err)
+
+	remotePath := filepath.Join(t.TempDir(), "remote.git")
+	runGitForWorktreeTest(t, "", "init", "--bare", remotePath)
+	runGitForWorktreeTest(t, main.GitRoot(), "remote", "add", "origin", remotePath)
+	runGitForWorktreeTest(t, main.GitRoot(), "push", "-u", "origin", "main")
+
+	wt := testutil.NewWorktree(t, main, "stack-worktree")
+	mockGithubClient := &gh.MockGithubClient{}
+	mockGithubClient.On("GetRepoInfo").Return("owner", "repo", nil)
+	wtStack := NewTestStackWithClients(t, mockGithubClient, wt)
+
+	stack, err := wtStack.CreateStack("demo", "main")
+	require.NoError(t, err)
+	_ = testutil.CreateCommitWithTrailers(t, wt, "Stack change", "Description", map[string]string{
+		"PR-UUID":  "1111111111111111",
+		"PR-Stack": "demo",
+	})
+	stackCtx, err := wtStack.GetStackContextByName("demo")
+	require.NoError(t, err)
+	require.NoError(t, wt.CheckoutBranch(stack.Branch))
+
+	clonePath := filepath.Join(t.TempDir(), "clone")
+	runGitForWorktreeTest(t, "", "clone", remotePath, clonePath)
+	runGitForWorktreeTest(t, clonePath, "config", "user.email", "test@example.com")
+	runGitForWorktreeTest(t, clonePath, "config", "user.name", "Test User")
+	require.NoError(t, os.WriteFile(filepath.Join(clonePath, "remote-change.txt"), []byte("remote\n"), 0644))
+	runGitForWorktreeTest(t, clonePath, "add", ".")
+	runGitForWorktreeTest(t, clonePath, "commit", "-m", "Remote main change")
+	runGitForWorktreeTest(t, clonePath, "push", "origin", "main")
+	remoteMain := runGitForWorktreeTest(t, clonePath, "rev-parse", "HEAD")
+
+	err = wtStack.Restack(stackCtx, RestackOptions{Onto: "main", Fetch: true})
+	require.NoError(t, err)
+
+	mainAfterRestack, err := main.GetCommitHash("main")
+	require.NoError(t, err)
+	assert.Equal(t, originalMain, mainAfterRestack, "restacking from a linked worktree must not move the checked-out local main ref")
+
+	fetchedOriginMain, err := main.GetCommitHash("origin/main")
+	require.NoError(t, err)
+	assert.Equal(t, remoteMain, fetchedOriginMain)
+
+	reloadedStack, err := wtStack.LoadStack("demo")
+	require.NoError(t, err)
+	assert.Equal(t, "main", reloadedStack.Base)
+	assert.Equal(t, remoteMain, reloadedStack.BaseRef)
+
+	stackParent, err := wt.GetCommitHash("HEAD~1")
+	require.NoError(t, err)
+	assert.Equal(t, remoteMain, stackParent, "stack commit should be rebased onto fetched origin/main")
+
+	mockGithubClient.AssertExpectations(t)
+}
+
+func runGitForWorktreeTest(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %v failed: %s", args, string(output))
+	return strings.TrimSpace(string(output))
 }

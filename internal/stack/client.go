@@ -914,9 +914,13 @@ type RestackOptions struct {
 
 // Restack rebases the stack on top of the specified base branch.
 // Always updates stack metadata with the new base (idempotent if unchanged).
-// If opts.Fetch is true, fetches from remote and updates local base ref before rebasing.
+// If opts.Fetch is true, fetches from remote and rebases onto the base branch's
+// upstream ref without mutating the local base branch. Local branch refs are
+// shared across linked worktrees, so moving them behind another checkout's back
+// leaves that checkout's index/worktree appearing as a reverse diff.
 func (c *Client) Restack(stackCtx *StackContext, opts RestackOptions) error {
 	targetBase := opts.Onto
+	rebaseBase := targetBase
 
 	if opts.Fetch {
 		ui.Info("Fetching from remote...")
@@ -924,19 +928,22 @@ func (c *Client) Restack(stackCtx *StackContext, opts RestackOptions) error {
 			return fmt.Errorf("failed to fetch: %w", err)
 		}
 
-		if err := c.UpdateLocalBaseRef(targetBase); err != nil {
-			// Non-fatal: show warning and continue
-			ui.Warningf("could not update local base ref: %v", err)
+		upstream, err := c.git.GetUpstreamBranch(targetBase)
+		if err != nil {
+			return fmt.Errorf("failed to get upstream for %s: %w", targetBase, err)
+		}
+		if upstream != "" {
+			rebaseBase = upstream
 		}
 	}
 
-	if err := c.git.Rebase(targetBase); err != nil {
+	if err := c.git.Rebase(rebaseBase); err != nil {
 		return err
 	}
 
-	ref, err := c.git.GetCommitHash(targetBase)
+	ref, err := c.git.GetCommitHash(rebaseBase)
 	if err != nil {
-		return fmt.Errorf("failed to get target base hash: %w", err)
+		return fmt.Errorf("failed to get target base hash for %s: %w", rebaseBase, err)
 	}
 
 	stackCtx.Stack.BaseRef = ref
