@@ -103,13 +103,6 @@ func (c *Command) deleteSelected(candidates []stack.CleanupCandidate, indices []
 		ui.Infof("Cleaning up stack: %s", stack.Name)
 		ui.Println("")
 
-		if candidate.Reason == "all_merged" {
-			if err := c.Stack.SyncVisualizationComments(candidate.StackCtx); err != nil {
-				ui.Errorf("updating visualization comments for stack %s: %v", stack.Name, err)
-				continue
-			}
-		}
-
 		if err := c.Stack.DeleteStack(candidate.StackCtx.Stack.Name, true); err != nil {
 			ui.Errorf("cleaning up stack %s: %v", stack.Name, err)
 			continue

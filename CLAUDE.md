@@ -105,7 +105,6 @@ go build && ./stack list
 - `BatchGetPRs()` - Efficient batch PR queries via GraphQL
 - `GetPRState()` - Query individual PR merge status
 - `MarkPRReady()` / `MarkPRDraft()` - Toggle PR draft status
-- `ListPRComments()` / `CreatePRComment()` / `UpdatePRComment()` - Comment management for stack visualization
 - `OpenPR()` - Open PR in browser
 
 **Branch Naming Conventions**
@@ -186,7 +185,6 @@ stack/
 │   │   ├── client.go                # Stack metadata management (1385 lines - core orchestration)
 │   │   ├── config.go                # Stack and global configuration
 │   │   ├── context.go               # StackContext for branch-based state and branch helpers
-│   │   ├── visualization.go         # Stack visualization in PR comments
 │   │   └── rebase_state.go          # Rebase state management for recovery
 │   ├── gh/
 │   │   ├── client.go                # GitHub client via gh CLI
@@ -243,7 +241,6 @@ The codebase has completed **Phase 1** (Foundation), **Phase 2** (Git Hooks), **
 - ✅ `stack install` - Install hooks and configure git
 - ✅ `stack pr open` - Open PRs in browser (--select flag)
 - ✅ GitHub client with batch API queries
-- ✅ Stack visualization in PR comments with caching
 - ✅ Idempotent PR sync (create or update)
 - ✅ Draft status tracking (local vs remote)
 

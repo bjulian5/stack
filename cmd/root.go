@@ -20,6 +20,7 @@ import (
 	"github.com/bjulian5/stack/cmd/push"
 	"github.com/bjulian5/stack/cmd/restack"
 	"github.com/bjulian5/stack/cmd/status"
+	"github.com/bjulian5/stack/cmd/submit"
 	switchcmd "github.com/bjulian5/stack/cmd/switch"
 	"github.com/bjulian5/stack/cmd/top"
 	"github.com/bjulian5/stack/cmd/up"
@@ -58,6 +59,7 @@ func init() {
 		&bottom.Command{},
 		&switchcmd.Command{},
 		&push.Command{},
+		&submit.Command{},
 		&restack.Command{},
 		&delete.Command{},
 		&cleanup.Command{},
