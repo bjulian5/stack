@@ -3,6 +3,7 @@ package submit
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/bjulian5/stack/internal/common"
 	"github.com/bjulian5/stack/internal/gh"
 	"github.com/bjulian5/stack/internal/git"
+	"github.com/bjulian5/stack/internal/model"
 	"github.com/bjulian5/stack/internal/stack"
 	"github.com/bjulian5/stack/internal/ui"
 )
@@ -18,6 +20,7 @@ import (
 type Command struct {
 	DryRun, Merge, Squash, Rebase bool
 	MergeMethod                   string
+	Target                        string
 	Git                           *git.Client
 	Stack                         *stack.Client
 	GH                            GithubClient
@@ -32,15 +35,21 @@ type GithubClient interface {
 
 func (c *Command) Register(parent *cobra.Command) {
 	command := &cobra.Command{
-		Use: "submit", Short: "Merge or enqueue the entire stack",
-		Long: "Validate the local stack and submit its top pull request to GitHub's asynchronous stack merge endpoint.",
-		Args: cobra.NoArgs,
+		Use: "submit [commit-or-PR]", Short: "Merge or enqueue all or part of the stack",
+		Long: "Validate the local stack and submit through the selected commit or pull request. With no target, submit the entire active stack.",
+		Args: cobra.MaximumNArgs(1),
 		PreRunE: func(cmd *cobra.Command, _ []string) error {
 			var err error
 			c.Git, c.GH, c.Stack, err = common.InitClients()
 			return err
 		},
-		RunE: func(cmd *cobra.Command, _ []string) error { return c.Run(cmd.Context()) },
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c.Target = ""
+			if len(args) == 1 {
+				c.Target = args[0]
+			}
+			return c.Run(cmd.Context())
+		},
 	}
 	command.Flags().BoolVar(&c.DryRun, "dry-run", false, "Validate without submitting")
 	command.Flags().BoolP("yes", "y", false, "Accepted for compatibility; submission does not prompt")
@@ -68,6 +77,10 @@ func (c *Command) Run(ctx context.Context) error {
 	if len(stackCtx.ActiveChanges) == 0 {
 		return fmt.Errorf("stack has no unmerged pull requests")
 	}
+	changes, err := changesThrough(stackCtx.ActiveChanges, c.Target, c.Git.ResolveCommitHash)
+	if err != nil {
+		return err
+	}
 
 	numbers := make([]int, 0, len(stackCtx.AllChanges))
 	for _, change := range stackCtx.AllChanges {
@@ -92,7 +105,7 @@ func (c *Command) Run(ctx context.Context) error {
 			return fmt.Errorf("PR #%d metadata is stale; run 'stack push'", pr.Number)
 		}
 	}
-	for _, change := range stackCtx.ActiveChanges {
+	for _, change := range changes {
 		pr := details[change.PR.PRNumber]
 		if !strings.EqualFold(pr.State, "OPEN") || pr.Draft {
 			return fmt.Errorf("PR #%d must be open and ready for review", pr.Number)
@@ -106,7 +119,7 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("GitHub-native membership is stale (%s); run 'stack push'", plan.Action)
 	}
 
-	top := stackCtx.ActiveChanges[len(stackCtx.ActiveChanges)-1]
+	top := changes[len(changes)-1]
 	topDetails := details[top.PR.PRNumber]
 	action := "direct_merge"
 	method := ""
@@ -120,7 +133,7 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 
 	ui.Info("Stack submission order:")
-	for _, change := range stackCtx.ActiveChanges {
+	for _, change := range changes {
 		ui.Printf("  PR #%d  %s\n", change.PR.PRNumber, change.Title)
 	}
 	ui.Println("")
@@ -141,6 +154,33 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 	return c.poll(ctx, stackCtx.Stack.Owner, stackCtx.Stack.RepoName, top.PR.PRNumber, uuid, action)
 }
+
+func changesThrough(changes []*model.Change, target string, resolveCommit func(string) (string, error)) ([]*model.Change, error) {
+	if target == "" {
+		return changes, nil
+	}
+
+	if prNumber, err := strconv.Atoi(target); err == nil && prNumber > 0 {
+		for i, change := range changes {
+			if change.PR != nil && change.PR.PRNumber == prNumber {
+				return changes[:i+1], nil
+			}
+		}
+		return nil, fmt.Errorf("PR #%d is not an active change in this stack", prNumber)
+	}
+
+	hash, err := resolveCommit(target)
+	if err != nil {
+		return nil, err
+	}
+	for i, change := range changes {
+		if change.CommitHash == hash {
+			return changes[:i+1], nil
+		}
+	}
+	return nil, fmt.Errorf("commit %s is not an active change in this stack", target)
+}
+
 func mergeStart(result gh.MergeResult, status int, err error) (string, bool, error) {
 	if err != nil && gh.APIStatus(err) != 409 {
 		return "", false, err

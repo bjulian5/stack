@@ -90,7 +90,7 @@ stack top
 # 6. Push updates
 stack push
 
-# 7. Merge or enqueue the whole stack
+# 7. Merge or enqueue the stack
 stack submit
 
 # 8. After it merges, sync local history
@@ -137,7 +137,7 @@ Trailers travel with commits through rebase and amend operations, creating an im
 
 ### GitHub-Native Submission
 
-`stack push` registers multi-PR stacks with GitHub. `stack submit` sends the top PR to GitHub's asynchronous merge endpoint, which merges or enqueues the stack as one operation.
+`stack push` registers multi-PR stacks with GitHub. `stack submit` sends the selected top PR to GitHub's asynchronous merge endpoint, which merges or enqueues that PR and every PR below it as one operation. With no target, it selects the top of the active stack.
 
 ---
 
@@ -205,6 +205,8 @@ It also reconciles GitHub-native membership. Appending a new top PR is increment
 ```bash
 stack submit --dry-run  # Validate local and remote structure
 stack submit            # Submit the full merge set immediately
+stack submit HEAD~2     # Submit through a commit
+stack submit 1234       # Submit through PR #1234
 stack submit --squash   # Override the repository default merge method
 ```
 

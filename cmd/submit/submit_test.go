@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bjulian5/stack/internal/gh"
+	"github.com/bjulian5/stack/internal/model"
 )
 
 type fakeGithub struct {
@@ -75,6 +76,48 @@ func TestRegisterAcceptsLegacyYesFlag(t *testing.T) {
 	submit, _, err := root.Find([]string{"submit"})
 	require.NoError(t, err)
 	require.NoError(t, submit.ParseFlags([]string{"--yes"}))
+}
+
+func TestChangesThrough(t *testing.T) {
+	changes := []*model.Change{
+		{CommitHash: "aaa", PR: &model.PR{PRNumber: 10}},
+		{CommitHash: "bbb", PR: &model.PR{PRNumber: 11}},
+		{CommitHash: "ccc", PR: &model.PR{PRNumber: 12}},
+	}
+	resolve := func(ref string) (string, error) {
+		if ref == "HEAD~1" {
+			return "bbb", nil
+		}
+		if ref == "main" {
+			return "base", nil
+		}
+		return "", errors.New("unknown commit")
+	}
+	tests := []struct {
+		name    string
+		target  string
+		want    []*model.Change
+		wantErr error
+	}{
+		{name: "whole stack", want: changes},
+		{name: "through PR", target: "11", want: changes[:2]},
+		{name: "through commit", target: "HEAD~1", want: changes[:2]},
+		{name: "PR not active", target: "99", wantErr: errors.New("PR #99 is not an active change")},
+		{name: "commit not active", target: "main", wantErr: errors.New("commit main is not an active change")},
+		{name: "invalid commit", target: "missing", wantErr: errors.New("unknown commit")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := changesThrough(changes, tt.target, resolve)
+			if tt.wantErr != nil {
+				assert.ErrorContains(t, err, tt.wantErr.Error())
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestMergeStart(t *testing.T) {
