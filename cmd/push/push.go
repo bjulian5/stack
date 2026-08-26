@@ -18,7 +18,7 @@ import (
 type Command struct {
 	// Flags
 	DryRun bool // Show what would happen without actually doing it
-	Force  bool // Force push all PRs (bypass diff check) and update visualizations
+	Force  bool // Force push all PRs (bypass diff check)
 
 	Git   *git.Client
 	Stack *stack.Client
@@ -59,26 +59,18 @@ Example:
 }
 
 // pushPR pushes a single PR to GitHub and returns PR number, URL, and whether it was newly created
-func (c *Command) pushPR(
+func (c *Command) syncPR(
 	stackCtx *stack.StackContext,
-	stackName string,
 	change model.Change,
 	prBranch string,
+	base string,
 	existingPRNumber int,
 ) (prNumber int, url string, isNew bool, err error) {
-	if err := c.Git.UpdateRef(prBranch, change.CommitHash); err != nil {
-		return 0, "", false, fmt.Errorf("failed to update branch %s: %w", prBranch, err)
-	}
-
-	if err := c.Git.Push(prBranch, true); err != nil {
-		return 0, "", false, fmt.Errorf("failed to push branch %s: %w", prBranch, err)
-	}
-
 	spec := gh.PRSpec{
 		Number: existingPRNumber,
 		Title:  change.Title,
 		Body:   change.Description,
-		Base:   change.DesiredBase,
+		Base:   base,
 		Head:   prBranch,
 		Draft:  change.GetDraftStatus(),
 	}
@@ -127,21 +119,17 @@ func (c *Command) Run(ctx context.Context) error {
 		ui.Warning("Uncommitted changes detected in the working directory.")
 	}
 
-	if len(stackCtx.ActiveChanges) == 0 {
-		ui.Info("No unmerged PRs to push - all changes are merged.")
-		return nil
-	}
-
-	res, err := c.Stack.SyncPRMetadata(stackCtx)
-	if err != nil {
-		return fmt.Errorf("failed to sync with GitHub: %w", err)
-	}
-
-	if res.StaleMergedCount > 0 {
-		ui.Println("")
-		ui.Warning("One or more PRs have been merged on GitHub.")
-		ui.Print("Please run 'stack restack' to sync your stack before pushing.")
-		return fmt.Errorf("stack out of sync - run 'stack restack' first")
+	if !c.DryRun {
+		res, err := c.Stack.SyncPRMetadata(stackCtx)
+		if err != nil {
+			return fmt.Errorf("failed to sync with GitHub: %w", err)
+		}
+		if res.StaleMergedCount > 0 {
+			ui.Println("")
+			ui.Warning("One or more PRs have been merged on GitHub.")
+			ui.Print("Please run 'stack restack' to sync your stack before pushing.")
+			return fmt.Errorf("stack out of sync - run 'stack restack' first")
+		}
 	}
 
 	if c.DryRun {
@@ -149,7 +137,38 @@ func (c *Command) Run(ctx context.Context) error {
 		ui.Println("")
 	}
 
+	type pushItem struct {
+		change               *model.Change
+		branch, reason, base string
+		existing             int
+	}
+	var items []pushItem
 	var created, updated, skipped int
+	var existingNumbers []int
+	for _, change := range stackCtx.ActiveChanges {
+		if change.PR != nil && change.PR.PRNumber > 0 {
+			existingNumbers = append(existingNumbers, change.PR.PRNumber)
+		}
+	}
+	current := make(map[int]gh.PRDetails, len(existingNumbers))
+	if len(existingNumbers) > 0 {
+		current, _, err = c.GH.GetPRDetails(ctx, stackCtx.Stack.Owner, stackCtx.Stack.RepoName, existingNumbers)
+		if err != nil {
+			return fmt.Errorf("failed to read current PR bases: %w", err)
+		}
+	}
+	for _, number := range existingNumbers {
+		if current[number].Number == 0 {
+			return fmt.Errorf("PR #%d is missing on GitHub", number)
+		}
+	}
+	if c.DryRun {
+		for _, detail := range current {
+			if detail.Merged {
+				return fmt.Errorf("stack out of sync - run 'stack restack' first")
+			}
+		}
+	}
 
 	for _, change := range stackCtx.ActiveChanges {
 		prBranch := stackCtx.FormatUUIDBranch(change.UUID)
@@ -168,7 +187,9 @@ func (c *Command) Run(ctx context.Context) error {
 			} else {
 				ui.Printf("Would create PR: %s\n", change.Title)
 			}
-			continue
+			if existingPRNumber == 0 {
+				continue
+			}
 		}
 
 		// Skip PRs that are closed on GitHub (not merged)
@@ -207,47 +228,48 @@ func (c *Command) Run(ctx context.Context) error {
 			updateReason = syncStatus.Reason
 		}
 
-		prNumber, prURL, isNew, err := c.pushPR(stackCtx, stackCtx.StackName, *change, prBranch, existingPRNumber)
+		base := change.DesiredBase
+		if existingPRNumber > 0 {
+			base = current[existingPRNumber].BaseRef
+		}
+		items = append(items, pushItem{change: change, branch: prBranch, reason: updateReason, base: base, existing: existingPRNumber})
+	}
+
+	if c.DryRun {
+		_, err := c.Stack.ReconcileNative(ctx, stackCtx, true)
+		return err
+	}
+
+	branches := make([]string, 0, len(items))
+	for _, item := range items {
+		if err := c.Git.UpdateRef(item.branch, item.change.CommitHash); err != nil {
+			return fmt.Errorf("failed to update branch %s: %w", item.branch, err)
+		}
+		branches = append(branches, item.branch)
+	}
+	if err := c.Git.PushAtomic(branches, true); err != nil {
+		return err
+	}
+
+	for _, item := range items {
+		prNumber, prURL, isNew, err := c.syncPR(stackCtx, *item.change, item.branch, item.base, item.existing)
 		if err != nil {
 			return err
 		}
-
-		var action string
+		action := "updated"
 		if isNew {
 			created++
 			action = "created"
 		} else {
 			updated++
-			action = "updated"
 		}
-
-		ui.Print(ui.RenderPushProgress(ui.PushProgress{
-			Position: change.Position,
-			Total:    len(stackCtx.AllChanges),
-			Title:    change.Title,
-			PRNumber: prNumber,
-			URL:      prURL,
-			Action:   action,
-			Reason:   updateReason,
-		}))
-	}
-
-	if c.DryRun {
-		return nil
+		ui.Print(ui.RenderPushProgress(ui.PushProgress{Position: item.change.Position, Total: len(stackCtx.AllChanges), Title: item.change.Title,
+			PRNumber: prNumber, URL: prURL, Action: action, Reason: item.reason}))
 	}
 
 	ui.Print(ui.RenderPushSummary(created, updated, skipped))
-
-	if created > 0 || updated > 0 || c.Force {
-		ui.Println("")
-		ui.Info("Updating stack visualizations...")
-
-		// stackCtx is already fresh after all pushPR calls saved their updates
-		if err := c.Stack.SyncVisualizationComments(stackCtx); err != nil {
-			return fmt.Errorf("failed to sync visualization comments: %w", err)
-		}
-
-		ui.Success("Stack visualizations updated")
+	if _, err := c.Stack.ReconcileNative(ctx, stackCtx, false); err != nil {
+		return fmt.Errorf("reconcile GitHub-native stack: %w", err)
 	}
 
 	return nil

@@ -32,7 +32,7 @@ Your branch (5 commits):
 **Key Benefits:**
 - **Git-native**: Use regular `git commit` and `git rebase` - Stack adds automation
 - **Smart rebasing**: Edit any commit - Stack rebases everything else automatically
-- **Visual context**: Each PR shows the full stack structure
+- **GitHub-native review**: Multi-PR stacks appear as native GitHub stacks
 - **Conflict recovery**: Built-in recovery for failed rebases
 
 ---
@@ -90,7 +90,10 @@ stack top
 # 6. Push updates
 stack push
 
-# 7. After PRs merge, sync your stack
+# 7. Merge or enqueue the whole stack
+stack submit
+
+# 8. After it merges, sync local history
 stack restack
 ```
 
@@ -132,9 +135,9 @@ Trailers travel with commits through rebase and amend operations, creating an im
 - Created automatically when editing specific commits
 - Cleaned up automatically
 
-### Bottom-Up Merging
+### GitHub-Native Submission
 
-PRs must merge in order from bottom to top. Merging out of order breaks dependencies, so Stack validates this when you run `stack restack`.
+`stack push` registers multi-PR stacks with GitHub. `stack submit` sends the top PR to GitHub's asynchronous merge endpoint, which merges or enqueues the stack as one operation.
 
 ---
 
@@ -194,6 +197,19 @@ stack push --force      # Force push all PRs
 ```
 
 Stack creates new PRs as drafts by default.
+
+It also reconciles GitHub-native membership. Appending a new top PR is incremental; reordering, removal, insertion, or a trunk change safely unstack and recreate the remote stack.
+
+### Submitting a Stack
+
+```bash
+stack submit --dry-run  # Validate local and remote structure
+stack submit            # Show the full merge set and confirm
+stack submit --yes      # Submit without prompting
+stack submit --squash   # Override the repository default merge method
+```
+
+Submission never pushes. GitHub evaluates checks, approvals, rules, and merge-queue readiness after accepting the asynchronous request.
 
 ---
 

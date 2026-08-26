@@ -105,7 +105,7 @@ func TestRestackFetchFromWorktreeDoesNotMoveCheckedOutBaseBranch(t *testing.T) {
 	require.NoError(t, err)
 
 	remotePath := filepath.Join(t.TempDir(), "remote.git")
-	runGitForWorktreeTest(t, "", "init", "--bare", remotePath)
+	runGitForWorktreeTest(t, "", "init", "--bare", "--initial-branch=main", remotePath)
 	runGitForWorktreeTest(t, main.GitRoot(), "remote", "add", "origin", remotePath)
 	runGitForWorktreeTest(t, main.GitRoot(), "push", "-u", "origin", "main")
 

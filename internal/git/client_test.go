@@ -2,6 +2,7 @@ package git_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +12,28 @@ import (
 
 	"github.com/bjulian5/stack/internal/testutil"
 )
+
+func TestClient_PushAtomicRunsPrePushHookOnce(t *testing.T) {
+	client := testutil.NewTestGitClient(t)
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	require.NoError(t, exec.Command("git", "init", "--bare", remote).Run())
+	command := exec.Command("git", "remote", "add", "origin", remote)
+	command.Dir = client.GitRoot()
+	require.NoError(t, command.Run())
+
+	head, err := client.GetCommitHash("HEAD")
+	require.NoError(t, err)
+	require.NoError(t, client.UpdateRef("stack-one", head))
+	require.NoError(t, client.UpdateRef("stack-two", head))
+	counter := filepath.Join(t.TempDir(), "hook-count")
+	hook := filepath.Join(client.GitCommonDir(), "hooks", "pre-push")
+	require.NoError(t, os.WriteFile(hook, []byte("#!/bin/sh\necho run >> \""+counter+"\"\n"), 0o755))
+
+	require.NoError(t, client.PushAtomic([]string{"stack-one", "stack-two"}, true))
+	runs, err := os.ReadFile(counter)
+	require.NoError(t, err)
+	assert.Equal(t, "run\n", string(runs))
+}
 
 func TestClient_PathsInMainCheckout(t *testing.T) {
 	c := testutil.NewTestGitClient(t)

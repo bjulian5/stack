@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -53,9 +54,12 @@ type GithubClient interface {
 	MarkPRDraft(prNumber int) error
 	MarkPRReady(prNumber int) error
 	BatchGetPRs(owner, repoName string, prNumbers []int) (*gh.BatchPRsResult, error)
-	UpdatePRComment(commentID string, body string) error
-	ListPRComments(prNumber int) ([]gh.Comment, error)
-	CreatePRComment(prNumber int, body string) (string, error)
+	FindStacks(ctx context.Context, owner, repo string, prNumber int) ([]gh.NativeStack, error)
+	CreateStack(ctx context.Context, owner, repo string, prs []int) error
+	AddToStack(ctx context.Context, owner, repo string, stackNumber int, prs []int) error
+	Unstack(ctx context.Context, owner, repo string, stackNumber int) (int, []byte, error)
+	UpdatePRBase(ctx context.Context, owner, repo string, number int, base string) error
+	GetPRDetails(ctx context.Context, owner, repo string, numbers []int) (map[int]gh.PRDetails, gh.RepoMergeConfig, error)
 }
 
 // Client provides stack operations
@@ -689,10 +693,6 @@ func (c *Client) markChangeStatus(stackCtx *StackContext, change *model.Change, 
 
 	if err := stackCtx.Save(); err != nil {
 		return nil, fmt.Errorf("failed to save stack context: %w", err)
-	}
-
-	if err := c.SyncVisualizationComments(stackCtx); err != nil {
-		return nil, fmt.Errorf("failed to sync visualization comments: %w", err)
 	}
 
 	return result, nil

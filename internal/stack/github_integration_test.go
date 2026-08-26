@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bjulian5/stack/internal/gh"
@@ -193,8 +192,6 @@ func TestMarkChangeStatus(t *testing.T) {
 			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("MarkPRDraft", 101).Return(nil).Once()
-				m.On("ListPRComments", 101).Return([]gh.Comment{}, nil).Once()
-				m.On("CreatePRComment", 101, mock.AnythingOfType("string")).Return("comment-123", nil).Once()
 			},
 			expectedResult: &MarkChangeStatusResult{
 				SyncedToGitHub: true,
@@ -208,7 +205,6 @@ func TestMarkChangeStatus(t *testing.T) {
 					State:             "draft",
 					LocalDraftStatus:  true,
 					RemoteDraftStatus: true,
-					VizCommentID:      "comment-123",
 				},
 			},
 		},
@@ -228,8 +224,6 @@ func TestMarkChangeStatus(t *testing.T) {
 			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("MarkPRReady", 101).Return(nil).Once()
-				m.On("ListPRComments", 101).Return([]gh.Comment{}, nil).Once()
-				m.On("CreatePRComment", 101, mock.AnythingOfType("string")).Return("comment-123", nil).Once()
 			},
 			expectedResult: &MarkChangeStatusResult{
 				SyncedToGitHub: true,
@@ -243,7 +237,6 @@ func TestMarkChangeStatus(t *testing.T) {
 					State:             "open",
 					LocalDraftStatus:  false,
 					RemoteDraftStatus: false,
-					VizCommentID:      "comment-123",
 				},
 			},
 		},
@@ -263,8 +256,6 @@ func TestMarkChangeStatus(t *testing.T) {
 			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 				m.On("MarkPRReady", 102).Return(nil).Once()
-				m.On("ListPRComments", 102).Return([]gh.Comment{}, nil).Once()
-				m.On("CreatePRComment", 102, mock.AnythingOfType("string")).Return("comment-456", nil).Once()
 			},
 			expectedResult: &MarkChangeStatusResult{
 				SyncedToGitHub: true,
@@ -278,7 +269,6 @@ func TestMarkChangeStatus(t *testing.T) {
 					State:             "open",
 					LocalDraftStatus:  false,
 					RemoteDraftStatus: false,
-					VizCommentID:      "comment-456",
 				},
 			},
 		},
@@ -297,8 +287,6 @@ func TestMarkChangeStatus(t *testing.T) {
 			isDraft: true,
 			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
-				m.On("ListPRComments", 103).Return([]gh.Comment{}, nil).Once()
-				m.On("CreatePRComment", 103, mock.AnythingOfType("string")).Return("comment-123", nil).Once()
 			},
 			expectedResult: &MarkChangeStatusResult{
 				SyncedToGitHub: false,
@@ -312,7 +300,6 @@ func TestMarkChangeStatus(t *testing.T) {
 					State:             "merged",
 					LocalDraftStatus:  true,
 					RemoteDraftStatus: false,
-					VizCommentID:      "comment-123",
 				},
 			},
 		},
@@ -331,8 +318,6 @@ func TestMarkChangeStatus(t *testing.T) {
 			isDraft: false,
 			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
-				m.On("ListPRComments", 104).Return([]gh.Comment{}, nil).Once()
-				m.On("CreatePRComment", 104, mock.AnythingOfType("string")).Return("comment-456", nil).Once()
 			},
 			expectedResult: &MarkChangeStatusResult{
 				SyncedToGitHub: false,
@@ -346,7 +331,6 @@ func TestMarkChangeStatus(t *testing.T) {
 					State:             "closed",
 					LocalDraftStatus:  false,
 					RemoteDraftStatus: false,
-					VizCommentID:      "comment-456",
 				},
 			},
 		},
@@ -365,8 +349,6 @@ func TestMarkChangeStatus(t *testing.T) {
 			isDraft: false,
 			setupMocks: func(m *gh.MockGithubClient) {
 				m.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
-				m.On("ListPRComments", 105).Return([]gh.Comment{}, nil).Once()
-				m.On("CreatePRComment", 105, mock.AnythingOfType("string")).Return("comment-789", nil).Once()
 			},
 			expectedResult: &MarkChangeStatusResult{
 				SyncedToGitHub: true,
@@ -380,7 +362,6 @@ func TestMarkChangeStatus(t *testing.T) {
 					State:             "open",
 					LocalDraftStatus:  false,
 					RemoteDraftStatus: false,
-					VizCommentID:      "comment-789",
 				},
 			},
 		},
@@ -461,8 +442,6 @@ func TestMarkChangeDraft(t *testing.T) {
 		mockGithubClient := &gh.MockGithubClient{}
 		mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 		mockGithubClient.On("MarkPRDraft", 101).Return(nil).Once()
-		mockGithubClient.On("ListPRComments", 101).Return([]gh.Comment{}, nil).Once()
-		mockGithubClient.On("CreatePRComment", 101, mock.AnythingOfType("string")).Return("comment-123", nil).Once()
 
 		stackClient := NewTestStack(t, mockGithubClient)
 		stack, err := stackClient.CreateStack("test-stack", "main")
@@ -507,8 +486,6 @@ func TestMarkChangeReady(t *testing.T) {
 		mockGithubClient := &gh.MockGithubClient{}
 		mockGithubClient.On("GetRepoInfo").Return("test-owner", "test-repo", nil).Once()
 		mockGithubClient.On("MarkPRReady", 102).Return(nil).Once()
-		mockGithubClient.On("ListPRComments", 102).Return([]gh.Comment{}, nil).Once()
-		mockGithubClient.On("CreatePRComment", 102, mock.AnythingOfType("string")).Return("comment-456", nil).Once()
 
 		stackClient := NewTestStack(t, mockGithubClient)
 		stack, err := stackClient.CreateStack("test-stack", "main")

@@ -370,6 +370,31 @@ func (c *Client) Push(branch string, force bool) error {
 	return nil
 }
 
+func (c *Client) PushAtomic(branches []string, force bool) error {
+	if len(branches) == 0 {
+		return nil
+	}
+	remote, err := c.GetRemoteName()
+	if err != nil {
+		return err
+	}
+	args := []string{"push", "--atomic"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, remote)
+	for _, branch := range branches {
+		args = append(args, branch+":"+branch)
+	}
+	cmd := exec.Command("git", args...)
+	cmd.Dir = c.gitRoot
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to push %d stack refs atomically: %w\nOutput: %s", len(branches), err, string(output))
+	}
+	return nil
+}
+
 func (c *Client) GetRemoteName() (string, error) {
 	cmd := exec.Command("git", "remote")
 	cmd.Dir = c.gitRoot
