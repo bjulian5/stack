@@ -103,7 +103,6 @@ func (c *Client) updatePR(spec PRSpec, currentPR *PR) (*PR, error) {
 		"pr", "edit", prNumber,
 		"--title", spec.Title,
 		"--body", spec.Body,
-		"--base", spec.Base,
 	}
 
 	if _, err := c.execGH(editArgs...); err != nil {
