@@ -3,10 +3,10 @@ package submit
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -69,22 +69,12 @@ func TestMergeMethod(t *testing.T) {
 	}
 }
 
-func TestConfirmation(t *testing.T) {
-	tests := []struct {
-		name, input string
-		yes         bool
-		wantErr     bool
-	}{{"yes flag", "", true, false}, {"yes answer", "yes\n", false, false}, {"default no", "\n", false, true}, {"explicit no", "no\n", false, true}}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := (&Command{Yes: tt.yes, Input: strings.NewReader(tt.input)}).confirm()
-			if tt.wantErr {
-				assert.ErrorContains(t, err, "cancelled")
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
+func TestRegisterAcceptsLegacyYesFlag(t *testing.T) {
+	root := &cobra.Command{Use: "stack"}
+	(&Command{}).Register(root)
+	submit, _, err := root.Find([]string{"submit"})
+	require.NoError(t, err)
+	require.NoError(t, submit.ParseFlags([]string{"--yes"}))
 }
 
 func TestMergeStart(t *testing.T) {

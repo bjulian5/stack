@@ -204,12 +204,12 @@ It also reconciles GitHub-native membership. Appending a new top PR is increment
 
 ```bash
 stack submit --dry-run  # Validate local and remote structure
-stack submit            # Show the full merge set and confirm
-stack submit --yes      # Submit without prompting
+stack submit            # Submit the full merge set immediately
 stack submit --squash   # Override the repository default merge method
 ```
 
 Submission never pushes. GitHub evaluates checks, approvals, rules, and merge-queue readiness after accepting the asynchronous request.
+The legacy `--yes`/`-y` flag remains accepted but is no longer needed.
 
 ---
 

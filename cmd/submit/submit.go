@@ -1,11 +1,8 @@
 package submit
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -19,13 +16,12 @@ import (
 )
 
 type Command struct {
-	DryRun, Yes, Merge, Squash, Rebase bool
-	MergeMethod                        string
-	Git                                *git.Client
-	Stack                              *stack.Client
-	GH                                 GithubClient
-	Input                              io.Reader
-	PollInterval, PollTimeout          time.Duration
+	DryRun, Merge, Squash, Rebase bool
+	MergeMethod                   string
+	Git                           *git.Client
+	Stack                         *stack.Client
+	GH                            GithubClient
+	PollInterval, PollTimeout     time.Duration
 }
 
 type GithubClient interface {
@@ -47,7 +43,7 @@ func (c *Command) Register(parent *cobra.Command) {
 		RunE: func(cmd *cobra.Command, _ []string) error { return c.Run(cmd.Context()) },
 	}
 	command.Flags().BoolVar(&c.DryRun, "dry-run", false, "Validate without submitting")
-	command.Flags().BoolVarP(&c.Yes, "yes", "y", false, "Submit without prompting")
+	command.Flags().BoolP("yes", "y", false, "Accepted for compatibility; submission does not prompt")
 	command.Flags().BoolVar(&c.Merge, "merge", false, "Use a merge commit")
 	command.Flags().BoolVar(&c.Squash, "squash", false, "Squash and merge")
 	command.Flags().BoolVar(&c.Rebase, "rebase", false, "Rebase and merge")
@@ -133,11 +129,6 @@ func (c *Command) Run(ctx context.Context) error {
 		ui.Success("Stack is structurally ready to submit")
 		return nil
 	}
-	if !c.Yes {
-		if err := c.confirm(); err != nil {
-			return err
-		}
-	}
 
 	result, status, startErr := c.GH.StartMerge(ctx, stackCtx.Stack.Owner, stackCtx.Stack.RepoName, top.PR.PRNumber,
 		gh.MergeRequest{SHA: topDetails.HeadSHA, Method: method, Action: action})
@@ -150,23 +141,6 @@ func (c *Command) Run(ctx context.Context) error {
 	}
 	return c.poll(ctx, stackCtx.Stack.Owner, stackCtx.Stack.RepoName, top.PR.PRNumber, uuid, action)
 }
-
-func (c *Command) confirm() error {
-	if c.Yes {
-		return nil
-	}
-	input := c.Input
-	if input == nil {
-		input = os.Stdin
-	}
-	ui.Print("Submit the entire stack? [y/N] ")
-	answer, _ := bufio.NewReader(input).ReadString('\n')
-	if answer = strings.ToLower(strings.TrimSpace(answer)); answer != "y" && answer != "yes" {
-		return fmt.Errorf("submission cancelled")
-	}
-	return nil
-}
-
 func mergeStart(result gh.MergeResult, status int, err error) (string, bool, error) {
 	if err != nil && gh.APIStatus(err) != 409 {
 		return "", false, err
