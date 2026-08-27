@@ -52,7 +52,6 @@ func (c *Command) Register(parent *cobra.Command) {
 		},
 	}
 	command.Flags().BoolVar(&c.DryRun, "dry-run", false, "Validate without submitting")
-	command.Flags().BoolP("yes", "y", false, "Accepted for compatibility; submission does not prompt")
 	command.Flags().BoolVar(&c.Merge, "merge", false, "Use a merge commit")
 	command.Flags().BoolVar(&c.Squash, "squash", false, "Squash and merge")
 	command.Flags().BoolVar(&c.Rebase, "rebase", false, "Rebase and merge")

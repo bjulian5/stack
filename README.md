@@ -211,7 +211,6 @@ stack submit --squash   # Override the repository default merge method
 ```
 
 Submission never pushes. GitHub evaluates checks, approvals, rules, and merge-queue readiness after accepting the asynchronous request.
-The legacy `--yes`/`-y` flag remains accepted but is no longer needed.
 
 ---
 

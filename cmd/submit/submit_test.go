@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -68,14 +67,6 @@ func TestMergeMethod(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestRegisterAcceptsLegacyYesFlag(t *testing.T) {
-	root := &cobra.Command{Use: "stack"}
-	(&Command{}).Register(root)
-	submit, _, err := root.Find([]string{"submit"})
-	require.NoError(t, err)
-	require.NoError(t, submit.ParseFlags([]string{"--yes"}))
 }
 
 func TestChangesThrough(t *testing.T) {
