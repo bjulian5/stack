@@ -162,6 +162,9 @@ func (c *Command) Run(ctx context.Context) error {
 			return fmt.Errorf("PR #%d is missing on GitHub", number)
 		}
 	}
+	if err := validatePRHeads(stackCtx, current); err != nil {
+		return err
+	}
 	if c.DryRun {
 		for _, detail := range current {
 			if detail.Merged {
@@ -272,5 +275,20 @@ func (c *Command) Run(ctx context.Context) error {
 		return fmt.Errorf("reconcile GitHub-native stack: %w", err)
 	}
 
+	return nil
+}
+
+// GitHub cannot retarget a PR's head. Reject mismatches before pushing refs or editing PRs.
+func validatePRHeads(stackCtx *stack.StackContext, current map[int]gh.PRDetails) error {
+	for _, change := range stackCtx.ActiveChanges {
+		if change.PR == nil || change.PR.PRNumber == 0 {
+			continue
+		}
+		number := change.PR.PRNumber
+		want := stackCtx.FormatUUIDBranch(change.UUID)
+		if got := current[number].HeadRef; got != want {
+			return fmt.Errorf("PR #%d uses head %q, but stack metadata targets %q; repair the local stack branch before pushing", number, got, want)
+		}
+	}
 	return nil
 }

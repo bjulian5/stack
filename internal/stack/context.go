@@ -68,7 +68,16 @@ func (s *StackContext) FindChangeInActive(uuid string) *model.Change {
 
 // FormatUUIDBranch returns the branch name for a UUID in this stack.
 func (s *StackContext) FormatUUIDBranch(uuid string) string {
-	return fmt.Sprintf("%s/stack-%s/%s", s.username, s.StackName, uuid)
+	return fmt.Sprintf("%s/stack-%s/%s", stackUsername(s.Stack, s.username), s.StackName, uuid)
+}
+
+// Existing stacks retain their creator's namespace when another user edits them.
+func stackUsername(s *model.Stack, fallback string) string {
+	if s != nil && s.Branch != "" && extractStackName(s.Branch) == s.Name {
+		owner, _, _ := strings.Cut(s.Branch, "/")
+		return owner
+	}
+	return fallback
 }
 
 // Save persists the current state to disk, including PR metadata and stack configuration.

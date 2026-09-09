@@ -94,6 +94,9 @@ func TestGetStackContext_WithMultipleActiveChanges(t *testing.T) {
 		"PR-Stack": "test-stack",
 	})
 
+	// A collaborator must keep the creator's branch namespace.
+	stackClient.SetUsernameForTesting("collaborator")
+
 	// Load the stack context
 	stackCtx, err := stackClient.GetStackContextByName("test-stack")
 	require.NoError(t, err)
@@ -139,6 +142,7 @@ func TestGetStackContext_WithMultipleActiveChanges(t *testing.T) {
 
 	for i, expected := range expectedChanges {
 		assert.Equal(t, expected, stackCtx.ActiveChanges[i], "Change %d should match expected", i+1)
+		assert.Equal(t, "test-user/stack-test-stack/"+expected.UUID, stackCtx.FormatUUIDBranch(expected.UUID))
 	}
 
 	// Verify AllChanges matches ActiveChanges (no merged changes)

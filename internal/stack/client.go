@@ -3,6 +3,7 @@ package stack
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -513,7 +514,7 @@ func (c *Client) getChangesForStack(s *model.Stack) (*stackChanges, error) {
 		} else {
 			// Subsequent active changes: base off the previous active change's PR branch
 			prevChange := activeChanges[i-1]
-			desiredBase = fmt.Sprintf("%s/stack-%s/%s", c.username, s.Name, prevChange.UUID)
+			desiredBase = fmt.Sprintf("%s/stack-%s/%s", stackUsername(s, c.username), s.Name, prevChange.UUID)
 		}
 
 		activeChanges[i].DesiredBase = desiredBase
@@ -1156,7 +1157,11 @@ func (c *Client) ArchiveStack(stackName string) error {
 }
 
 func (c *Client) GetStackBranches(stackName string) ([]string, error) {
-	pattern := fmt.Sprintf("refs/heads/%s/stack-%s/*", c.username, stackName)
+	s, err := c.LoadStack(stackName)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	pattern := fmt.Sprintf("refs/heads/%s/stack-%s/*", stackUsername(s, c.username), stackName)
 	cmd := exec.Command("git", "for-each-ref", "--format=%(refname:short)", pattern)
 	output, err := cmd.Output()
 	if err != nil {
