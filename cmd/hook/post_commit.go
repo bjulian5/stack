@@ -53,14 +53,25 @@ func (c *PostCommitCommand) Run() error {
 		return nil
 	}
 
-	// If not editing (i.e., on TOP branch), check if this is an amend
-	if !ctx.OnUUIDBranch() {
-		// Get the HEAD commit to check if it's an amend
-		headCommit, err := c.Git.GetCommit("HEAD")
+	headCommit, err := c.Git.GetCommit("HEAD")
+	if err != nil {
+		return nil
+	}
+	originalHash := headCommit.Hash
+	headCommit, err = c.preserveAmendTrailers(ctx.StackName, headCommit)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error preserving stack metadata after amend: %v\n", err)
+		return nil
+	}
+	if headCommit.Hash != originalHash {
+		ctx, err = c.Stack.GetStackContext()
 		if err != nil {
 			return nil
 		}
+	}
 
+	// If not editing (i.e., on TOP branch), check if this is an amend
+	if !ctx.OnUUIDBranch() {
 		// Check if the commit's UUID already exists in the stack
 		commitUUID := headCommit.Message.Trailers["PR-UUID"]
 		if commitUUID != "" && ctx.FindChange(commitUUID) != nil {
@@ -83,12 +94,6 @@ func (c *PostCommitCommand) Run() error {
 		return nil // Exit silently
 	}
 
-	// Get the HEAD commit that was just created
-	headCommit, err := c.Git.GetCommit("HEAD")
-	if err != nil {
-		return nil // Exit silently
-	}
-
 	// Check the commit's PR-UUID to determine if this is an amend or new commit
 	commitUUID := headCommit.Message.Trailers["PR-UUID"]
 	isAmend := commitUUID == ctx.CurrentChange().UUID
@@ -107,6 +112,45 @@ func (c *PostCommitCommand) Run() error {
 	}
 
 	return nil
+}
+
+// A message-only amend reaches prepare-commit-msg without the original SHA, so it
+// temporarily gets new trailers. Once committed, sibling parents identify the amend.
+func (c *PostCommitCommand) preserveAmendTrailers(stackName string, head git.Commit) (git.Commit, error) {
+	previousHash, err := c.Git.GetCommitHash("HEAD@{1}")
+	if err != nil || previousHash == head.Hash {
+		return head, nil
+	}
+	previous, err := c.Git.GetCommit(previousHash)
+	if err != nil || previous.Message.Trailers["PR-UUID"] == "" || previous.Message.Trailers["PR-Stack"] != stackName {
+		return head, nil
+	}
+	if head.Message.Trailers["PR-UUID"] == previous.Message.Trailers["PR-UUID"] && head.Message.Trailers["PR-Stack"] == stackName {
+		return head, nil
+	}
+	headParent, err := c.Git.GetParentCommit(head.Hash)
+	if err != nil {
+		return head, nil
+	}
+	previousParent, err := c.Git.GetParentCommit(previous.Hash)
+	if err != nil || headParent != previousParent {
+		return head, nil
+	}
+
+	head.Message.AddTrailer("PR-UUID", previous.Message.Trailers["PR-UUID"])
+	head.Message.AddTrailer("PR-Stack", previous.Message.Trailers["PR-Stack"])
+	tree, err := c.Git.GetCommitTree(head.Hash)
+	if err != nil {
+		return head, err
+	}
+	correctedHash, err := c.Git.CommitTree(tree, headParent, head.Message.String())
+	if err != nil {
+		return head, err
+	}
+	if err := c.Git.ResetHard(correctedHash); err != nil {
+		return head, err
+	}
+	return c.Git.GetCommit("HEAD")
 }
 
 // handleAmend handles the case where the user amended an existing commit
