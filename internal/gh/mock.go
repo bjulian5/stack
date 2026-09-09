@@ -10,6 +10,14 @@ type MockGithubClient struct {
 	mock.Mock
 }
 
+func (m *MockGithubClient) FindPRByHead(head string) (*PR, error) {
+	args := m.Called(head)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*PR), args.Error(1)
+}
+
 func (m *MockGithubClient) FindStacks(ctx context.Context, owner, repo string, prNumber int) ([]NativeStack, error) {
 	args := m.Called(ctx, owner, repo, prNumber)
 	if args.Get(0) == nil {

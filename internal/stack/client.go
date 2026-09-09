@@ -34,6 +34,9 @@ type GitClient interface {
 	CheckoutBranch(name string) error
 	GetCommits(branch, base string) ([]git.Commit, error)
 	GetCommitHash(ref string) (string, error)
+	ResolveCommitHash(ref string) (string, error)
+	GetCommit(hash string) (git.Commit, error)
+	GetParentCommit(commitHash string) (string, error)
 	GitRoot() string
 	GitCommonDir() string
 	GetRemoteName() (string, error)
@@ -52,6 +55,7 @@ type GitClient interface {
 // GithubClient defines the GitHub operations needed by Stack Client
 type GithubClient interface {
 	GetRepoInfo() (owner string, repoName string, err error)
+	FindPRByHead(head string) (*gh.PR, error)
 	MarkPRDraft(prNumber int) error
 	MarkPRReady(prNumber int) error
 	BatchGetPRs(owner, repoName string, prNumbers []int) (*gh.BatchPRsResult, error)

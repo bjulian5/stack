@@ -13,6 +13,7 @@ import (
 	"github.com/bjulian5/stack/cmd/edit"
 	"github.com/bjulian5/stack/cmd/fixup"
 	"github.com/bjulian5/stack/cmd/hook"
+	"github.com/bjulian5/stack/cmd/importcmd"
 	"github.com/bjulian5/stack/cmd/install"
 	"github.com/bjulian5/stack/cmd/list"
 	"github.com/bjulian5/stack/cmd/newcmd"
@@ -49,6 +50,7 @@ func init() {
 	commands := []Command{
 		&install.Command{},
 		&newcmd.Command{},
+		&importcmd.Command{},
 		&list.Command{},
 		&status.Command{},
 		&edit.Command{},

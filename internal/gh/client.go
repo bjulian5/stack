@@ -28,7 +28,7 @@ func (c *Client) SyncPR(spec PRSpec) (*PR, error) {
 			return nil, fmt.Errorf("failed to query PR #%d: %w", spec.Number, err)
 		}
 	} else {
-		existingPR, err = c.getPRByHead(spec.Head)
+		existingPR, err = c.FindPRByHead(spec.Head)
 		if err != nil {
 			return nil, fmt.Errorf("failed to query PR by head branch: %w", err)
 		}
@@ -187,10 +187,11 @@ func isRetryableError(stderr string) bool {
 		strings.Contains(stderr, "HTTP 504")
 }
 
-func (c *Client) getPRByHead(head string) (*PR, error) {
+func (c *Client) FindPRByHead(head string) (*PR, error) {
 	output, err := c.execGH(
 		"pr", "list",
 		"--head", head,
+		"--state", "all",
 		"--json", "number,url,state,isDraft,createdAt,updatedAt",
 		"--limit", "1",
 	)

@@ -150,6 +150,19 @@ stack new my-feature              # Use current branch as base
 stack new my-feature --base main  # Specify base branch
 ```
 
+### Importing a Stack
+
+Import a pushed stack from any of its branch names. Stack fetches the remote,
+reconstructs the full GitHub-native stack, and checks out its local `TOP` branch.
+
+```bash
+stack import bjulian5/stack-my-feature/550e8400e29b41d4
+stack import origin/bjulian5/stack-my-feature/550e8400e29b41d4
+stack import bjulian5/stack-my-feature/TOP
+```
+
+Use `--base <branch>` only when the remote stack does not expose its base.
+
 ### Adding Changes
 
 Use regular git:
@@ -321,6 +334,7 @@ stack cleanup             # Clean up merged stacks
 
 ### Stack Management
 - `stack new <name> [--base <branch>]` - Create a new stack
+- `stack import <branch> [--base <branch>]` - Import a pushed stack
 - `stack list` - List all stacks
 - `stack status [name] [--verbose]` - Show stack status
 - `stack switch [name]` - Switch between stacks

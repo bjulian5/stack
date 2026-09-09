@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const apiVersion = "2026-03-10"
@@ -146,9 +147,14 @@ type PRDetails struct {
 	State         string
 	Draft         bool
 	Merged        bool
+	Title         string
+	Body          string
+	URL           string
 	HeadRef       string
 	HeadSHA       string
 	BaseRef       string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 	Queued        bool
 	AutoMerge     bool
 	HasMergeQueue bool
@@ -164,7 +170,7 @@ type RepoMergeConfig struct {
 func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, numbers []int) (map[int]PRDetails, RepoMergeConfig, error) {
 	var fields strings.Builder
 	for _, number := range numbers {
-		fmt.Fprintf(&fields, "pr%d: pullRequest(number: %d) { number state isDraft merged headRefName headRefOid baseRefName mergeQueueEntry { id } autoMergeRequest { enabledAt } mergeQueue { id } }\n", number, number)
+		fmt.Fprintf(&fields, "pr%d: pullRequest(number: %d) { number state isDraft merged title body url headRefName headRefOid baseRefName createdAt updatedAt mergeQueueEntry { id } autoMergeRequest { enabledAt } mergeQueue { id } }\n", number, number)
 	}
 	query := fmt.Sprintf("query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){viewerDefaultMergeMethod mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed %s}}", fields.String())
 	output, err := c.execGHContext(ctx, "api", "graphql", "-f", "query="+query, "-f", "owner="+owner, "-f", "repo="+repo)
@@ -197,9 +203,14 @@ func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, numbers [
 				State            string          `json:"state"`
 				IsDraft          bool            `json:"isDraft"`
 				Merged           bool            `json:"merged"`
+				Title            string          `json:"title"`
+				Body             string          `json:"body"`
+				URL              string          `json:"url"`
 				HeadRef          string          `json:"headRefName"`
 				HeadSHA          string          `json:"headRefOid"`
 				BaseRef          string          `json:"baseRefName"`
+				CreatedAt        time.Time       `json:"createdAt"`
+				UpdatedAt        time.Time       `json:"updatedAt"`
 				MergeQueueEntry  json.RawMessage `json:"mergeQueueEntry"`
 				AutoMergeRequest json.RawMessage `json:"autoMergeRequest"`
 				MergeQueue       json.RawMessage `json:"mergeQueue"`
@@ -208,7 +219,8 @@ func (c *Client) GetPRDetails(ctx context.Context, owner, repo string, numbers [
 				continue
 			}
 			details[pr.Number] = PRDetails{Number: pr.Number, State: pr.State, Draft: pr.IsDraft, Merged: pr.Merged,
-				HeadRef: pr.HeadRef, HeadSHA: pr.HeadSHA, BaseRef: pr.BaseRef,
+				Title: pr.Title, Body: pr.Body, URL: pr.URL, HeadRef: pr.HeadRef, HeadSHA: pr.HeadSHA, BaseRef: pr.BaseRef,
+				CreatedAt: pr.CreatedAt, UpdatedAt: pr.UpdatedAt,
 				Queued: string(pr.MergeQueueEntry) != "null", AutoMerge: string(pr.AutoMergeRequest) != "null", HasMergeQueue: string(pr.MergeQueue) != "null"}
 		}
 	}
