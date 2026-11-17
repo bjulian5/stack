@@ -57,6 +57,11 @@ cd /path/to/your/repo
 stack install
 ```
 
+`stack install` checks an existing installation without writing when its hooks
+and Git configuration are current. Linked worktrees reuse the shared hooks,
+including inside read-only sandboxes. Missing or outdated setup is repaired
+when the shared Git directory is writable.
+
 Enable shell completion (optional):
 ```bash
 source <(stack completion bash)  # or zsh, fish

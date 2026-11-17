@@ -477,6 +477,19 @@ func (c *Client) DeleteRemoteBranch(branchName string) error {
 	return nil
 }
 
+func (c *Client) GetConfig(key string) (string, error) {
+	cmd := exec.Command("git", "config", "--get", key)
+	cmd.Dir = c.gitRoot
+	output, err := cmd.Output()
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to read config %s: %w", key, err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 func (c *Client) SetConfig(key string, value string) error {
 	cmd := exec.Command("git", "config", key, value)
 	cmd.Dir = c.gitRoot

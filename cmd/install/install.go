@@ -28,7 +28,8 @@ This command:
   2. Configures git settings (core.commentChar=; to avoid markdown conflicts)
   3. Saves installation state
 
-This command is idempotent and can be run multiple times safely.
+An up-to-date installation is checked without writing files, so this command
+also works in sandboxes that allow reading but not modifying shared hooks.
 
 Example:
   stack install`,
@@ -55,9 +56,13 @@ func (c *Command) Run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to check installation status: %w", err)
 	}
 
-	if installed {
-		ui.Info("Stack is already installed in this repository.")
-		ui.Info("Reinstalling...")
+	commentChar, err := c.Git.GetConfig("core.commentChar")
+	if err != nil {
+		return fmt.Errorf("failed to check git configuration: %w", err)
+	}
+	if installed && hooks.CheckHooksCurrent(c.Git.GitCommonDir()) && commentChar == ";" {
+		ui.Success("Stack is already installed and up to date.")
+		return nil
 	}
 
 	if err := hooks.InstallHooks(c.Git.GitCommonDir()); err != nil {
