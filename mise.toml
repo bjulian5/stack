@@ -1,0 +1,7 @@
+[tasks.test]
+description = "Run the Stack test suite"
+run = "go test ./..."
+
+[tasks.build]
+description = "Build the Stack CLI"
+run = "go build -o stack ."

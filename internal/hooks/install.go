@@ -83,6 +83,22 @@ func CheckHooksInstalled(gitCommonDir string) bool {
 	return true
 }
 
+// CheckHooksCurrent checks content and permissions without modifying shared hooks.
+func CheckHooksCurrent(gitCommonDir string) bool {
+	for _, name := range stackHooks {
+		path := filepath.Join(gitCommonDir, "hooks", name)
+		content, err := os.ReadFile(path)
+		if err != nil || string(content) != hookScript(name) {
+			return false
+		}
+		info, err := os.Stat(path)
+		if err != nil || info.Mode()&0111 == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func installHook(hooksDir string, name string, content string) error {
 	hookPath := filepath.Join(hooksDir, name)
 
@@ -90,7 +106,7 @@ func installHook(hooksDir string, name string, content string) error {
 		return err
 	}
 
-	return nil
+	return os.Chmod(hookPath, 0755)
 }
 
 func isStackHook(content string) bool {
